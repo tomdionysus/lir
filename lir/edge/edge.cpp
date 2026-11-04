@@ -11,6 +11,7 @@
 #include <atomic>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/post.hpp>
+#include <boost/asio/ssl.hpp>
 #include <boost/asio/steady_timer.hpp>
 #include <boost/asio/write.hpp>
 #include <deque>
@@ -29,13 +30,22 @@ using namespace std::chrono_literals;
 // How long stop() and a waited call give the strand before giving up.
 constexpr auto strand_deadline = 10s;
 
-// One client socket. Every member is touched only on the edge's strand.
-class TcpConnection final : public contract::Connection, public std::enable_shared_from_this<TcpConnection> {
+// A client connection as the edge holds it.
+class ClientConnection : public contract::Connection {
  public:
-  TcpConnection(tcp::socket socket, size_t maximum, dannan::status::ScopedLogger logger, std::function<void(TcpConnection*)> forget)
-      : _socket(std::move(socket)), _maximum(maximum), _logger(std::move(logger)), _forget(std::move(forget)) {
+  // Closes the socket now and tells the link, which is idempotent.
+  virtual void terminate() = 0;
+};
+
+// One client over `Stream`: a TCP socket, or TLS over one. Every member is
+// touched only on the edge's strand.
+template <typename Stream>
+class StreamConnection final : public ClientConnection, public std::enable_shared_from_this<StreamConnection<Stream>> {
+ public:
+  StreamConnection(Stream stream, size_t maximum, dannan::status::ScopedLogger logger, std::function<void(ClientConnection*)> forget)
+      : _stream(std::move(stream)), _maximum(maximum), _logger(std::move(logger)), _forget(std::move(forget)) {
     boost::system::error_code ec;
-    const auto remote = _socket.remote_endpoint(ec);
+    const auto remote = _stream.lowest_layer().remote_endpoint(ec);
     _peer = ec ? "unknown" : remote.address().to_string() + ":" + std::to_string(remote.port());
   }
 
@@ -51,7 +61,7 @@ class TcpConnection final : public contract::Connection, public std::enable_shar
       // the broker's current call has returned.
       _logger.info("closing " + _peer + ": over " + std::to_string(_maximum) + " bytes queued");
       _closing = true;
-      asio::post(_socket.get_executor(), [self = shared_from_this()] { self->terminate(); });
+      asio::post(_stream.get_executor(), [self = this->shared_from_this()] { self->terminate(); });
       return;
     }
     _queued += bytes.size();
@@ -67,13 +77,12 @@ class TcpConnection final : public contract::Connection, public std::enable_shar
 
   std::string peer() const override { return _peer; }
 
-  // Closes the socket now and tells the link, which is idempotent.
-  void terminate() {
+  void terminate() override {
     if (_closed) return;
     _closed = true;
     boost::system::error_code ignored;
-    _socket.shutdown(tcp::socket::shutdown_both, ignored);
-    _socket.close(ignored);
+    _stream.lowest_layer().shutdown(tcp::socket::shutdown_both, ignored);
+    _stream.lowest_layer().close(ignored);
     // The link and this connection hold each other; the cycle ends here.
     if (auto link = std::move(_link)) link->closed();
     _forget(this);
@@ -81,7 +90,7 @@ class TcpConnection final : public contract::Connection, public std::enable_shar
 
  private:
   void read() {
-    _socket.async_read_some(asio::buffer(_buffer), [self = shared_from_this()](const boost::system::error_code& ec, size_t got) {
+    _stream.async_read_some(asio::buffer(_buffer), [self = this->shared_from_this()](const boost::system::error_code& ec, size_t got) {
       if (ec) return self->terminate();
       if (self->_closing || self->_closed) return;
       if (self->_link) self->_link->receive(std::span<const uint8_t>(self->_buffer.data(), got));
@@ -91,7 +100,7 @@ class TcpConnection final : public contract::Connection, public std::enable_shar
 
   void write() {
     _writing = true;
-    asio::async_write(_socket, asio::buffer(_queue.front()), [self = shared_from_this()](const boost::system::error_code& ec, size_t) {
+    asio::async_write(_stream, asio::buffer(_queue.front()), [self = this->shared_from_this()](const boost::system::error_code& ec, size_t) {
       self->_writing = false;
       if (ec) return self->terminate();
       self->_queued -= self->_queue.front().size();
@@ -102,10 +111,10 @@ class TcpConnection final : public contract::Connection, public std::enable_shar
     });
   }
 
-  tcp::socket _socket;
+  Stream _stream;
   const size_t _maximum;
   dannan::status::ScopedLogger _logger;
-  std::function<void(TcpConnection*)> _forget;
+  std::function<void(ClientConnection*)> _forget;
   std::string _peer;
   std::shared_ptr<broker::Link> _link;
   std::array<uint8_t, 16384> _buffer{};
@@ -116,6 +125,10 @@ class TcpConnection final : public contract::Connection, public std::enable_shar
   bool _closed = false;
 };
 
+using TcpConnection = StreamConnection<tcp::socket>;
+using TlsStream = asio::ssl::stream<tcp::socket>;
+using TlsConnection = StreamConnection<TlsStream>;
+
 }  // namespace
 
 struct Edge::State : std::enable_shared_from_this<Edge::State> {
@@ -123,6 +136,7 @@ struct Edge::State : std::enable_shared_from_this<Edge::State> {
         dannan::status::ScopedLogger edge_logger)
       : strand(asio::make_strand(io)),
         acceptor(strand),
+        tls_acceptor(strand),
         timer(strand),
         config(std::move(edge_config)),
         logger(std::move(edge_logger)),
@@ -136,14 +150,52 @@ struct Edge::State : std::enable_shared_from_this<Edge::State> {
       } else {
         boost::system::error_code ignored;
         socket.set_option(tcp::no_delay(true), ignored);
-        std::weak_ptr<State> weak = self;
-        auto connection = std::make_shared<TcpConnection>(std::move(socket), self->config.maximum_outbound_bytes, self->logger, [weak](TcpConnection* gone) {
-          if (const auto state = weak.lock()) state->connections.erase(gone);
-        });
-        self->connections.emplace(connection.get(), connection);
-        connection->start(self->broker.accept(connection));
+        self->adopt(std::make_shared<TcpConnection>(std::move(socket), self->config.maximum_outbound_bytes, self->logger, self->forgetter()));
       }
       self->accept();
+    });
+  }
+
+  std::function<void(ClientConnection*)> forgetter() {
+    return [weak = weak_from_this()](ClientConnection* gone) {
+      if (const auto state = weak.lock()) state->connections.erase(gone);
+    };
+  }
+
+  template <typename Connection>
+  void adopt(std::shared_ptr<Connection> connection) {
+    connections.emplace(connection.get(), connection);
+    connection->start(broker.accept(connection));
+  }
+
+  // A TLS client becomes a connection once its handshake is done, within
+  // the handshake timeout.
+  void accept_tls() {
+    tls_acceptor.async_accept(strand, [self = shared_from_this()](const boost::system::error_code& ec, tcp::socket socket) {
+      if (self->stopped) return;
+      if (ec) {
+        self->logger.warn("TLS accept failed: " + ec.message());
+        return self->accept_tls();
+      }
+      boost::system::error_code ignored;
+      socket.set_option(tcp::no_delay(true), ignored);
+      auto stream = std::make_shared<TlsStream>(std::move(socket), *self->tls);
+      auto deadline = std::make_shared<asio::steady_timer>(self->strand);
+      deadline->expires_after(self->config.tls->handshake_timeout);
+      deadline->async_wait([stream](const boost::system::error_code& timer_ec) {
+        if (timer_ec) return;
+        boost::system::error_code closing;
+        stream->lowest_layer().close(closing);
+      });
+      stream->async_handshake(asio::ssl::stream_base::server, [self, stream, deadline](const boost::system::error_code& handshake_ec) {
+        deadline->cancel();
+        if (handshake_ec || self->stopped) {
+          if (handshake_ec) self->logger.debug("TLS handshake failed: " + handshake_ec.message());
+          return;
+        }
+        self->adopt(std::make_shared<TlsConnection>(std::move(*stream), self->config.maximum_outbound_bytes, self->logger, self->forgetter()));
+      });
+      self->accept_tls();
     });
   }
 
@@ -158,14 +210,17 @@ struct Edge::State : std::enable_shared_from_this<Edge::State> {
 
   Strand strand;
   tcp::acceptor acceptor;
+  tcp::acceptor tls_acceptor;
+  std::optional<asio::ssl::context> tls;
   asio::steady_timer timer;
   EdgeConfig config;
   dannan::status::ScopedLogger logger;
   broker::Broker broker;
-  std::map<TcpConnection*, std::weak_ptr<TcpConnection>> connections;
+  std::map<ClientConnection*, std::weak_ptr<ClientConnection>> connections;
   bool started = false;
   bool stopped = false;
   std::atomic<uint16_t> port{0};
+  std::atomic<uint16_t> tls_port{0};
 };
 
 Edge::Edge(asio::io_context& io, EdgeConfig config, const dannan::contract::TimeSource& time, contract::Authenticator& authenticator,
@@ -188,10 +243,25 @@ void Edge::start() {
   state.acceptor.bind(endpoint);
   state.acceptor.listen();
   state.port = state.acceptor.local_endpoint().port();
+  if (const auto& tls = state.config.tls) {
+    state.tls.emplace(asio::ssl::context::tls_server);
+    state.tls->set_options(asio::ssl::context::default_workarounds | asio::ssl::context::no_sslv2 | asio::ssl::context::no_sslv3 |
+                           asio::ssl::context::no_tlsv1 | asio::ssl::context::no_tlsv1_1);
+    state.tls->use_certificate_chain_file(tls->certificate_chain.string());
+    state.tls->use_private_key_file(tls->private_key.string(), asio::ssl::context::pem);
+    const tcp::endpoint tls_endpoint(asio::ip::make_address(tls->listen_host), tls->port);
+    state.tls_acceptor.open(tls_endpoint.protocol());
+    state.tls_acceptor.set_option(tcp::acceptor::reuse_address(true));
+    state.tls_acceptor.bind(tls_endpoint);
+    state.tls_acceptor.listen();
+    state.tls_port = state.tls_acceptor.local_endpoint().port();
+    state.logger.info("MQTT over TLS listening on " + tls->listen_host + ":" + std::to_string(state.tls_port.load()));
+  }
   state.started = true;
   state.logger.info("MQTT listening on " + state.config.listen_host + ":" + std::to_string(state.port.load()));
   asio::post(state.strand, [self = _state] {
     self->accept();
+    if (self->tls) self->accept_tls();
     self->poll();
   });
 }
@@ -203,8 +273,9 @@ void Edge::stop() {
     state->stopped = true;
     boost::system::error_code ignored;
     state->acceptor.close(ignored);
+    state->tls_acceptor.close(ignored);
     state->timer.cancel();
-    std::vector<std::shared_ptr<TcpConnection>> open;
+    std::vector<std::shared_ptr<ClientConnection>> open;
     for (const auto& [raw, weak] : state->connections) {
       if (auto connection = weak.lock()) open.push_back(std::move(connection));
     }
@@ -213,6 +284,8 @@ void Edge::stop() {
 }
 
 uint16_t Edge::port() const noexcept { return _state->port.load(); }
+
+uint16_t Edge::tls_port() const noexcept { return _state->tls_port.load(); }
 
 void Edge::post(std::function<void(broker::Broker&)> fn) {
   asio::post(_state->strand, [state = _state, fn = std::move(fn)] { fn(state->broker); });

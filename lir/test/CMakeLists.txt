@@ -31,3 +31,7 @@ find_program(LIR_MOSQUITTO_SUB mosquitto_sub)
 target_compile_definitions(lir_tests PRIVATE LIR_NODE_BINARY="$<TARGET_FILE:lir-node>" LIR_MOSQUITTO_PUB="${LIR_MOSQUITTO_PUB}"
                                              LIR_MOSQUITTO_SUB="${LIR_MOSQUITTO_SUB}")
 add_dependencies(lir_tests lir-node)
+
+# The TLS test makes its certificate with the openssl command.
+find_program(LIR_OPENSSL openssl HINTS /opt/local/bin)
+target_compile_definitions(lir_tests PRIVATE LIR_OPENSSL="${LIR_OPENSSL}")
