@@ -86,8 +86,12 @@ Decided while writing this section:
 - MQTT-SN: 1.2 and 2.0, as a gateway in `lir-node`.
 - Server Reference: implemented, configurable. Cluster nodes are reachable, so a node may
   move a client to another node as part of load balancing (CONNACK 0x9C Use another
-  server, or DISCONNECT 0x9C or 0x9D with Server Reference, MQTT 5.0 clients only). The
-  balancing policy is to be designed with it.
+  server, or DISCONNECT 0x9C or 0x9D with Server Reference, MQTT 5.0 clients only).
+  Policy (Tom, 2026-11-04): at CONNECT only. A node with clearly more clients than the
+  cluster average (a configurable threshold, for example 20% over) refuses a 5.0
+  CONNECT with 0x9C naming the least-loaded node, from the figures the nodes already
+  advertise for `$lir/cluster`; live connections are never moved; 3.x clients, which
+  cannot be redirected, are always served.
 
 Left open:
 

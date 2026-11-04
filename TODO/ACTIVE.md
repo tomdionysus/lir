@@ -115,9 +115,9 @@ written new; Macha has no event system to extract (`COMPLETED.md`,
 - Dagda: head spaces with owner merges, Replicated writes, leases,
   objects and claims, a node-local space (step 5).
 - Lugh: tokens an MQTT client can present (step 6's plugin).
-- Dannan: a config-file reader (design section 4, asked 2026-11-04);
-  percent-encoding as a shared foundation (Tom, 2026-11-04: "it should
-  absolutely be in Dannan. everyone else should use it"; asked, with
-  strict and form decoding and a configurable encoder). Lir then deletes
-  `auth::percent_decode`. Lir is on `0.3.0`.
+- Dannan `0.4.0` (Tom cuts it): the settings reader
+  (`dannan/config/config.h`, on Dannan develop `e375b08`; dannan-node's
+  `reader()` is the example) and percent-encoding
+  (`dannan/encoding/percent.h`, `31b4ca3`). Lir then takes `--config`
+  and deletes `auth::percent_decode`. Lir is on `0.3.0`.
 - Lugh: the grammar of scopes in its tokens.
