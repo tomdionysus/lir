@@ -961,6 +961,40 @@ TEST_F(BrokerPressureTest, AtTheBudgetNewClientsAreRefusedAndOthersKept) {
   EXPECT_EQ(broker.sessions(), 2u);
 }
 
+TEST(BrokerThresholds, AreConfigurable) {
+  dannan::test::SteppedTime time;
+  contract::AllowAll allow;
+  Config c;
+  c.memory_budget = 1000;
+  c.shed_percent = 50;
+  c.refuse_publish_percent = 60;
+  c.refuse_connect_percent = 70;
+  Broker broker(c, time, allow, {std::make_shared<dannan::status::ConsoleSink>(dannan::status::LogLevel::error), "lir"});
+  const auto level_at = [&](size_t payload) {
+    broker.publish(msg("r", Bytes(payload, 'x'), QoS::at_most_once, true));
+    return broker.pressure();
+  };
+  // A retained message's footprint is its bytes plus 96 and the topic.
+  EXPECT_EQ(level_at(300), Pressure::none);
+  EXPECT_EQ(level_at(420), Pressure::shed_qos0);
+  EXPECT_EQ(level_at(520), Pressure::refuse_publish);
+  EXPECT_EQ(level_at(620), Pressure::refuse_connect);
+}
+
+TEST(BrokerThresholds, AFullLedgerRefusesNewClients) {
+  dannan::test::SteppedTime time;
+  contract::AllowAll allow;
+  Broker broker({}, time, allow, {std::make_shared<dannan::status::ConsoleSink>(dannan::status::LogLevel::error), "lir"});
+  broker.ledger_full(true);
+  EXPECT_EQ(broker.pressure(), Pressure::refuse_connect);
+  auto connection = std::make_shared<FakeConnection>();
+  Client client{connection, broker.accept(connection), Version::v5};
+  client.send(mqtt::Connect{Version::v5, true, 0, "late", {}, {}, {}, {}});
+  EXPECT_EQ(client.take_one<mqtt::Connack>().reason, reason::server_busy);
+  broker.ledger_full(false);
+  EXPECT_EQ(broker.pressure(), Pressure::none);
+}
+
 // ---- authentication
 
 class ChallengeOnce final : public contract::Authenticator {

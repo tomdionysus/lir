@@ -208,9 +208,11 @@ session expiry capped at 7 days (`--max-session-expiry`), 4 MiB queued for a slo
 before it is closed (`--max-outbound-bytes`), and 10,000 clients, past which a new one is
 told the server is busy (`--max-connections`). Under memory pressure a node gives way
 in order rather than failing: past 80% of its budget for held messages
-(`--memory-budget`, 512 MiB) it stops queueing QoS 0 and sheds what is queued, oldest
-first; past 90% it refuses QoS 1 and 2 publishes (0x97); at 100% it refuses new
-clients. Existing sessions are never evicted. `$lir/nodes/<id>` reports the bytes held
+(`--memory-budget`, 512 MiB; `--shed-percent`) it stops queueing QoS 0 and sheds what
+is queued, oldest first; past 90% (`--refuse-publish-percent`) it refuses QoS 1 and 2
+publishes (0x97); at 100% (`--refuse-connect-percent`) it refuses new clients. The
+bytes are also leased from the node's Dannan memory ledger, which every system on the
+node shares, so when the node as a whole runs short Lir refuses new clients too. Existing sessions are never evicted. `$lir/nodes/<id>` reports the bytes held
 and the pressure, and `$lir/cluster` says whether every node runs the same limits.
 
 ### MQTT over WebSocket
@@ -287,7 +289,7 @@ Conventions, shared with the stack: [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Status
 
 In development; no release is cut yet. The first, 0.1.0, follows persistence on Dagda.
-Built and tested (248 tests): all of MQTT 3.1, 3.1.1 and 5.0 on one node, over TCP, TLS,
+Built and tested (251 tests): all of MQTT 3.1, 3.1.1 and 5.0 on one node, over TCP, TLS,
 WebSocket and WebSocket over TLS; the cluster on Dannan with sessions that move and are mirrored to standbys; system
 topics; HTTP and HTTPS publish and SSE; topic scopes, with anonymous clients
 refused by default; client certificates. The cluster is an interim one until Dagda:
