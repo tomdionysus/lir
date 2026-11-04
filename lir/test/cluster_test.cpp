@@ -21,6 +21,7 @@
 #include "dannan/net/fanout.h"
 #include "dannan/node.h"
 #include "dannan/test/fixtures/temp_dir.h"
+#include "lir/system/ledger.h"
 #include "lir/system/system.h"
 #include "lir/test/fixtures/mqtt_client.h"
 
@@ -433,6 +434,33 @@ TEST_F(ClusterTest, ABusyNodeSendsNewClientsToAQuieterOne) {
   // A 3.x client is served however busy the node is.
   MqttClient old(a->port(), Version::v3_1_1);
   old.connect("old");
+}
+
+TEST_F(ClusterTest, HeldMessagesAreLeasedInTheNodesLedger) {
+  system::LedgerLeases leases(a->node->context(), *a->edge, system::LedgerConfig{50ms, 1u << 20});
+  leases.start();
+  // The leases follow the bytes the broker holds, a chunk per MiB begun.
+  const auto follows = [&] {
+    const auto held = a->on_broker<uint64_t>([](broker::Broker& b) { return b.held_bytes(); });
+    return leases.chunks() == (held + (1u << 20) - 1) / (1u << 20);
+  };
+  const auto set = [&](int i, size_t bytes) {
+    a->on_broker<bool>([i, bytes](broker::Broker& b) {
+      broker::Message m;
+      m.topic = "big/" + std::to_string(i);
+      m.payload = broker::Bytes(bytes, 'x');
+      m.retain = true;
+      b.publish(std::move(m));
+      return true;
+    });
+  };
+  const size_t before = leases.chunks();
+  for (int i = 0; i < 3; ++i) set(i, 1u << 20);
+  EXPECT_TRUE(eventually([&] { return follows() && leases.chunks() >= before + 3; }));
+  for (int i = 0; i < 3; ++i) set(i, 0);
+  EXPECT_TRUE(eventually([&] { return follows() && leases.chunks() <= before + 1; }));
+  leases.stop();
+  EXPECT_EQ(leases.chunks(), 0u);
 }
 
 TEST_F(ClusterTest, ConnectingOnAnotherNodeTakesTheClientOver) {

@@ -147,12 +147,17 @@ struct Config {
   // allows it; off, they are dropped and counted).
   bool queue_qos0_offline = false;
   // The bytes of messages this node holds (queued, in flight, retained)
-  // before it gives way, in the design's order (section 4): at 80% QoS 0
-  // is no longer queued and what is queued is dropped, oldest first; at 90%
-  // QoS 1 and 2 publishes are refused (0x97; a 3.x client is closed, and
-  // resends when it returns); at 100% new clients are refused (0x89).
-  // Existing sessions are never evicted. Zero: no budget.
+  // before it gives way, in the design's order (section 4; the maintainer 2026-11-04,
+  // all configurable): at `shed_percent` QoS 0 is no longer queued and what
+  // is queued is dropped, oldest first; at `refuse_publish_percent` QoS 1
+  // and 2 publishes are refused (0x97; a 3.x client is closed, and resends
+  // when it returns); at `refuse_connect_percent` new clients are refused
+  // (0x89), as they are while the node's Dannan ledger has no room for
+  // Lir. Existing sessions are never evicted. Zero: no budget.
   uint64_t memory_budget = 512ull << 20;
+  uint32_t shed_percent = 80;
+  uint32_t refuse_publish_percent = 90;
+  uint32_t refuse_connect_percent = 100;
 };
 
 // How hard the memory budget presses, in the order it gives way.
@@ -361,6 +366,10 @@ class Broker {
   // The same bytes counted afresh from every queue and the retained set;
   // for tests, which check that the running count never drifts.
   uint64_t recount_held_bytes() const;
+  // Whether the node's memory ledger (Dannan's, shared by every system on
+  // the node) refused Lir room: while it does, the pressure is at least
+  // refuse_connect.
+  void ledger_full(bool full) noexcept { _ledger_full = full; }
   const Stats& stats() const noexcept { return _stats; }
   const Config& config() const noexcept { return _config; }
 
@@ -453,6 +462,7 @@ class Broker {
   ClusterHooks _hooks;
   std::function<void(const ClientEvent&)> _observer;
   uint64_t _held = 0;
+  bool _ledger_full = false;
   std::map<std::string, std::unique_ptr<Session>> _sessions;
   // Non-shared subscriptions keyed by client id.
   subs::Trie<std::string, Options> _subscriptions;
