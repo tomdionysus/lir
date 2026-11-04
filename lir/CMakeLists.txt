@@ -10,6 +10,8 @@
 # "lir/<subsystem>/x.h".
 add_library(lir SHARED
   broker/broker.cpp
+  cluster/cluster.cpp
+  cluster/codec.cpp
   edge/edge.cpp
   mqtt/packet.cpp
   mqtt/properties.cpp
