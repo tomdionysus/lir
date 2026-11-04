@@ -3,12 +3,13 @@
 Last updated: 2026-11-04. Steps 1 to 4, session standbys, the system
 topics (all but `$lir/shards`, which follows step 5), HTTP and HTTPS,
 MQTT over TLS and over WebSocket, client certificates, the
-specification's MAYs, Dannan 0.3.0, topic scopes, the moderate default
-limits and memory pressure are on `develop`; gate `lir_tests` 234.
-`COMPLETED.md` is the record. "Resume here": Dannan 0.4.0 (the config
-file, percent-encoding), then Server Reference at CONNECT (Tom's policy,
-sections file), MQTT-SN 1.2 and 2.0, the rules engine (its form waits on
-Tom); message history and step 5 wait on Dagda, the Lugh plugin on Lugh.
+specification's MAYs, Dannan 0.4.0 (the config file, its percent
+decoder), topic scopes, the moderate default limits and memory pressure
+are on `develop`; gate `lir_tests` 239. `COMPLETED.md` is the record.
+"Resume here": Server Reference at CONNECT (Tom's policy, sections
+file), MQTT-SN 1.2 and 2.0, the rules engine (its form waits on Tom);
+message history and step 5 wait on Dagda, the Lugh plugin on Lugh
+(tokens in its O7).
 
 The design is Tom's, 2026-11-03:
 [`2026-11-03-lir-plan.md`](2026-11-03-lir-plan.md), with the seven
@@ -114,9 +115,5 @@ written new; Macha has no event system to extract (`COMPLETED.md`,
 - Dagda: head spaces with owner merges, Replicated writes, leases,
   objects and claims, a node-local space (step 5).
 - Lugh: tokens an MQTT client can present (step 6's plugin).
-- Dannan `0.4.0` (Tom cuts it): the settings reader
-  (`dannan/config/config.h`, on Dannan develop `e375b08`; dannan-node's
-  `reader()` is the example) and percent-encoding
-  (`dannan/encoding/percent.h`, `31b4ca3`). Lir then takes `--config`
-  and deletes `auth::percent_decode`. Lir is on `0.3.0`.
+- Dannan: nothing. Lir is on `0.4.0`.
 - Lugh: the grammar of scopes in its tokens.

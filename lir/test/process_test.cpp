@@ -13,6 +13,7 @@
 
 #include <chrono>
 #include <fstream>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <regex>
@@ -157,6 +158,27 @@ TEST_F(ProcessTest, AnonymousClientsAreRefusedByDefault) {
     const auto [status, out] = run(dir.path(), pub(node.mqtt_port, "t", "x", version));
     EXPECT_NE(status, 0) << version << ": " << out;
   }
+}
+
+TEST_F(ProcessTest, TheConfigFileSetsTheNode) {
+  // Anonymous clients allowed by the file alone, no flag.
+  std::ofstream(dir.path() / "config.yaml") << "auth:\n  allow_anonymous: true\nsystem:\n  off: [roster]\n";
+  NodeProcess node(dir.path(), "a", std::nullopt, {"--config", (dir.path() / "config.yaml").string()});
+  ASSERT_NE(node.mqtt_port, 0);
+  const auto [status, out] = run(dir.path(), pub(node.mqtt_port, "t", "x", "mqttv5"));
+  EXPECT_EQ(status, 0) << out;
+}
+
+TEST_F(ProcessTest, ABadSettingIsRefusedNamingItsSource) {
+  std::ofstream(dir.path() / "bad.yaml") << "limits:\n  receive_maximum: 0\n";
+  ChildProcess child({LIR_NODE_BINARY, "--key", (dir.path() / "cluster.key").string(), "--state", (dir.path() / "bad").string(), "--config",
+                      (dir.path() / "bad.yaml").string()},
+                     dir.path() / "bad.log");
+  EXPECT_EQ(child.wait(Clock::now() + 10s), 2);
+  std::ifstream log(dir.path() / "bad.log");
+  const std::string said((std::istreambuf_iterator<char>(log)), std::istreambuf_iterator<char>());
+  EXPECT_NE(said.find("bad.yaml"), std::string::npos) << said;
+  EXPECT_NE(said.find("limits.receive_maximum"), std::string::npos) << said;
 }
 
 }  // namespace
