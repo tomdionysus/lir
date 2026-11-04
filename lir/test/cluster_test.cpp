@@ -13,6 +13,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <fstream>
 #include <memory>
 #include <set>
@@ -331,6 +332,75 @@ TEST_F(ClusterTest, ANodeThatLeavesHasItsSystemTopicsCleared) {
   ASSERT_TRUE(eventually([&] { return has(*a); }));
   c.reset();
   EXPECT_TRUE(eventually([&] { return !has(*a) && !has(*b); }, 15s));
+}
+
+// The next message on `topic` whose payload contains `needle`, within a
+// bound; others are skipped.
+std::optional<std::string> next_containing(MqttClient& client, const std::string& topic, const std::string& needle, std::chrono::seconds bound = 10s) {
+  const auto until = std::chrono::steady_clock::now() + bound;
+  while (std::chrono::steady_clock::now() < until) {
+    const auto got = client.next_message();
+    if (!got) continue;
+    const auto payload = text(*got);
+    if (got->topic == topic && payload.find(needle) != std::string::npos) return payload;
+  }
+  return std::nullopt;
+}
+
+TEST_F(ClusterTest, ClientEventsReachEveryNode) {
+  MqttClient watcher(b->port());
+  watcher.connect("watcher");
+  watcher.subscribe("$lir/clients/#", QoS::at_most_once);
+  ASSERT_TRUE(eventually([&] { return a->sees(*b, "lir.notify", "$lir/clients/"); }));
+  {
+    MqttClient visitor(a->port(), Version::v3_1_1);
+    visitor.connect("visitor");
+    visitor.send(mqtt::Disconnect{});
+  }
+  const auto node = "\"node\":\"" + dannan::identity::to_string(a->id()) + "\"";
+  const auto connected = next_containing(watcher, "$lir/clients/connected", "\"client\":\"visitor\"");
+  ASSERT_TRUE(connected);
+  EXPECT_NE(connected->find(node), std::string::npos) << *connected;
+  EXPECT_NE(connected->find("\"version\":\"3.1.1\""), std::string::npos) << *connected;
+  const auto disconnected = next_containing(watcher, "$lir/clients/disconnected", "\"client\":\"visitor\"");
+  ASSERT_TRUE(disconnected);
+  EXPECT_NE(disconnected->find("\"by\":\"client\",\"reason\":0"), std::string::npos) << *disconnected;
+}
+
+TEST_F(ClusterTest, TheLowestNodePublishesTheClusterSummary) {
+  std::vector<std::string> ids{dannan::identity::to_string(a->id()), dannan::identity::to_string(b->id()), dannan::identity::to_string(c->id())};
+  const auto lowest = *std::min_element(ids.begin(), ids.end());
+  MqttClient one(a->port());
+  one.connect("one");
+  MqttClient two(c->port());
+  two.connect("two");
+  const auto summary = [&](LirNode& node) {
+    return node.on_broker<std::string>([](broker::Broker& broker) {
+      for (const auto& m : broker.retained_entries())
+        if (m.topic == "$lir/cluster") return std::string(m.payload.begin(), m.payload.end());
+      return std::string();
+    });
+  };
+  EXPECT_TRUE(eventually(
+      [&] {
+        const auto s = summary(*b);
+        return s.find("\"publisher\":\"" + lowest + "\"") != std::string::npos && s.find("\"nodes\":3,\"connections\":2") != std::string::npos &&
+               s.find("\"consistent\":true") != std::string::npos;
+      },
+      15s))
+      << summary(*b);
+}
+
+TEST_F(ClusterTest, ANodeLeavingIsOneRosterEvent) {
+  MqttClient watcher(a->port());
+  watcher.connect("watcher");
+  watcher.subscribe("$dannan/roster/#", QoS::at_most_once);
+  ASSERT_TRUE(eventually([&] { return b->sees(*a, "lir.notify", "$dannan/roster/"); }));
+  const auto gone = "\"id\":\"" + dannan::identity::to_string(c->id()) + "\"";
+  c.reset();
+  ASSERT_TRUE(next_containing(watcher, "$dannan/roster/left", gone, 15s));
+  // Only the lowest remaining node published it.
+  EXPECT_FALSE(next_containing(watcher, "$dannan/roster/left", gone, 2s));
 }
 
 TEST_F(ClusterTest, ConnectingOnAnotherNodeTakesTheClientOver) {

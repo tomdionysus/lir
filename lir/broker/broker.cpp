@@ -106,6 +106,10 @@ void Link::shutdown(std::optional<uint8_t> code, bool publish_will) {
   if (_state == State::closed) return;
   const bool connected = _state == State::connected;
   if (code && connected && v5()) send(mqtt::Disconnect{*code, {}});
+  if (code && _ended_by == ClientEvent::By::network) {
+    _ended_by = ClientEvent::By::server;
+    _end_reason = code;
+  }
   _state = State::closed;
   _connection->close();
   _broker.detach(*this, publish_will && connected);
@@ -303,6 +307,16 @@ void Link::finish_connect(std::optional<Bytes> auth_data, std::optional<SessionI
   }
   send(ack);
   ++broker._stats.connections_accepted;
+  {
+    ClientEvent event;
+    event.kind = ClientEvent::Kind::connected;
+    event.client_id = id;
+    event.version = _version;
+    event.peer = _connection->peer();
+    event.username = connect.username;
+    event.session_present = present;
+    broker.tell(std::move(event));
+  }
   broker.resend(session);
   broker.pump(session);
   broker.touch(id);
@@ -465,6 +479,8 @@ void Link::on_disconnect(const mqtt::Disconnect& disconnect) {
     auto& session = *_broker._sessions.at(_client_id);
     session.expiry_interval = std::min(*disconnect.properties.session_expiry_interval, _broker._config.maximum_session_expiry);
   }
+  _ended_by = ClientEvent::By::client;
+  _end_reason = disconnect.reason;
   shutdown(std::nullopt, disconnect.reason == reason::disconnect_with_will);
 }
 
@@ -958,6 +974,17 @@ void Broker::detach(Link& link, bool publish_will) {
   auto& session = *it->second;
   session.link = nullptr;
   const std::string client_id = session.client_id;
+  {
+    ClientEvent event;
+    event.kind = ClientEvent::Kind::disconnected;
+    event.client_id = client_id;
+    event.version = link._version;
+    event.peer = link._connection->peer();
+    if (link._connect) event.username = link._connect->username;
+    event.by = link._ended_by;
+    event.reason = link._end_reason;
+    tell(std::move(event));
+  }
   const uint32_t expiry = session.expiry_interval;
   if (publish_will && link._will) schedule_will(client_id, *link._will, expiry);
   touch(client_id);
@@ -966,6 +993,12 @@ void Broker::detach(Link& link, bool publish_will) {
   } else if (expiry != never) {
     if (const auto again = _sessions.find(client_id); again != _sessions.end()) again->second->expires_at = _time.now() + std::chrono::seconds(expiry);
   }
+}
+
+void Broker::observe(std::function<void(const ClientEvent&)> observer) { _observer = std::move(observer); }
+
+void Broker::tell(ClientEvent event) {
+  if (_observer) _observer(event);
 }
 
 void Broker::poll() {
