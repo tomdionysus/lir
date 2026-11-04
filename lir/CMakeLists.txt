@@ -20,6 +20,8 @@ add_library(lir SHARED
   mqtt/properties.cpp
   mqtt/topic.cpp
   mqtt/wire.cpp
+  rules/boost_json.cpp
+  rules/rules.cpp
   shard/shard.cpp
   system/ledger.cpp
   system/system.cpp

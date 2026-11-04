@@ -41,6 +41,10 @@
 // cluster's hooks and their completions included, is made on it. Nothing
 // here waits: sends are queued by the transport, time is read from the
 // injected source, and poll() does what time has made due.
+namespace lir::rules {
+class RuleSet;
+}  // namespace lir::rules
+
 namespace lir::broker {
 
 using dannan::contract::TimePoint;
@@ -73,6 +77,9 @@ struct Message {
   std::string origin;
   // Set on a retained message once the broker has stored it.
   std::optional<RetainedVersion> version;
+  // How many rules produced it, one from another (rules/rules.h); never
+  // carried between nodes, since rules run where a message is published.
+  uint8_t hops = 0;
 };
 
 struct Options {
@@ -183,6 +190,12 @@ struct Stats {
   uint64_t refused_pressure_publishes = 0;
   uint64_t refused_pressure_connections = 0;
   uint64_t connections_redirected = 0;
+  // The rules engine (rules/rules.h).
+  uint64_t rules_dropped = 0;
+  uint64_t rules_republished = 0;
+  uint64_t rules_skipped = 0;
+  uint64_t rules_too_deep = 0;
+  uint64_t rules_invalid = 0;
 };
 
 // A client connected here, or its connection here ended: for the
@@ -295,6 +308,7 @@ class Link : public std::enable_shared_from_this<Link> {
 class Broker {
  public:
   Broker(Config config, const dannan::contract::TimeSource& time, contract::Authenticator& authenticator, dannan::status::ScopedLogger logger);
+  ~Broker();
   Broker(const Broker&) = delete;
   Broker& operator=(const Broker&) = delete;
 
@@ -372,6 +386,8 @@ class Broker {
   void ledger_full(bool full) noexcept { _ledger_full = full; }
   const Stats& stats() const noexcept { return _stats; }
   const Config& config() const noexcept { return _config; }
+  // The rules held, from the retained $lir/rules/ messages.
+  size_t rules() const noexcept;
 
  private:
   friend class Link;
@@ -413,6 +429,8 @@ class Broker {
   // A message published on this node: stored if retained, delivered here,
   // and handed to the cluster. How many sessions and nodes took it.
   size_t route(Message message);
+  size_t route_here(Message message);
+  void route_produced(Message message);
   // Delivers to this node's subscribers: non-shared ones, and shared groups
   // too when `shared`.
   size_t deliver_here(const Message& message, bool shared);
@@ -462,6 +480,7 @@ class Broker {
   ClusterHooks _hooks;
   std::function<void(const ClientEvent&)> _observer;
   uint64_t _held = 0;
+  std::unique_ptr<rules::RuleSet> _rules;
   bool _ledger_full = false;
   std::map<std::string, std::unique_ptr<Session>> _sessions;
   // Non-shared subscriptions keyed by client id.
