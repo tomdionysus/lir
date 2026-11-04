@@ -11,8 +11,12 @@
 #include <poll.h>
 
 #include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/read.hpp>
+#include <boost/asio/ssl.hpp>
 #include <boost/asio/write.hpp>
 
+#include "dannan/test/fixtures/child_process.h"
+#include "dannan/test/fixtures/temp_dir.h"
 #include "lir/test/fixtures/mqtt_client.h"
 
 namespace lir::http {
@@ -213,6 +217,66 @@ TEST_F(HttpAuthTest, TheBearerTokenIsTheConnectPassword) {
   EXPECT_TRUE(request(http.port(), "POST", "/publish?topic=t", "x", "Authorization: Bearer bad\r\n").starts_with("HTTP/1.1 401"));
   EXPECT_TRUE(request(http.port(), "POST", "/publish?topic=t", "x", "Authorization: Bearer good\r\n").starts_with("HTTP/1.1 200"));
   EXPECT_TRUE(request(http.port(), "GET", "/subscribe?filter=t", "").starts_with("HTTP/1.1 401"));
+}
+
+class HttpsTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    const std::string openssl = LIR_OPENSSL;
+    if (openssl.find("NOTFOUND") != std::string::npos) GTEST_SKIP() << "no openssl command";
+    dannan::test::ChildProcess make(
+        {openssl, "req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1", "-nodes", "-keyout", (dir.path() / "key.pem").string(), "-out",
+         (dir.path() / "cert.pem").string(), "-days", "1", "-subj", "/CN=localhost", "-addext", "subjectAltName=IP:127.0.0.1"},
+        dir.path() / "openssl.log");
+    ASSERT_EQ(make.wait(std::chrono::steady_clock::now() + 20s), 0);
+    edge::EdgeConfig edge_config;
+    edge_config.listen_host = "127.0.0.1";
+    edge_config.port = 0;
+    edge.emplace(io.context, edge_config, dannan::contract::steady_time_source(), allow, logger());
+    edge->start();
+    HttpConfig config;
+    config.listen_host = "127.0.0.1";
+    config.port = 0;
+    config.tls = edge::TlsConfig{"127.0.0.1", 0, dir.path() / "cert.pem", dir.path() / "key.pem"};
+    http.emplace(io.context, *edge, config, logger());
+    http->start();
+  }
+  static dannan::status::ScopedLogger logger() { return {std::make_shared<dannan::status::ConsoleSink>(dannan::status::LogLevel::error), "lir"}; }
+
+  dannan::test::TempDir dir;
+  test::Io io;
+  contract::AllowAll allow;
+  std::optional<edge::Edge> edge;
+  std::optional<HttpServer> http;
+};
+
+TEST_F(HttpsTest, PublishOverHttpsReachesAnMqttSubscriber) {
+  ASSERT_NE(http->tls_port(), 0);
+  MqttClient sub(edge->port());
+  sub.connect("sub");
+  sub.subscribe("secure/#", QoS::at_most_once);
+
+  asio::io_context client_io;
+  asio::ssl::context context(asio::ssl::context::tls_client);
+  context.load_verify_file((dir.path() / "cert.pem").string());
+  asio::ssl::stream<tcp::socket> tls(client_io, context);
+  tls.set_verify_mode(asio::ssl::verify_peer);
+  tls.set_verify_callback(asio::ssl::host_name_verification("127.0.0.1"));
+  tls.lowest_layer().connect({asio::ip::make_address("127.0.0.1"), http->tls_port()});
+  tls.handshake(asio::ssl::stream_base::client);
+  const std::string request = "POST /publish?topic=secure/door HTTP/1.1\r\nHost: test\r\nContent-Length: 4\r\n\r\nopen";
+  asio::write(tls, asio::buffer(request));
+  std::string response;
+  boost::system::error_code ec;
+  std::array<char, 4096> chunk{};
+  while (!ec) {
+    const size_t got = tls.read_some(asio::buffer(chunk), ec);
+    response.append(chunk.data(), got);
+  }
+  EXPECT_TRUE(response.starts_with("HTTP/1.1 200")) << response;
+  const auto got = sub.next_message();
+  ASSERT_TRUE(got);
+  EXPECT_EQ(got->topic, "secure/door");
 }
 
 }  // namespace

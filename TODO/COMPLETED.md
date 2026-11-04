@@ -268,3 +268,16 @@ Gate: `lir_tests` 169 passed, 0 failed (4 new).
 - With these, step 2's "not done" list is empty. Server Reference
   (redirecting a client) is not used: in a multimaster cluster every
   node serves every client.
+
+## 2026-11-04: HTTPS
+
+Gate: `lir_tests` 170 passed, 0 failed.
+
+- `HttpConfig::tls` (an `edge::TlsConfig`): HTTPS on its own port beside
+  plain HTTP, the same endpoints; the exchange is one template over a
+  TCP socket or a TLS stream, as the edge's connection is.
+- `lir-node --https-port N [--https-listen ADDR]` with `--tls-certificate`
+  and `--tls-key`; the listening line reports `https_port`.
+- Test: a verifying client publishes over HTTPS to an MQTT subscriber.
+  Checked by hand with `curl --cacert` (a retained publish, then an
+  event stream reading it back) against `lir-node`.

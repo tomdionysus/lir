@@ -11,6 +11,7 @@
 #include <chrono>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -47,6 +48,8 @@ struct HttpConfig {
   std::chrono::milliseconds read_timeout{30000};
   // Bytes queued for one event stream before it is closed as too slow.
   size_t maximum_outbound_bytes = 4u << 20;
+  // HTTPS on its own port, beside the plain one. Nothing: none.
+  std::optional<edge::TlsConfig> tls;
 };
 
 // The path and its query parameters, %XX-decoded. Throws
@@ -74,6 +77,8 @@ class HttpServer {
   // Closes the listener and every stream. Never from an io thread.
   void stop();
   uint16_t port() const noexcept;
+  // Zero without an HTTPS listener.
+  uint16_t tls_port() const noexcept;
 
  private:
   struct State;
