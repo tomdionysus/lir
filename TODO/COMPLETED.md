@@ -251,3 +251,20 @@ Gate: `lir_tests` 165 passed, 0 failed.
   --cafile` against `lir-node`.
 - Not done: a TLS close_notify on close (the socket is closed); HTTPS on
   the HTTP port; client certificates.
+
+## 2026-11-04: the specification's MAYs (all of MQTT, Tom)
+
+Gate: `lir_tests` 169 passed, 0 failed (4 new).
+
+- Topic aliases from server to client (5.0, 3.3.2.3.4): per connection,
+  up to the client's Topic Alias Maximum, the topic the first time and
+  the alias alone after; an alias counts only once a packet carrying it
+  has gone (one over the client's maximum size is not sent and assigns
+  nothing). Reset with each connection.
+- Response Information (`Config::response_information`, "{client}" for
+  the client id): sent in the CONNACK only when the client asks.
+- `Config::queue_qos0_offline`: QoS 0 messages queued for an offline
+  session (off by default: dropped and counted).
+- With these, step 2's "not done" list is empty. Server Reference
+  (redirecting a client) is not used: in a multimaster cluster every
+  node serves every client.

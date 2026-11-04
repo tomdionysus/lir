@@ -263,6 +263,8 @@ void Link::finish_connect(std::optional<Bytes> auth_data, std::optional<SessionI
   session.client_receive_maximum = connect.properties.receive_maximum.value_or(65535);
   session.client_maximum_packet_size = connect.properties.maximum_packet_size.value_or(never);
   _will = connect.will;
+  _client_alias_maximum = v5() ? connect.properties.topic_alias_maximum.value_or(0) : 0;
+  _outbound_aliases.clear();
   _keep_alive = v5() && config.server_keep_alive ? *config.server_keep_alive : connect.keep_alive;
   _state = State::connected;
 
@@ -280,6 +282,11 @@ void Link::finish_connect(std::optional<Bytes> auth_data, std::optional<SessionI
     if (!config.shared_subscription_available) p.shared_subscription_available = 0;
     if (config.server_keep_alive) p.server_keep_alive = *config.server_keep_alive;
     if (session.expiry_interval != requested) p.session_expiry_interval = session.expiry_interval;
+    if (config.response_information && connect.properties.request_response_information == 1) {
+      auto info = *config.response_information;
+      if (const auto at = info.find("{client}"); at != std::string::npos) info.replace(at, 8, id);
+      p.response_information = std::move(info);
+    }
     if (_auth_method) {
       p.authentication_method = _auth_method;
       p.authentication_data = std::move(auth_data);
@@ -650,7 +657,7 @@ void Broker::deliver(Session& session, Delivery delivery) {
     transmit(session, std::move(delivery));
     return;
   }
-  if (!session.link && delivery.qos == QoS::at_most_once) {
+  if (!session.link && delivery.qos == QoS::at_most_once && !_config.queue_qos0_offline) {
     ++_stats.dropped_offline_qos0;
     return;
   }
@@ -705,9 +712,9 @@ bool Broker::transmit(Session& session, Delivery delivery) {
     while (session.next_packet_id == 0 || session.outbound.contains(session.next_packet_id)) ++session.next_packet_id;
     id = session.next_packet_id++;
   }
-  Bytes bytes = mqtt::encode(build(session, delivery, id, false), session.version);
+  auto bytes = outgoing(session, build(session, delivery, id, false));
   // A packet over the client's maximum is discarded as if delivered.
-  if (bytes.size() > session.client_maximum_packet_size) {
+  if (!bytes) {
     ++_stats.dropped_too_large;
     return false;
   }
@@ -715,9 +722,31 @@ bool Broker::transmit(Session& session, Delivery delivery) {
     const auto state = delivery.qos == QoS::at_least_once ? Inflight::State::awaiting_puback : Inflight::State::awaiting_pubrec;
     session.outbound.emplace(id, Inflight{std::move(delivery), state});
   }
-  session.link->_connection->send(std::move(bytes));
+  session.link->_connection->send(std::move(*bytes));
   ++_stats.messages_delivered;
   return true;
+}
+
+std::optional<Bytes> Broker::outgoing(Session& session, mqtt::Publish publish) {
+  auto& link = *session.link;
+  // A topic alias (5.0, section 3.3.2.3.4): the topic the first time, the
+  // alias alone after, while the client's maximum allows. An alias counts
+  // only once a packet carrying it has gone.
+  std::optional<std::pair<std::string, uint16_t>> assigned;
+  if (link._client_alias_maximum > 0) {
+    if (const auto known = link._outbound_aliases.find(publish.topic); known != link._outbound_aliases.end()) {
+      publish.properties.topic_alias = known->second;
+      publish.topic.clear();
+    } else if (link._outbound_aliases.size() < link._client_alias_maximum) {
+      const auto alias = static_cast<uint16_t>(link._outbound_aliases.size() + 1);
+      publish.properties.topic_alias = alias;
+      assigned.emplace(publish.topic, alias);
+    }
+  }
+  Bytes bytes = mqtt::encode(publish, session.version);
+  if (bytes.size() > session.client_maximum_packet_size) return std::nullopt;
+  if (assigned) link._outbound_aliases.insert(*assigned);
+  return bytes;
 }
 
 void Broker::resend(Session& session) {
@@ -728,13 +757,13 @@ void Broker::resend(Session& session) {
       ++it;
       continue;
     }
-    Bytes bytes = mqtt::encode(build(session, it->second.delivery, id, true), session.version);
-    if (bytes.size() > session.client_maximum_packet_size) {
+    auto bytes = outgoing(session, build(session, it->second.delivery, id, true));
+    if (!bytes) {
       ++_stats.dropped_too_large;
       it = session.outbound.erase(it);
       continue;
     }
-    session.link->_connection->send(std::move(bytes));
+    session.link->_connection->send(std::move(*bytes));
     ++it;
   }
 }
