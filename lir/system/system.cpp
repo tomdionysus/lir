@@ -109,7 +109,9 @@ std::string lir_json(const std::string& node, size_t connections, size_t session
       << ",\"dropped\":{\"offline_qos0\":" << s.dropped_offline_qos0 << ",\"queue_full\":" << s.dropped_queue_full << ",\"expired\":" << s.dropped_expired
       << ",\"too_large\":" << s.dropped_too_large << ",\"pressure\":" << s.dropped_pressure << "},\"memory\":{\"held\":" << held_bytes
       << ",\"budget\":" << memory_budget << ",\"pressure\":" << quoted(broker::pressure_name(pressure))
-      << ",\"refused_publishes\":" << s.refused_pressure_publishes << ",\"refused_connections\":" << s.refused_pressure_connections << "}}";
+      << ",\"refused_publishes\":" << s.refused_pressure_publishes << ",\"refused_connections\":" << s.refused_pressure_connections
+      << "},\"rules\":{\"dropped\":" << s.rules_dropped << ",\"republished\":" << s.rules_republished << ",\"skipped\":" << s.rules_skipped
+      << ",\"too_deep\":" << s.rules_too_deep << ",\"invalid\":" << s.rules_invalid << "}}";
   return out.str();
 }
 

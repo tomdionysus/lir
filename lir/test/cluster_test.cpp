@@ -463,6 +463,23 @@ TEST_F(ClusterTest, HeldMessagesAreLeasedInTheNodesLedger) {
   EXPECT_EQ(leases.chunks(), 0u);
 }
 
+TEST_F(ClusterTest, ARuleWrittenOnOneNodeAppliesOnEvery) {
+  MqttClient admin(a->port());
+  admin.connect("admin");
+  admin.publish("$lir/rules/quiet", R"({"from": "noise/#", "do": {"drop": true}})", QoS::at_least_once, true);
+  ASSERT_TRUE(eventually([&] { return b->on_broker<size_t>([](broker::Broker& broker) { return broker.rules(); }) == 1; }));
+  MqttClient sub(b->port());
+  sub.connect("sub");
+  sub.subscribe("#", QoS::at_most_once);
+  MqttClient pub(b->port());
+  pub.connect("pub");
+  pub.publish("noise/x", "dropped");
+  pub.publish("signal/x", "kept");
+  const auto got = sub.next_message();
+  ASSERT_TRUE(got);
+  EXPECT_EQ(got->topic, "signal/x");
+}
+
 TEST_F(ClusterTest, ConnectingOnAnotherNodeTakesTheClientOver) {
   MqttClient first(a->port());
   first.connect("same");
