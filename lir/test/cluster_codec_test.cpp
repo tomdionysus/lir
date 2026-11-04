@@ -103,7 +103,16 @@ TEST(ClusterCodec, SmallMessagesRoundTrip) {
   const auto take = decode_take(encode_take(Take{"c", true}));
   EXPECT_EQ(take.client_id, "c");
   EXPECT_TRUE(take.want_state);
-  EXPECT_FALSE(decode_taken(encode_taken(std::nullopt, now), now));
+  EXPECT_FALSE(decode_taken(encode_taken(Taken{}, now), now).image);
+  broker::SessionImage image;
+  image.client_id = "m";
+  const auto mirrored = decode_taken(encode_taken(Taken{image, true}, now), now);
+  ASSERT_TRUE(mirrored.image);
+  EXPECT_TRUE(mirrored.mirror);
+  EXPECT_EQ(decode_mirror(encode_mirror(Mirror{"m", image}, now), now).image->client_id, "m");
+  const auto dropped = decode_mirror(encode_mirror(Mirror{"gone", std::nullopt}, now), now);
+  EXPECT_EQ(dropped.client_id, "gone");
+  EXPECT_FALSE(dropped.image);
   const auto shared = decode_shared(encode_shared(SharedDelivery{"g", "a/+", full_message(now)}, now), now);
   EXPECT_EQ(shared.group, "g");
   EXPECT_EQ(shared.filter, "a/+");

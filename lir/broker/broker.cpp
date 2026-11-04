@@ -112,6 +112,15 @@ void Link::shutdown(std::optional<uint8_t> code, bool publish_will) {
 }
 
 void Link::handle(mqtt::Packet&& packet) {
+  if (_state == State::connected) {
+    dispatch(std::move(packet));
+    _broker.touch(_client_id);
+    return;
+  }
+  dispatch(std::move(packet));
+}
+
+void Link::dispatch(mqtt::Packet&& packet) {
   if (_state == State::awaiting_connect) return on_connect(std::get<mqtt::Connect>(std::move(packet)));
   if (_state == State::authenticating) {
     if (const auto* auth = std::get_if<mqtt::Auth>(&packet)) return on_auth(*auth);
@@ -280,6 +289,7 @@ void Link::finish_connect(std::optional<Bytes> auth_data, std::optional<SessionI
   ++broker._stats.connections_accepted;
   broker.resend(session);
   broker.pump(session);
+  broker.touch(id);
 }
 
 void Link::on_publish(mqtt::Publish&& publish) {
@@ -604,7 +614,38 @@ bool Broker::deliver_to_group(const Message& message, SharedGroup& group) {
   return true;
 }
 
+void Broker::touch(const std::string& client_id) {
+  const auto it = _sessions.find(client_id);
+  if (it != _sessions.end() && it->second->expiry_interval > 0) _changed.insert(client_id);
+}
+
+void Broker::touch_all() {
+  for (const auto& [client, session] : _sessions) {
+    if (session->expiry_interval > 0) _changed.insert(client);
+  }
+}
+
+Broker::Changes Broker::take_changes() {
+  Changes out;
+  for (const auto& client : _changed) {
+    const auto it = _sessions.find(client);
+    if (it != _sessions.end() && it->second->expiry_interval > 0) out.changed.push_back(image_of(*it->second));
+  }
+  out.ended.assign(_ended.begin(), _ended.end());
+  _changed.clear();
+  _ended.clear();
+  return out;
+}
+
+bool Broker::adopt(SessionImage image) {
+  if (_sessions.contains(image.client_id)) return false;
+  auto& session = import(std::move(image));
+  if (session.expiry_interval != never) session.expires_at = _time.now() + std::chrono::seconds(session.expiry_interval);
+  return true;
+}
+
 void Broker::deliver(Session& session, Delivery delivery) {
+  touch(session.client_id);
   if (session.link && delivery.qos == QoS::at_most_once) {
     transmit(session, std::move(delivery));
     return;
@@ -745,6 +786,8 @@ void Broker::end_session(const std::string& client_id) {
 void Broker::drop_session(const std::string& client_id) {
   const auto it = _sessions.find(client_id);
   if (it == _sessions.end()) return;
+  if (it->second->expiry_interval > 0) _ended.insert(client_id);
+  _changed.erase(client_id);
   auto& session = *it->second;
   std::vector<std::string> filters;
   for (const auto& [filter, options] : session.subscriptions) filters.push_back(filter);
@@ -776,6 +819,8 @@ Broker::Session& Broker::import(SessionImage image) {
   session->next_packet_id = image.next_packet_id;
   auto& held = *_sessions.emplace(image.client_id, std::move(session)).first->second;
   for (const auto& [filter, options] : image.subscriptions) subscribe(held, filter, options);
+  _ended.erase(image.client_id);
+  touch(image.client_id);
   return held;
 }
 
@@ -863,6 +908,7 @@ void Broker::detach(Link& link, bool publish_will) {
   const std::string client_id = session.client_id;
   const uint32_t expiry = session.expiry_interval;
   if (publish_will && link._will) schedule_will(client_id, *link._will, expiry);
+  touch(client_id);
   if (expiry == 0) {
     end_session(client_id);
   } else if (expiry != never) {

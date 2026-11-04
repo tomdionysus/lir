@@ -196,6 +196,7 @@ class Link : public std::enable_shared_from_this<Link> {
 
   void process();
   void handle(mqtt::Packet&& packet);
+  void dispatch(mqtt::Packet&& packet);
   void on_connect(mqtt::Connect&& connect);
   void begin_connect(std::optional<Bytes> auth_data);
   void finish_connect(std::optional<Bytes> auth_data, std::optional<SessionImage> image);
@@ -272,6 +273,21 @@ class Broker {
   std::set<std::string> local_filters() const;
   std::set<std::pair<std::string, std::string>> local_shared() const;
 
+  // Persistent sessions (expiry above 0) changed since the last call, as
+  // images, and those that ended or left this node: what the cluster
+  // mirrors to standbys.
+  struct Changes {
+    std::vector<SessionImage> changed;
+    std::vector<std::string> ended;
+  };
+  Changes take_changes();
+  // Every persistent session counts as changed (the standbys moved).
+  void touch_all();
+  // A session whose node is gone, taken up from a standby's mirror: held
+  // here offline, receiving and queueing, until its client connects. False
+  // when this node already has the client.
+  bool adopt(SessionImage image);
+
   size_t sessions() const noexcept { return _sessions.size(); }
   size_t connections() const noexcept { return _links.size(); }
   size_t retained() const noexcept { return _retained.size(); }
@@ -343,6 +359,8 @@ class Broker {
   // and its will is scheduled when `publish_will`.
   void detach(Link& link, bool publish_will);
   void interest_changed();
+  // Marks a persistent session as changed, for the mirror.
+  void touch(const std::string& client_id);
   std::string assign_client_id();
 
   Config _config;
@@ -363,6 +381,8 @@ class Broker {
   uint64_t _lamport = 0;
   std::map<std::string, PendingWill> _wills;
   std::map<Link*, std::shared_ptr<Link>> _links;
+  std::set<std::string> _changed;
+  std::set<std::string> _ended;
   Stats _stats;
 };
 
