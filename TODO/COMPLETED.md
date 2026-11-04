@@ -463,3 +463,23 @@ Gate: `lir_tests` 239 passed, 0 failed (5 new).
   Process tests: a setting from the file alone takes effect; a bad one
   stops the node with status 2, naming the file and the key.
 
+## 2026-11-04: Server Reference at CONNECT (the maintainer's policy, design section 7)
+
+Gate: `lir_tests` 248 passed, 0 failed (9 new); the cluster and process
+tests passed three runs in a row.
+
+- `cluster/balance.h`, pure: a node over (1 + `rebalance_over`) times the
+  cluster's average sends a new 5.0 client to the least-loaded node
+  serving the same transport, if that node has at least two fewer
+  clients; lowest id among equals. Default 20%; `lir-node
+  --rebalance-over PERCENT|-1`.
+- Each node advertises where it serves (`lir.endpoints`: tcp, tls, ws,
+  wss as host:port, from its advertised host) once its edge is bound
+  (`Cluster::advertise_endpoints`), and its client count
+  (`lir.connections`, now clients past CONNECT). A node counts the
+  clients it has sent each other node since that node's count last
+  changed, so a burst is spread rather than all sent to one node.
+- Broker: `ClusterHooks::redirect(transport)`; CONNACK 0x9C with Server
+  Reference; counted (`connections_redirected`). 3.x clients and HTTP
+  requests are never redirected. `Connection::transport()`.
+

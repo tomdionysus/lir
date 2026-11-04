@@ -256,7 +256,7 @@ struct SystemTopics::State : std::enable_shared_from_this<SystemTopics::State> {
       const auto held = self.advert(key);
       if (!held || !std::equal(held->begin(), held->end(), value.begin(), value.end())) nodes.advertise(key, value);
     };
-    set(kConnections, dannan::membership::u64_advert(broker.connections()));
+    set(kConnections, dannan::membership::u64_advert(broker.clients()));
     set(kSessions, dannan::membership::u64_advert(broker.sessions()));
     set(kRate, dannan::membership::u64_advert(rate));
     const auto limits = limits_advert(broker.config());

@@ -5,9 +5,9 @@ topics (all but `$lir/shards`, which follows step 5), HTTP and HTTPS,
 MQTT over TLS and over WebSocket, client certificates, the
 specification's MAYs, Dannan 0.4.0 (the config file, its percent
 decoder), topic scopes, the moderate default limits and memory pressure
-are on `develop`; gate `lir_tests` 239. `COMPLETED.md` is the record.
-"Resume here": Server Reference at CONNECT (the maintainer's policy, sections
-file), MQTT-SN 1.2 and 2.0, the rules engine (its form waits on the maintainer);
+are on `develop`; gate `lir_tests` 248. `COMPLETED.md` is the record.
+Server Reference at CONNECT is done (248). "Resume here": MQTT-SN 1.2
+and 2.0, the rules engine (its form waits on the maintainer);
 message history and step 5 wait on Dagda, the Lugh plugin on Lugh
 (tokens in its O7).
 

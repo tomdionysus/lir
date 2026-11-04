@@ -50,7 +50,11 @@ Lir is the broker written once for this stack:
   Dannan's channels; a node learns who is subscribed from the subscriptions each node
   announces. A client that reconnects elsewhere has its session moved to the new node.
   Each persistent session is mirrored to standby nodes (one by default) chosen by
-  Dannan's placement, and a standby takes the session over if its node is lost. Retained
+  Dannan's placement, and a standby takes the session over if its node is lost. A node
+  with clearly more clients than the cluster's average (20% over, `--rebalance-over`)
+  sends a new MQTT 5.0 client to the least-loaded node instead, with Server Reference;
+  live connections are never moved, and 3.x clients, which cannot be redirected, are
+  always served. Retained
   messages are ordered by a Lamport counter, then the node id, so every node agrees on
   the winner whatever order they arrive in.
 - **System topics**, JSON, each switchable and on by default. Clients may read them,
@@ -283,7 +287,7 @@ Conventions, shared with the stack: [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Status
 
 In development; no release is cut yet. The first, 0.1.0, follows persistence on Dagda.
-Built and tested (239 tests): all of MQTT 3.1, 3.1.1 and 5.0 on one node, over TCP, TLS,
+Built and tested (248 tests): all of MQTT 3.1, 3.1.1 and 5.0 on one node, over TCP, TLS,
 WebSocket and WebSocket over TLS; the cluster on Dannan with sessions that move and are mirrored to standbys; system
 topics; HTTP and HTTPS publish and SSE; topic scopes, with anonymous clients
 refused by default; client certificates. The cluster is an interim one until Dagda:

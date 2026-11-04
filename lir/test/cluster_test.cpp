@@ -403,6 +403,38 @@ TEST_F(ClusterTest, ANodeLeavingIsOneRosterEvent) {
   EXPECT_FALSE(next_containing(watcher, "$dannan/roster/left", gone, 2s));
 }
 
+TEST_F(ClusterTest, ABusyNodeSendsNewClientsToAQuieterOne) {
+  // Only b and c say where they serve, so only they can be chosen.
+  b->cluster->advertise_endpoints();
+  c->cluster->advertise_endpoints();
+  const std::set<std::string> quieter{"127.0.0.1:" + std::to_string(b->port()), "127.0.0.1:" + std::to_string(c->port())};
+  std::vector<std::unique_ptr<MqttClient>> held;
+  std::optional<std::string> reference;
+  for (int i = 0; i < 6 && !reference; ++i) {
+    auto client = std::make_unique<MqttClient>(a->port());
+    client->send(mqtt::Connect{Version::v5, true, 0, "busy-" + std::to_string(i), {}, {}, {}, {}});
+    const auto ack = client->receive_a<mqtt::Connack>();
+    ASSERT_TRUE(ack);
+    if (ack->reason == mqtt::reason::use_another_server) {
+      reference = ack->properties.server_reference;
+    } else {
+      held.push_back(std::move(client));
+    }
+    // Give b's and c's adverts time to be heard.
+    if (i == 0)
+      ASSERT_TRUE(eventually([&] {
+        for (const auto& record : a->node->context().nodes().active())
+          if (record.id == c->id() && record.advert("lir.endpoints") && record.advert("lir.connections")) return true;
+        return false;
+      }));
+  }
+  ASSERT_TRUE(reference);
+  EXPECT_TRUE(quieter.contains(*reference)) << *reference;
+  // A 3.x client is served however busy the node is.
+  MqttClient old(a->port(), Version::v3_1_1);
+  old.connect("old");
+}
+
 TEST_F(ClusterTest, ConnectingOnAnotherNodeTakesTheClientOver) {
   MqttClient first(a->port());
   first.connect("same");
