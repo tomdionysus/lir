@@ -338,13 +338,14 @@ Conventions, shared with the stack: [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Status
 
 In development; no release is cut yet. The first, 0.1.0, follows persistence on Dagda.
-Built and tested (291 tests): all of MQTT 3.1, 3.1.1 and 5.0 on one node, over TCP, TLS,
-WebSocket and WebSocket over TLS; the cluster on Dannan with sessions that move and are mirrored to standbys; system
-topics; HTTP and HTTPS publish and SSE; topic scopes, with anonymous clients
-refused by default; client certificates. The cluster is an interim one until Dagda:
+Built and tested (295 tests): all of MQTT 3.1, 3.1.1 and 5.0 on one node, over TCP, TLS,
+WebSocket and WebSocket over TLS; the cluster on Dannan with sessions that move and are mirrored to standbys,
+and Server Reference to balance new clients; system topics; HTTP and HTTPS publish and SSE; topic scopes, with
+anonymous clients refused by default; client certificates; limits and a memory budget shared with Dannan's
+ledger; the rules engine; MQTT-SN 1.2 over UDP and DTLS. The cluster is an interim one until Dagda:
 retained messages are held in memory on every node and a QoS 1 or 2 publish is
-acknowledged on acceptance, not on replication. Next: then persistence on Dagda and the Lugh
-authenticator.
+acknowledged on acceptance, not on replication. Next: persistence on Dagda and the Lugh
+authenticator. MQTT-SN 2.0 follows an approved OASIS specification.
 
 ## Licence
 
