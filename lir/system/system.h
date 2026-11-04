@@ -53,7 +53,8 @@ struct SystemConfig {
 };
 
 // The JSON a node publishes; pure, for tests.
-std::string lir_json(const std::string& node, size_t connections, size_t sessions, size_t retained, const broker::Stats& stats);
+std::string lir_json(const std::string& node, size_t connections, size_t sessions, size_t retained, const broker::Stats& stats, uint64_t held_bytes = 0,
+                     uint64_t memory_budget = 0, broker::Pressure pressure = broker::Pressure::none);
 std::string dannan_json(const dannan::membership::NodeRecord& self, const std::vector<dannan::membership::NodeRecord>& active,
                         const std::map<dannan::identity::NodeId, std::chrono::milliseconds>& latencies);
 std::string escaped(const std::string& text);

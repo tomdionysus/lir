@@ -46,6 +46,17 @@ std::optional<uint8_t> v3_return_code(uint8_t code) {
   }
 }
 
+// What a message costs to hold: its bytes and a fixed overhead.
+int64_t footprint(const Message& m) {
+  size_t bytes = 96 + m.topic.size() + m.payload.size();
+  if (m.content_type) bytes += m.content_type->size();
+  if (m.response_topic) bytes += m.response_topic->size();
+  if (m.correlation_data) bytes += m.correlation_data->size();
+  for (const auto& [key, value] : m.user_properties) bytes += key.size() + value.size() + 16;
+  return static_cast<int64_t>(bytes);
+}
+int64_t footprint(const Delivery& d) { return footprint(d.message) + static_cast<int64_t>(32 + 4 * d.identifiers.size()); }
+
 std::string_view as_text(const Bytes& bytes) { return {reinterpret_cast<const char*>(bytes.data()), bytes.size()}; }
 
 }  // namespace
@@ -173,6 +184,10 @@ void Link::on_connect(mqtt::Connect&& connect) {
   const auto& config = _broker._config;
   _version = connect.version;
   if (_broker.clients() >= config.maximum_connections) return refuse_connect(reason::server_busy);
+  if (_broker.pressure() >= Pressure::refuse_connect) {
+    ++_broker._stats.refused_pressure_connections;
+    return refuse_connect(reason::server_busy);
+  }
   if (connect.will) {
     const auto& will = *connect.will;
     if (!mqtt::valid_topic_name(will.topic)) return refuse_connect(reason::topic_name_invalid);
@@ -351,6 +366,14 @@ void Link::on_publish(mqtt::Publish&& publish) {
     if (session.inbound_qos2.size() >= config.receive_maximum) return shutdown(reason::receive_maximum_exceeded, true);
   }
 
+  if (publish.qos != QoS::at_most_once && broker.pressure() >= Pressure::refuse_publish) {
+    ++broker._stats.refused_pressure_publishes;
+    // A 3.x client has no way to be told: it is closed, and resends what
+    // was not acknowledged when it returns.
+    if (!v5()) return shutdown(reason::quota_exceeded, true);
+    if (publish.qos == QoS::at_least_once) return send(mqtt::Ack{PacketType::puback, id, reason::quota_exceeded, {}});
+    return send(mqtt::Ack{PacketType::pubrec, id, reason::quota_exceeded, {}});
+  }
   uint8_t code = reason::success;
   if (broker.reserved(publish.topic) || !_grant->may_publish(publish.topic, publish.retain)) {
     code = reason::not_authorized;
@@ -394,6 +417,7 @@ void Link::on_ack(const mqtt::Ack& ack) {
   switch (ack.type) {
     case PacketType::puback:
       if (it != session.outbound.end() && it->second.state == State::awaiting_puback) {
+        broker.charge(session, -footprint(it->second.delivery));
         session.outbound.erase(it);
         broker.pump(session);
       }
@@ -402,6 +426,7 @@ void Link::on_ack(const mqtt::Ack& ack) {
       if (it == session.outbound.end()) return send(mqtt::Ack{PacketType::pubrel, ack.packet_id, not_found, {}});
       if (it->second.state == State::awaiting_puback) return;
       if (ack.reason >= 0x80) {
+        broker.charge(session, -footprint(it->second.delivery));
         session.outbound.erase(it);
         broker.pump(session);
         return;
@@ -413,6 +438,7 @@ void Link::on_ack(const mqtt::Ack& ack) {
       return send(mqtt::Ack{PacketType::pubcomp, ack.packet_id, not_found, {}});
     case PacketType::pubcomp:
       if (it != session.outbound.end() && it->second.state == State::awaiting_pubcomp) {
+        broker.charge(session, -footprint(it->second.delivery));
         session.outbound.erase(it);
         broker.pump(session);
       }
@@ -563,11 +589,13 @@ bool Broker::apply_retained(const Message& message) {
   _lamport = std::max(_lamport, version.lamport);
   if (const auto held = _retained.find(message.topic); held != _retained.end() && held->second.version && *held->second.version >= version) return false;
   if (const auto cleared = _cleared.find(message.topic); cleared != _cleared.end() && cleared->second >= version) return false;
+  if (const auto old = _retained.find(message.topic); old != _retained.end()) charge_retained(-footprint(old->second));
   if (message.payload.empty()) {
     _retained.erase(message.topic);
     _cleared[message.topic] = version;
   } else {
     _retained[message.topic] = message;
+    charge_retained(footprint(message));
     _cleared.erase(message.topic);
   }
   return true;
@@ -692,10 +720,16 @@ void Broker::deliver(Session& session, Delivery delivery) {
     ++_stats.dropped_offline_qos0;
     return;
   }
+  if (delivery.qos == QoS::at_most_once && pressure() >= Pressure::shed_qos0) {
+    ++_stats.dropped_pressure;
+    return;
+  }
   if (session.queued.size() >= _config.maximum_queued) {
+    charge(session, -footprint(session.queued.front()));
     session.queued.pop_front();
     ++_stats.dropped_queue_full;
   }
+  charge(session, footprint(delivery));
   session.queued.push_back(std::move(delivery));
   pump(session);
 }
@@ -704,6 +738,7 @@ void Broker::pump(Session& session) {
   while (session.link && !session.queued.empty() && session.outbound.size() < session.client_receive_maximum) {
     auto delivery = std::move(session.queued.front());
     session.queued.pop_front();
+    charge(session, -footprint(delivery));
     transmit(session, std::move(delivery));
   }
 }
@@ -751,6 +786,7 @@ bool Broker::transmit(Session& session, Delivery delivery) {
   }
   if (delivery.qos != QoS::at_most_once) {
     const auto state = delivery.qos == QoS::at_least_once ? Inflight::State::awaiting_puback : Inflight::State::awaiting_pubrec;
+    charge(session, footprint(delivery));
     session.outbound.emplace(id, Inflight{std::move(delivery), state});
   }
   session.link->_connection->send(std::move(*bytes));
@@ -791,6 +827,7 @@ void Broker::resend(Session& session) {
     auto bytes = outgoing(session, build(session, it->second.delivery, id, true));
     if (!bytes) {
       ++_stats.dropped_too_large;
+      charge(session, -footprint(it->second.delivery));
       it = session.outbound.erase(it);
       continue;
     }
@@ -861,6 +898,7 @@ void Broker::drop_session(const std::string& client_id) {
   std::vector<std::string> filters;
   for (const auto& [filter, options] : session.subscriptions) filters.push_back(filter);
   for (const auto& filter : filters) unsubscribe(session, filter);
+  _held -= session.held;
   _sessions.erase(it);
 }
 
@@ -887,6 +925,10 @@ Broker::Session& Broker::import(SessionImage image) {
   session->inbound_qos2.insert(image.inbound_qos2.begin(), image.inbound_qos2.end());
   session->next_packet_id = image.next_packet_id;
   auto& held = *_sessions.emplace(image.client_id, std::move(session)).first->second;
+  int64_t bytes = 0;
+  for (const auto& [id, inflight] : held.outbound) bytes += footprint(inflight.delivery);
+  for (const auto& delivery : held.queued) bytes += footprint(delivery);
+  charge(held, bytes);
   for (const auto& [filter, options] : image.subscriptions) subscribe(held, filter, options);
   _ended.erase(image.client_id);
   touch(image.client_id);
@@ -1003,6 +1045,63 @@ size_t Broker::clients() const noexcept {
   }));
 }
 
+const char* pressure_name(Pressure pressure) noexcept {
+  switch (pressure) {
+    case Pressure::none:
+      return "none";
+    case Pressure::shed_qos0:
+      return "shed_qos0";
+    case Pressure::refuse_publish:
+      return "refuse_publish";
+    case Pressure::refuse_connect:
+      return "refuse_connect";
+  }
+  return "?";
+}
+
+Pressure Broker::pressure() const noexcept {
+  const uint64_t budget = _config.memory_budget;
+  if (budget == 0) return Pressure::none;
+  if (_held >= budget) return Pressure::refuse_connect;
+  if (_held >= budget / 10 * 9) return Pressure::refuse_publish;
+  if (_held >= budget / 10 * 8) return Pressure::shed_qos0;
+  return Pressure::none;
+}
+
+void Broker::charge(Session& session, int64_t bytes) {
+  session.held = static_cast<uint64_t>(static_cast<int64_t>(session.held) + bytes);
+  _held = static_cast<uint64_t>(static_cast<int64_t>(_held) + bytes);
+}
+
+void Broker::charge_retained(int64_t bytes) { _held = static_cast<uint64_t>(static_cast<int64_t>(_held) + bytes); }
+
+void Broker::shed() {
+  // Oldest first within each session; sessions in turn, until it eases.
+  for (auto& [client, session] : _sessions) {
+    auto& queue = session->queued;
+    for (auto it = queue.begin(); it != queue.end() && pressure() >= Pressure::shed_qos0;) {
+      if (it->qos != QoS::at_most_once) {
+        ++it;
+        continue;
+      }
+      charge(*session, -footprint(*it));
+      it = queue.erase(it);
+      ++_stats.dropped_pressure;
+    }
+    if (pressure() < Pressure::shed_qos0) return;
+  }
+}
+
+uint64_t Broker::recount_held_bytes() const {
+  int64_t bytes = 0;
+  for (const auto& [client, session] : _sessions) {
+    for (const auto& [id, inflight] : session->outbound) bytes += footprint(inflight.delivery);
+    for (const auto& delivery : session->queued) bytes += footprint(delivery);
+  }
+  for (const auto& [topic, message] : _retained) bytes += footprint(message);
+  return static_cast<uint64_t>(bytes);
+}
+
 void Broker::observe(std::function<void(const ClientEvent&)> observer) { _observer = std::move(observer); }
 
 void Broker::tell(ClientEvent event) {
@@ -1039,7 +1138,12 @@ void Broker::poll() {
     ++_stats.sessions_expired;
     end_session(client);
   }
-  std::erase_if(_retained, [now](const auto& entry) { return entry.second.expires_at && *entry.second.expires_at <= now; });
+  std::erase_if(_retained, [this, now](const auto& entry) {
+    const bool expired = entry.second.expires_at && *entry.second.expires_at <= now;
+    if (expired) charge_retained(-footprint(entry.second));
+    return expired;
+  });
+  if (pressure() >= Pressure::shed_qos0) shed();
 }
 
 std::string Broker::assign_client_id() {

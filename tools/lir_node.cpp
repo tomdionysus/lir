@@ -30,11 +30,13 @@
 //            [--no-system-topics nodes|cluster|clients|roster]...
 //            [--max-packet-size BYTES] [--receive-maximum N] [--max-queued N]
 //            [--max-session-expiry SECONDS] [--max-outbound-bytes BYTES]
-//            [--max-connections N]
+//            [--max-connections N] [--memory-budget BYTES]
 //
 // The limits default to the design's moderate set (section 4): 1 MiB
 // packets, receive maximum 1024, 10,000 queued per offline session, session
-// expiry capped at 7 days, 4 MiB queued for a slow client, 10,000 clients.
+// expiry capped at 7 days, 4 MiB queued for a slow client, 10,000 clients;
+// 512 MiB of held messages before the node gives way (QoS 0 shed at 80%,
+// QoS 1/2 refused at 90%, new clients refused at 100%).
 //   lir-node --version
 //
 // Clients are refused unless --allow-anonymous is given (design, section
@@ -203,6 +205,8 @@ Options parse(int argc, char** argv) {
       out.maximum_outbound_bytes = std::stoul(value());
     else if (option == "--max-connections")
       out.limits.maximum_connections = std::stoul(value());
+    else if (option == "--memory-budget")
+      out.limits.memory_budget = std::stoull(value());
     else if (option == "--no-system-topics") {
       const auto which = value();
       if (which == "nodes")
@@ -307,6 +311,9 @@ int main(int argc, char** argv) {
     config.version = std::string("lir-node ") + lir::kVersion;
     config.log = dannan::status::console_sink(options.log_format, options.log_level);
     dannan::Node node(io, config);
+    // Lir's unit of work: one packet of the largest size it accepts. Dannan
+    // refuses to start Lir on a node whose budget cannot hold one.
+    node.context().budget().declare(dannan::sched::WorkClass::foreground, options.limits.maximum_packet_size);
     lir::edge::EdgeConfig edge_config;
     edge_config.listen_host = options.mqtt_listen;
     edge_config.port = options.mqtt_port;

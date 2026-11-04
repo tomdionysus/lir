@@ -98,7 +98,8 @@ std::string escaped(const std::string& text) {
   return out;
 }
 
-std::string lir_json(const std::string& node, size_t connections, size_t sessions, size_t retained_count, const broker::Stats& s) {
+std::string lir_json(const std::string& node, size_t connections, size_t sessions, size_t retained_count, const broker::Stats& s, uint64_t held_bytes,
+                     uint64_t memory_budget, broker::Pressure pressure) {
   std::ostringstream out;
   out << "{\"node\":" << quoted(node) << ",\"version\":" << quoted(kVersion) << ",\"connections\":" << connections << ",\"sessions\":" << sessions
       << ",\"retained\":" << retained_count << ",\"accepted\":" << s.connections_accepted << ",\"refused\":" << s.connections_refused
@@ -106,7 +107,9 @@ std::string lir_json(const std::string& node, size_t connections, size_t session
       << ",\"injected\":" << s.messages_injected << ",\"wills\":" << s.wills_published << ",\"sessions_expired\":" << s.sessions_expired
       << ",\"sessions_taken\":" << s.sessions_taken << ",\"sessions_surrendered\":" << s.sessions_surrendered
       << ",\"dropped\":{\"offline_qos0\":" << s.dropped_offline_qos0 << ",\"queue_full\":" << s.dropped_queue_full << ",\"expired\":" << s.dropped_expired
-      << ",\"too_large\":" << s.dropped_too_large << "}}";
+      << ",\"too_large\":" << s.dropped_too_large << ",\"pressure\":" << s.dropped_pressure << "},\"memory\":{\"held\":" << held_bytes
+      << ",\"budget\":" << memory_budget << ",\"pressure\":" << quoted(broker::pressure_name(pressure))
+      << ",\"refused_publishes\":" << s.refused_pressure_publishes << ",\"refused_connections\":" << s.refused_pressure_connections << "}}";
   return out.str();
 }
 
@@ -157,7 +160,7 @@ std::string limits_advert(const broker::Config& c) {
   std::ostringstream out;
   out << "maximum_packet_size=" << c.maximum_packet_size << ";receive_maximum=" << c.receive_maximum << ";topic_alias_maximum=" << c.topic_alias_maximum
       << ";maximum_qos=" << static_cast<unsigned>(c.maximum_qos) << ";maximum_session_expiry=" << c.maximum_session_expiry
-      << ";maximum_queued=" << c.maximum_queued << ";retain_available=" << c.retain_available
+      << ";maximum_queued=" << c.maximum_queued << ";memory_budget=" << c.memory_budget << ";retain_available=" << c.retain_available
       << ";shared_subscription_available=" << c.shared_subscription_available;
   return out.str();
 }
@@ -264,7 +267,8 @@ struct SystemTopics::State : std::enable_shared_from_this<SystemTopics::State> {
     auto& broker = edge.broker();
     advertise();
     if (config.nodes) {
-      const auto lir = lir_json(id(), broker.connections(), broker.sessions(), broker.retained(), broker.stats());
+      const auto lir = lir_json(id(), broker.connections(), broker.sessions(), broker.retained(), broker.stats(), broker.held_bytes(),
+                                broker.config().memory_budget, broker.pressure());
       if (lir != last_lir) {
         last_lir = lir;
         broker.publish(retained("$lir/nodes/" + id(), lir));

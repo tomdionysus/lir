@@ -3,13 +3,12 @@
 Last updated: 2026-11-04. Steps 1 to 4, session standbys, the system
 topics (all but `$lir/shards`, which follows step 5), HTTP and HTTPS,
 MQTT over TLS and over WebSocket, client certificates, the
-specification's MAYs, Dannan 0.3.0, topic scopes and the moderate
-default limits are on `develop`; gate `lir_tests` 230. `COMPLETED.md` is
-the record. "Resume here": the memory budget under pressure (section 4),
-then Server Reference (its balancing policy needs the maintainer), MQTT-SN 1.2 and
-2.0, the rules engine; the config file and the shared percent-encoding
-wait on Dannan, message history and step 5 on Dagda, the Lugh plugin on
-Lugh.
+specification's MAYs, Dannan 0.3.0, topic scopes, the moderate default
+limits and memory pressure are on `develop`; gate `lir_tests` 234.
+`COMPLETED.md` is the record. "Resume here": Dannan 0.4.0 (the config
+file, percent-encoding), then Server Reference at CONNECT (the maintainer's policy,
+sections file), MQTT-SN 1.2 and 2.0, the rules engine (its form waits on
+The maintainer); message history and step 5 wait on Dagda, the Lugh plugin on Lugh.
 
 The design is the maintainer's, 2026-11-03:
 [`2026-11-03-lir-plan.md`](2026-11-03-lir-plan.md), with the seven
