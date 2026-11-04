@@ -86,7 +86,7 @@ const char* status_text(unsigned status) {
 // come straight back here, decoded.
 class VirtualClient final : public contract::Connection {
  public:
-  explicit VirtualClient(std::string peer) : _peer(std::move(peer)) {}
+  VirtualClient(std::string peer, std::optional<std::string> subject) : _peer(std::move(peer)), _subject(std::move(subject)) {}
   void send(Bytes bytes) override {
     if (_closed || !on_packet) return;
     try {
@@ -102,6 +102,7 @@ class VirtualClient final : public contract::Connection {
     if (on_close) on_close();
   }
   std::string peer() const override { return _peer; }
+  std::optional<std::string> certificate_subject() const override { return _subject; }
   // An HTTP request is served where it arrived, never redirected.
   std::string transport() const override { return "http"; }
 
@@ -110,8 +111,16 @@ class VirtualClient final : public contract::Connection {
 
  private:
   std::string _peer;
+  std::optional<std::string> _subject;
   bool _closed = false;
 };
+
+// The verified client certificate's subject on an HTTPS connection.
+std::optional<std::string> subject_of(tcp::socket&) { return std::nullopt; }
+std::optional<std::string> subject_of(asio::ssl::stream<tcp::socket>& stream) { return edge::verified_subject(stream.native_handle()); }
+
+// How long a clean TLS end may take before the socket is closed regardless.
+constexpr auto clean_end_deadline = std::chrono::seconds(2);
 
 std::optional<std::string> bearer(const bhttp::request<bhttp::string_body>& request) {
   const auto field = request[bhttp::field::authorization];
@@ -177,6 +186,7 @@ class Exchange final : public ExchangeBase, public std::enable_shared_from_this<
     boost::system::error_code ec;
     const auto remote = _socket.lowest_layer().remote_endpoint(ec);
     _peer = ec ? "http" : "http " + remote.address().to_string() + ":" + std::to_string(remote.port());
+    _subject = subject_of(_socket);
   }
 
   void start() {
@@ -227,7 +237,7 @@ class Exchange final : public ExchangeBase, public std::enable_shared_from_this<
 
   // Connects the virtual client; the CONNACK's refusal, if any.
   std::optional<uint8_t> connect(const bhttp::request<bhttp::string_body>& request, std::vector<mqtt::Packet>& got) {
-    _client = std::make_shared<VirtualClient>(_peer);
+    _client = std::make_shared<VirtualClient>(_peer, _subject);
     _client->on_packet = [&got](mqtt::Packet p) { got.push_back(std::move(p)); };
     _link = _edge.broker().accept(_client);
     _link->receive(mqtt::encode(connect_packet(bearer(request)), Version::v5));
@@ -392,8 +402,22 @@ class Exchange final : public ExchangeBase, public std::enable_shared_from_this<
       self->_queued -= self->_queue.front().size();
       self->_queue.pop_front();
       if (!self->_queue.empty()) return self->write_next();
-      if (self->_close_after_write) self->terminate();
+      if (self->_close_after_write) self->end();
     });
+  }
+
+  // The response is written: over TLS, close_notify first (RFC 8446,
+  // section 6.1), bounded by a deadline; then the socket closes.
+  void end() {
+    if constexpr (std::is_same_v<Stream, tcp::socket>) {
+      terminate();
+    } else {
+      _timer.expires_after(clean_end_deadline);
+      _timer.async_wait([weak = this->weak_from_this()](const boost::system::error_code& ec) {
+        if (const auto self = weak.lock(); self && !ec) self->terminate();
+      });
+      _socket.async_shutdown([self = this->shared_from_this()](const boost::system::error_code&) { self->terminate(); });
+    }
   }
 
   Stream _socket;
@@ -403,6 +427,7 @@ class Exchange final : public ExchangeBase, public std::enable_shared_from_this<
   asio::steady_timer _timer;
   std::function<void(ExchangeBase*)> _forget;
   std::string _peer;
+  std::optional<std::string> _subject;
   beast::flat_buffer _buffer;
   std::optional<bhttp::request_parser<bhttp::string_body>> _parser;
   std::shared_ptr<VirtualClient> _client;

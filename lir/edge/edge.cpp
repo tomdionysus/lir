@@ -48,6 +48,28 @@ void write_all(websocket::stream<Next>& stream, asio::const_buffer buffer, Handl
   stream.async_write(buffer, std::forward<Handler>(handler));
 }
 
+// Ending a stream cleanly: nothing for TCP, close_notify for TLS (RFC 8446,
+// section 6.1), a close frame for a WebSocket (RFC 6455, section 7), which
+// over TLS sends close_notify after it. False: nothing to send.
+template <typename Handler>
+bool end_cleanly(tcp::socket&, Handler&&) {
+  return false;
+}
+template <typename Handler>
+bool end_cleanly(asio::ssl::stream<tcp::socket>& stream, Handler&& handler) {
+  stream.async_shutdown(std::forward<Handler>(handler));
+  return true;
+}
+template <typename Next, typename Handler>
+bool end_cleanly(websocket::stream<Next>& stream, Handler&& handler) {
+  if (!stream.is_open()) return false;
+  stream.async_close(websocket::close_code::normal, std::forward<Handler>(handler));
+  return true;
+}
+
+// How long a clean end may take before the socket is closed regardless.
+constexpr auto clean_end_deadline = std::chrono::seconds(2);
+
 // Whether what was just read may not carry MQTT: a text frame (section 6).
 template <typename Stream>
 bool wrong_frame(const Stream&) {
@@ -143,7 +165,7 @@ class StreamConnection final : public ClientConnection, public std::enable_share
   void close() override {
     if (_closed) return;
     _closing = true;
-    if (!_writing) terminate();
+    if (!_writing) end();
   }
 
   std::string peer() const override { return _peer; }
@@ -153,6 +175,7 @@ class StreamConnection final : public ClientConnection, public std::enable_share
   void terminate() override {
     if (_closed) return;
     _closed = true;
+    if (_ending) _ending->cancel();
     boost::system::error_code ignored;
     beast::get_lowest_layer(_stream).shutdown(tcp::socket::shutdown_both, ignored);
     beast::get_lowest_layer(_stream).close(ignored);
@@ -162,6 +185,18 @@ class StreamConnection final : public ClientConnection, public std::enable_share
   }
 
  private:
+  // A close the broker asked for, once everything queued is written: the
+  // stream's clean end, bounded by a deadline, then the socket closes.
+  void end() {
+    if (_closed || _ending) return;
+    _ending.emplace(_stream.get_executor(), clean_end_deadline);
+    const bool started = end_cleanly(_stream, [self = this->shared_from_this()](const boost::system::error_code&) { self->terminate(); });
+    if (!started) return terminate();
+    _ending->async_wait([self = this->shared_from_this()](const boost::system::error_code& ec) {
+      if (!ec) self->terminate();
+    });
+  }
+
   void read() {
     _stream.async_read_some(asio::buffer(_buffer), [self = this->shared_from_this()](const boost::system::error_code& ec, size_t got) {
       if (ec) return self->terminate();
@@ -184,7 +219,7 @@ class StreamConnection final : public ClientConnection, public std::enable_share
       self->_queue.pop_front();
       if (self->_closed) return;
       if (!self->_queue.empty()) return self->write();
-      if (self->_closing) self->terminate();
+      if (self->_closing) self->end();
     });
   }
 
@@ -201,6 +236,7 @@ class StreamConnection final : public ClientConnection, public std::enable_share
   bool _writing = false;
   bool _closing = false;
   bool _closed = false;
+  std::optional<asio::steady_timer> _ending;
 };
 
 using TcpConnection = StreamConnection<tcp::socket>;

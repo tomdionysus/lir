@@ -578,3 +578,21 @@ MQTT-SN tests passed three runs in a row.
 - `lir-node --mqttsn-dtls-port N [--mqttsn-dtls-listen ADDR]`, with
   `--tls-certificate`, `--tls-key` and `--tls-client-ca`.
 
+
+## 2026-11-04: close_notify, and the HTTPS certificate subject
+
+Gate: `lir_tests` 295 passed, 0 failed (4 new); the TLS, WebSocket,
+client certificate, HTTP and process tests passed three runs in a row.
+
+- A close the broker makes (DISCONNECT, a refusal, a server DISCONNECT)
+  now ends the stream cleanly once what is queued is written: TLS sends
+  close_notify (RFC 8446, section 6.1), a WebSocket a close frame (RFC
+  6455, section 7, then close_notify under wss), each bounded by a
+  2-second deadline. Abnormal closes (errors, an overfull queue, stop)
+  stay immediate. HTTPS responses end with close_notify the same way.
+- HTTPS hands the authenticator the verified client certificate subject,
+  as the MQTT TLS port does; the HTTPS listener already asked for
+  certificates when `client_ca` was set.
+- MQTT-SN 2.0: OASIS has only working drafts (the newest 2025-10-19; CSD01
+  of 2023-12 is superseded). Recommended to the maintainer to wait for an approved
+  Committee Specification; recorded as waiting on OASIS.
