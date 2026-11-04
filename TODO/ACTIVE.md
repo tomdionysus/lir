@@ -6,12 +6,14 @@ MQTT over TLS and over WebSocket, client certificates, the
 specification's MAYs, Dannan 0.4.0 (the config file, its percent
 decoder), topic scopes, the moderate default limits and memory pressure
 are on `develop`; gate `lir_tests` 248. `COMPLETED.md` is the record.
-Server Reference at CONNECT is done (248). "Resume here" (Tom's further
-decisions, end of the sections file): MQTT-SN 2.0, after checking the
-OASIS text (memory thresholds and the ledger, 251, the rules engine, 270,
-MQTT-SN 1.2, 288, and over DTLS, 291, are done);
-message history and step 5 wait on Dagda, the Lugh plugin on Lugh
-(tokens in its O7).
+Server Reference at CONNECT is done (248); memory thresholds and the
+ledger (251), the rules engine (270), MQTT-SN 1.2 (288) and over DTLS
+(291); close_notify on TLS closes and the HTTPS certificate subject (295).
+"Resume here": nothing in Lir is unblocked. MQTT-SN 2.0 waits on OASIS
+(only working drafts exist, the newest 2025-10-19; recommended to Tom on
+2026-11-04 to wait for an approved Committee Specification, and he said
+continue); message history and step 5 wait on Dagda, the Lugh plugin on
+Lugh (tokens in its O7).
 
 The design is Tom's, 2026-11-03:
 [`2026-11-03-lir-plan.md`](2026-11-03-lir-plan.md), with the seven
@@ -68,7 +70,8 @@ written new; Macha has no event system to extract (`COMPLETED.md`,
 2. **The broker on one node.** Done (125).
 3. **The edge.** Done (132; the mosquitto process test landed in step 4;
    TLS on the MQTT port, 165; HTTPS, 170; WebSocket, 214; client
-   certificates, 227). Open: a TLS close_notify on close.
+   certificates, 227; close_notify on close, and the HTTPS certificate
+   subject, 295).
 4. **The cluster on Dannan.** Done as an interim (151): see
    `COMPLETED.md`. Sessions mirrored to configurable standbys (answer
    2): done (152).
@@ -119,3 +122,4 @@ written new; Macha has no event system to extract (`COMPLETED.md`,
 - Lugh: tokens an MQTT client can present (step 6's plugin).
 - Dannan: nothing. Lir is on `0.4.0`.
 - Lugh: the grammar of scopes in its tokens.
+- OASIS: an approved MQTT-SN 2.0 Committee Specification.
