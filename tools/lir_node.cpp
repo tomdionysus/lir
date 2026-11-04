@@ -24,6 +24,7 @@
 //            [--session-standbys N] [--http-port N|-1] [--http-listen ADDR]
 //            [--mqtt-tls-port N --tls-certificate PEM --tls-key PEM]
 //            [--mqtt-tls-listen ADDR] [--https-port N] [--https-listen ADDR]
+//            [--tls-client-ca PEM [--tls-client-certificate required|optional]]
 //            [--ws-port N] [--ws-listen ADDR] [--wss-port N] [--wss-listen ADDR]
 //            [--allow-anonymous [--anonymous-scope SCOPE]...]
 //            [--no-system-topics nodes|cluster|clients|roster]...
@@ -96,6 +97,10 @@ struct Options {
   std::string mqtt_tls_listen = "0.0.0.0";
   std::string tls_certificate;
   std::string tls_key;
+  // Client certificates on every TLS listener: the CAs they chain to, and
+  // whether one is required.
+  std::string tls_client_ca;
+  bool tls_client_certificate_required = true;
   // -1: no HTTPS listener. Uses --tls-certificate and --tls-key.
   int https_port = -1;
   std::string https_listen = "0.0.0.0";
@@ -114,6 +119,17 @@ dannan::net::Endpoint endpoint(const std::string& text) {
   const auto colon = text.rfind(':');
   if (colon == std::string::npos) throw std::runtime_error("expected HOST:PORT, got " + text);
   return {text.substr(0, colon), static_cast<uint16_t>(std::stoi(text.substr(colon + 1)))};
+}
+
+lir::edge::TlsConfig tls_config(const Options& options, const std::string& listen, int port) {
+  lir::edge::TlsConfig tls;
+  tls.listen_host = listen;
+  tls.port = static_cast<uint16_t>(port);
+  tls.certificate_chain = options.tls_certificate;
+  tls.private_key = options.tls_key;
+  tls.client_ca = options.tls_client_ca;
+  tls.require_client_certificate = options.tls_client_certificate_required;
+  return tls;
 }
 
 Options parse(int argc, char** argv) {
@@ -186,7 +202,13 @@ Options parse(int argc, char** argv) {
       out.https_listen = value();
     else if (option == "--mqtt-tls-listen")
       out.mqtt_tls_listen = value();
-    else if (option == "--tls-certificate")
+    else if (option == "--tls-client-ca")
+      out.tls_client_ca = value();
+    else if (option == "--tls-client-certificate") {
+      const auto mode = value();
+      if (mode != "required" && mode != "optional") throw std::runtime_error("--tls-client-certificate: required or optional, got " + mode);
+      out.tls_client_certificate_required = mode == "required";
+    } else if (option == "--tls-certificate")
       out.tls_certificate = value();
     else if (option == "--tls-key")
       out.tls_key = value();
@@ -268,12 +290,11 @@ int main(int argc, char** argv) {
     edge_config.listen_host = options.mqtt_listen;
     edge_config.port = options.mqtt_port;
     if (options.mqtt_tls_port >= 0) {
-      edge_config.tls = lir::edge::TlsConfig{options.mqtt_tls_listen, static_cast<uint16_t>(options.mqtt_tls_port), options.tls_certificate, options.tls_key};
+      edge_config.tls = tls_config(options, options.mqtt_tls_listen, options.mqtt_tls_port);
     }
     if (options.ws_port >= 0) edge_config.websocket = lir::edge::WebSocketConfig{options.ws_listen, static_cast<uint16_t>(options.ws_port)};
     if (options.wss_port >= 0) {
-      edge_config.secure_websocket =
-          lir::edge::TlsConfig{options.wss_listen, static_cast<uint16_t>(options.wss_port), options.tls_certificate, options.tls_key};
+      edge_config.secure_websocket = tls_config(options, options.wss_listen, options.wss_port);
     }
     std::optional<lir::auth::TopicScopes> anonymous;
     if (options.allow_anonymous) {
@@ -302,7 +323,7 @@ int main(int argc, char** argv) {
       http_config.listen_host = options.http_listen;
       http_config.port = static_cast<uint16_t>(options.http_port);
       if (options.https_port >= 0) {
-        http_config.tls = lir::edge::TlsConfig{options.https_listen, static_cast<uint16_t>(options.https_port), options.tls_certificate, options.tls_key};
+        http_config.tls = tls_config(options, options.https_listen, options.https_port);
       }
       http.emplace(io, edge, http_config, node.context().logger("lir.http"));
       http->start();

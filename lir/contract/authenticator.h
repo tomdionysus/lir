@@ -68,6 +68,14 @@ struct AuthDecision {
   static AuthDecision challenge(mqtt::Bytes data) { return {Kind::challenge, mqtt::reason::continue_authentication, std::move(data), {}}; }
 };
 
+// Who is connecting, as the transport knows it.
+struct Peer {
+  std::string address;
+  // The verified client certificate's subject (RFC 2253 form), when the
+  // listener asks for client certificates and one was presented.
+  std::optional<std::string> certificate_subject;
+};
+
 // Called only from the broker's strand. Every call answers from what it
 // holds and waits on nothing: a check that needs the network is made
 // before, and its answer cached here.
@@ -76,7 +84,7 @@ class Authenticator {
   virtual ~Authenticator() = default;
   // The CONNECT as sent. A challenge is only allowed when the CONNECT named
   // an authentication method (5.0).
-  virtual AuthDecision connect(const mqtt::Connect& connect) = 0;
+  virtual AuthDecision connect(const mqtt::Connect& connect, const Peer& peer) = 0;
   // A 5.0 AUTH continuing an exchange or reauthenticating: the method the
   // exchange began with, and the client's data. An accept on
   // re-authentication replaces the connection's grant.
@@ -87,7 +95,7 @@ class Authenticator {
 // authentication method, since it knows none. For tests and embedding.
 class AllowAll final : public Authenticator {
  public:
-  AuthDecision connect(const mqtt::Connect& connect) override {
+  AuthDecision connect(const mqtt::Connect& connect, const Peer&) override {
     return connect.properties.authentication_method ? AuthDecision::refuse(mqtt::reason::bad_authentication_method)
                                                     : AuthDecision::accept(std::make_shared<Unrestricted>());
   }

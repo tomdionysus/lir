@@ -384,3 +384,24 @@ tests passed three runs in a row.
   lease until step 5, and the topic would report nothing true. It
   follows step 5.
 
+## 2026-11-04: client certificates (mutual TLS)
+
+Gate: `lir_tests` 227 passed, 0 failed (5 new).
+
+- `TlsConfig::client_ca` and `require_client_certificate`: on every TLS
+  listener (MQTT, wss, HTTPS), a client certificate verified against the
+  named CAs, required (refused at the handshake without one) or
+  optional. The context is built once, `edge::server_context`, which the
+  HTTP server now uses too (it had its own copy).
+- `contract::Connection::certificate_subject()` and `contract::Peer`:
+  the authenticator's `connect` is given the peer's address and the
+  verified subject (RFC 2253). A certificate grants nothing by itself:
+  the anonymous authenticator treats a client with one and no credential
+  as anonymous. Whether a subject should map to scopes is open (Lugh's
+  devices are service principals with tokens).
+- `lir-node --tls-client-ca PEM [--tls-client-certificate
+  required|optional]`. Checked by hand: `mosquitto_pub --cert` connects
+  to `lir-node` over TLS; without a certificate the connection is lost.
+- Not done: HTTPS hands no subject to the authenticator (its exchanges
+  are virtual clients).
+

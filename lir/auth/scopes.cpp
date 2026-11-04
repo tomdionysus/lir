@@ -119,7 +119,7 @@ AnonymousAuthenticator::AnonymousAuthenticator(std::optional<TopicScopes> anonym
   if (anonymous) _anonymous = std::make_shared<ScopeGrant>(std::move(*anonymous));
 }
 
-contract::AuthDecision AnonymousAuthenticator::connect(const mqtt::Connect& connect) {
+contract::AuthDecision AnonymousAuthenticator::connect(const mqtt::Connect& connect, const contract::Peer&) {
   if (connect.properties.authentication_method) return contract::AuthDecision::refuse(mqtt::reason::bad_authentication_method);
   if (connect.username || connect.password) return contract::AuthDecision::refuse(mqtt::reason::bad_user_name_or_password);
   if (!_anonymous) return contract::AuthDecision::refuse(mqtt::reason::not_authorized);

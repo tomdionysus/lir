@@ -785,7 +785,7 @@ TEST_F(BrokerOptionsTest, QoS0CanBeQueuedForAnOfflineSession) {
 
 class ChallengeOnce final : public contract::Authenticator {
  public:
-  contract::AuthDecision connect(const mqtt::Connect&) override { return contract::AuthDecision::challenge(Bytes{'?'}); }
+  contract::AuthDecision connect(const mqtt::Connect&, const contract::Peer&) override { return contract::AuthDecision::challenge(Bytes{'?'}); }
   contract::AuthDecision auth(const std::string&, const std::string&, const Bytes& data) override {
     return data == Bytes{'!'} ? contract::AuthDecision::accept(std::make_shared<NotSecret>()) : contract::AuthDecision::refuse(reason::not_authorized);
   }
@@ -843,7 +843,7 @@ class Scoped final : public contract::Authenticator {
  public:
   Scoped(const dannan::test::SteppedTime& time, auth::TopicScopes scopes, std::chrono::seconds lifetime)
       : _time(time), _scopes(std::move(scopes)), _lifetime(lifetime) {}
-  contract::AuthDecision connect(const mqtt::Connect&) override { return grant(_scopes); }
+  contract::AuthDecision connect(const mqtt::Connect&, const contract::Peer&) override { return grant(_scopes); }
   contract::AuthDecision auth(const std::string&, const std::string&, const Bytes& data) override {
     return data == Bytes{'m', 'o', 'r', 'e'} ? grant(renewed) : contract::AuthDecision::refuse(reason::not_authorized);
   }
@@ -1039,7 +1039,9 @@ class BrokerScopesAtReconnect : public ::testing::Test {
   // The node's grant for each new connection is set by the test.
   class Switchable final : public contract::Authenticator {
    public:
-    contract::AuthDecision connect(const mqtt::Connect&) override { return contract::AuthDecision::accept(std::make_shared<auth::ScopeGrant>(scopes)); }
+    contract::AuthDecision connect(const mqtt::Connect&, const contract::Peer&) override {
+      return contract::AuthDecision::accept(std::make_shared<auth::ScopeGrant>(scopes));
+    }
     contract::AuthDecision auth(const std::string&, const std::string&, const Bytes&) override {
       return contract::AuthDecision::refuse(reason::bad_authentication_method);
     }
