@@ -42,6 +42,12 @@ std::optional<SharedFilter> parse_shared(std::string_view filter);
 // by a filter whose first level is '+' or '#' (section 4.7.2).
 bool matches(std::string_view filter, std::string_view name) noexcept;
 
+// Whether every name `requested` matches is also matched by `granted`
+// (both valid filters, neither shared): a SUBSCRIBE checked against a
+// granted filter. The '$' rule holds: a granted first level of '+' or '#'
+// does not cover a requested first level starting with '$'.
+bool covers(std::string_view granted, std::string_view requested);
+
 // The levels between '/' separators; empty levels kept.
 std::vector<std::string_view> levels(std::string_view topic);
 

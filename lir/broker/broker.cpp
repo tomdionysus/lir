@@ -173,7 +173,6 @@ void Link::on_connect(mqtt::Connect&& connect) {
     if (!mqtt::valid_topic_name(will.topic)) return refuse_connect(reason::topic_name_invalid);
     if (will.qos > config.maximum_qos) return refuse_connect(reason::qos_not_supported);
     if (will.retain && !config.retain_available) return refuse_connect(reason::retain_not_supported);
-    if (_broker.reserved(will.topic) || !_broker._authenticator.may_publish(connect.client_id, will.topic)) return refuse_connect(reason::not_authorized);
     if (will.properties.response_topic && !mqtt::valid_topic_name(*will.properties.response_topic)) return refuse_connect(reason::protocol_error);
   }
   // 3.1 requires an identifier; 3.1.1 allows none only with a clean session.
@@ -185,7 +184,7 @@ void Link::on_connect(mqtt::Connect&& connect) {
   const auto decision = _broker._authenticator.connect(*_connect);
   switch (decision.kind) {
     case contract::AuthDecision::Kind::accept:
-      return begin_connect(decision.data);
+      return begin_connect(decision);
     case contract::AuthDecision::Kind::refuse:
       return refuse_connect(decision.reason);
     case contract::AuthDecision::Kind::challenge: {
@@ -199,7 +198,14 @@ void Link::on_connect(mqtt::Connect&& connect) {
   }
 }
 
-void Link::begin_connect(std::optional<Bytes> auth_data) {
+void Link::begin_connect(const contract::AuthDecision& accepted) {
+  _grant = accepted.grant ? accepted.grant : std::make_shared<contract::Nothing>();
+  // The will is checked against what the connection may do, so only once
+  // the client is known.
+  if (const auto& will = _connect->will; will && (_broker.reserved(will->topic) || !_grant->may_publish(will->topic, will->retain))) {
+    return refuse_connect(reason::not_authorized);
+  }
+  std::optional<Bytes> auth_data = accepted.data;
   _assigned = _connect->client_id.empty();
   _client_id = _assigned ? _broker.assign_client_id() : _connect->client_id;
   // An assigned identifier is new everywhere; any other may be held by
@@ -328,7 +334,7 @@ void Link::on_publish(mqtt::Publish&& publish) {
   }
 
   uint8_t code = reason::success;
-  if (broker.reserved(publish.topic) || !broker._authenticator.may_publish(_client_id, publish.topic)) {
+  if (broker.reserved(publish.topic) || !_grant->may_publish(publish.topic, publish.retain)) {
     code = reason::not_authorized;
   } else if (publish.properties.payload_format_indicator == 1 && !mqtt::valid_utf8(as_text(publish.payload))) {
     code = reason::payload_format_invalid;
@@ -421,7 +427,7 @@ void Link::on_subscribe(const mqtt::Subscribe& subscribe) {
       code = reason::shared_subscriptions_not_supported;
     } else if (mqtt::has_wildcard(inner) && !config.wildcard_subscription_available) {
       code = reason::wildcard_subscriptions_not_supported;
-    } else if (!broker._authenticator.may_subscribe(_client_id, request.filter)) {
+    } else if (!_grant->may_subscribe(request.filter)) {
       code = reason::not_authorized;
     } else {
       Options options{lesser(request.qos, config.maximum_qos), request.no_local, request.retain_as_published, request.retain_handling, identifier};
@@ -474,8 +480,9 @@ void Link::on_auth(const mqtt::Auth& auth) {
   const auto decision = _broker._authenticator.auth(client, *_auth_method, data);
   switch (decision.kind) {
     case contract::AuthDecision::Kind::accept:
-      if (_state == State::authenticating) return begin_connect(decision.data);
+      if (_state == State::authenticating) return begin_connect(decision);
       {
+        _grant = decision.grant ? decision.grant : std::make_shared<contract::Nothing>();
         mqtt::Auth done{reason::success, {}};
         done.properties.authentication_method = _auth_method;
         done.properties.authentication_data = decision.data;
@@ -952,9 +959,14 @@ void Broker::poll() {
   for (const auto& link : links) {
     if (link->_state == Link::State::awaiting_connect || link->_state == Link::State::authenticating) {
       if (now - link->_opened > _config.connect_timeout) link->shutdown(std::nullopt, false);
-    } else if (link->_state == Link::State::connected && link->_keep_alive > 0) {
-      // One and a half keep alive periods with nothing heard (section 3.1.2.10).
-      if (now - link->_last_received > std::chrono::milliseconds(uint64_t{link->_keep_alive} * 1500)) link->shutdown(mqtt::reason::keep_alive_timeout, true);
+    } else if (link->_state == Link::State::connected) {
+      // The credential behind the connection has ended (design, section 1).
+      if (const auto ends = link->_grant ? link->_grant->expires() : std::nullopt; ends && *ends <= now) {
+        link->shutdown(mqtt::reason::not_authorized, true);
+      } else if (link->_keep_alive > 0 && now - link->_last_received > std::chrono::milliseconds(uint64_t{link->_keep_alive} * 1500)) {
+        // One and a half keep alive periods with nothing heard (section 3.1.2.10).
+        link->shutdown(mqtt::reason::keep_alive_timeout, true);
+      }
     }
   }
   std::vector<std::string> due;

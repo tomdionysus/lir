@@ -9,6 +9,7 @@
 # "lir/x.h"; everything else is included from the repository root as
 # "lir/<subsystem>/x.h".
 add_library(lir SHARED
+  auth/scopes.cpp
   broker/broker.cpp
   cluster/cluster.cpp
   cluster/codec.cpp
