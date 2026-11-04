@@ -10,6 +10,7 @@
 # "lir/<subsystem>/x.h".
 add_library(lir SHARED
   broker/broker.cpp
+  edge/edge.cpp
   mqtt/packet.cpp
   mqtt/properties.cpp
   mqtt/topic.cpp
@@ -24,7 +25,7 @@ target_include_directories(lir
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>
 )
 target_link_libraries(lir
-  PUBLIC dannan Boost::headers OpenSSL::SSL OpenSSL::Crypto Threads::Threads
+  PUBLIC dannan::dannan Boost::headers OpenSSL::SSL OpenSSL::Crypto Threads::Threads
   PRIVATE lir_warnings
 )
 set_target_properties(lir PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR})

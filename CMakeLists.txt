@@ -28,10 +28,10 @@ find_package(OpenSSL 3 REQUIRED COMPONENTS Crypto SSL)
 find_package(Threads REQUIRED)
 
 # Dannan, the network layer, from the sibling checkout, pinned to one commit
-# and cloned into the build tree, so building Lir never touches ../dannan. Its
-# Context has no tag yet; the pin moves to a tag once one carries it.
+# and cloned into the build tree, so building Lir never touches ../dannan.
+# Moves to find_package(dannan 0.2 CONFIG) once the 0.2.0 tag is cut.
 set(LIR_DANNAN_REPOSITORY "${CMAKE_CURRENT_SOURCE_DIR}/../dannan" CACHE PATH "Dannan's repository")
-set(LIR_DANNAN_COMMIT "63c2f51b50aa486ff05d682970f6e17faaff6404" CACHE STRING "The Dannan commit Lir builds against")
+set(LIR_DANNAN_COMMIT "295ca4bc88a8b18a32d797a62509d55aebfb501a" CACHE STRING "The Dannan commit Lir builds against")
 include(FetchContent)
 FetchContent_Declare(dannan GIT_REPOSITORY "${LIR_DANNAN_REPOSITORY}" GIT_TAG "${LIR_DANNAN_COMMIT}")
 set(DANNAN_BUILD_TESTING OFF CACHE BOOL "" FORCE)
@@ -49,6 +49,7 @@ endif()
 configure_file(lir/include/lir/version.h.in ${PROJECT_BINARY_DIR}/generated/lir/version.h @ONLY)
 
 add_subdirectory(lir)
+add_subdirectory(tools)
 
 if(LIR_BUILD_TESTING)
   find_package(GTest 1.14 CONFIG REQUIRED)
