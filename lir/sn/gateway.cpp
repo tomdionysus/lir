@@ -7,6 +7,9 @@
 
 #include "lir/sn/gateway.h"
 
+#include <openssl/err.h>
+#include <openssl/ssl.h>
+
 #include <array>
 #include <atomic>
 #include <boost/asio/ip/udp.hpp>
@@ -32,7 +35,8 @@ namespace reason = mqtt::reason;
 // gateway decoded.
 class SnConnection final : public contract::Connection {
  public:
-  explicit SnConnection(std::string peer) : _peer(std::move(peer)) {}
+  explicit SnConnection(std::string peer, std::optional<std::string> subject = std::nullopt) : _peer(std::move(peer)), _subject(std::move(subject)) {}
+  std::optional<std::string> certificate_subject() const override { return _subject; }
   void send(Bytes bytes) override {
     if (_closed || !on_packet) return;
     try {
@@ -55,6 +59,7 @@ class SnConnection final : public contract::Connection {
 
  private:
   std::string _peer;
+  std::optional<std::string> _subject;
   bool _closed = false;
 };
 
@@ -64,12 +69,23 @@ struct Address {
   udp::endpoint endpoint;
   std::optional<Bytes> node;
   uint8_t radius = 0;
+  // Over DTLS.
+  bool secure = false;
+  std::string peer() const { return (secure ? "dtls:" : "") + endpoint.address().to_string() + ":" + std::to_string(endpoint.port()); }
   std::string key() const {
-    std::string out = endpoint.address().to_string() + ":" + std::to_string(endpoint.port());
+    std::string out = peer();
     if (node) out += "/" + dannan::identity::hex(*node);
     return out;
   }
 };
+
+// Where the gateway's state hangs on its DTLS context, for the cookie
+// callbacks: an index of its own, since Asio's context owns (and deletes)
+// the app data slot.
+int state_index() {
+  static const int index = SSL_CTX_get_ex_new_index(0, nullptr, nullptr, nullptr, nullptr);
+  return index;
+}
 
 uint8_t sn_code(uint8_t mqtt_reason) {
   if (mqtt_reason < 0x80) return rc::accepted;
@@ -126,13 +142,39 @@ struct Gateway::State : std::enable_shared_from_this<Gateway::State> {
     }
   };
 
+  // One DTLS peer: its session over datagram memory BIOs, fed from and
+  // flushed to the DTLS socket.
+  struct Dtls {
+    SSL* ssl = nullptr;
+    BIO* out = nullptr;
+    Address address;
+    Clock::time_point opened;
+    Clock::time_point last;
+    bool established = false;
+    std::optional<std::string> subject;
+    ~Dtls() {
+      if (ssl) SSL_free(ssl);
+    }
+  };
+
   State(edge::Edge& e, GatewayConfig cfg, dannan::status::ScopedLogger log)
-      : edge(e), config(std::move(cfg)), logger(std::move(log)), socket(e.strand()), timer(e.strand()), advertise_timer(e.strand()) {}
+      : edge(e), config(std::move(cfg)), logger(std::move(log)), socket(e.strand()), dtls_socket(e.strand()), timer(e.strand()), advertise_timer(e.strand()) {}
 
   edge::Edge& edge;
   GatewayConfig config;
   dannan::status::ScopedLogger logger;
   udp::socket socket;
+  udp::socket dtls_socket;
+  std::unique_ptr<asio::ssl::context> dtls_context;
+  dannan::identity::Bytes cookie_secret;
+  std::array<uint8_t, 65536> dtls_buffer{};
+  // Decrypted datagrams, and records to send: on the heap, never on an io
+  // thread's small stack. Neither use nests within itself.
+  std::vector<uint8_t> plain = std::vector<uint8_t>(65536);
+  std::vector<uint8_t> record = std::vector<uint8_t>(65536);
+  udp::endpoint dtls_sender;
+  std::map<std::string, std::unique_ptr<Dtls>> sessions;
+  std::atomic<uint16_t> dtls_port{0};
   asio::steady_timer timer;
   asio::steady_timer advertise_timer;
   std::atomic<uint16_t> port{0};
@@ -153,7 +195,141 @@ struct Gateway::State : std::enable_shared_from_this<Gateway::State> {
   void send_to(const Address& to, const Packet& packet) {
     auto bytes = std::make_shared<Bytes>(encode(packet));
     if (to.node) *bytes = encode(Encapsulated{to.radius, *to.node, *bytes});
+    if (to.secure) return dtls_send(to, *bytes);
     socket.async_send_to(asio::buffer(*bytes), to.endpoint, [bytes](const boost::system::error_code&, size_t) {});
+  }
+
+  // ---- DTLS
+
+  // The cookie a peer must echo (RFC 6347, 4.2.1): an HMAC of its address
+  // under a secret made at start, so no state is held for a forged source.
+  static int make_cookie(SSL* ssl, unsigned char* cookie, unsigned int* length) {
+    const auto* state = static_cast<State*>(SSL_CTX_get_ex_data(SSL_get_SSL_CTX(ssl), state_index()));
+    const auto* peer = static_cast<Dtls*>(SSL_get_app_data(ssl));
+    if (!state || !peer) return 0;
+    const auto key = peer->address.peer();
+    const auto mac = dannan::identity::hmac_sha256(state->cookie_secret, std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(key.data()), key.size()));
+    std::copy(mac.begin(), mac.end(), cookie);
+    *length = static_cast<unsigned int>(mac.size());
+    return 1;
+  }
+  static int check_cookie(SSL* ssl, const unsigned char* cookie, unsigned int length) {
+    unsigned char expected[64];
+    unsigned int expected_length = 0;
+    if (!make_cookie(ssl, expected, &expected_length) || length != expected_length) return 0;
+    return CRYPTO_memcmp(cookie, expected, length) == 0 ? 1 : 0;
+  }
+
+  void dtls_receive() {
+    dtls_socket.async_receive_from(asio::buffer(dtls_buffer), dtls_sender, [weak = weak_from_this()](const boost::system::error_code& ec, size_t got) {
+      const auto s = weak.lock();
+      if (!s || !s->running) return;
+      if (!ec) s->dtls_datagram(std::span<const uint8_t>(s->dtls_buffer.data(), got), s->dtls_sender);
+      s->dtls_receive();
+    });
+  }
+
+  void dtls_datagram(std::span<const uint8_t> bytes, const udp::endpoint& from) {
+    const Address address{from, std::nullopt, 0, true};
+    const auto key = address.peer();
+    auto it = sessions.find(key);
+    if (it == sessions.end()) {
+      size_t handshaking = 0;
+      for (const auto& [k, session] : sessions) handshaking += session->established ? 0 : 1;
+      if (handshaking >= config.maximum_handshakes) return;
+      auto session = std::make_unique<Dtls>();
+      session->ssl = SSL_new(dtls_context->native_handle());
+      BIO* in = BIO_new(BIO_s_dgram_mem());
+      session->out = BIO_new(BIO_s_dgram_mem());
+      SSL_set_bio(session->ssl, in, session->out);
+      SSL_set_accept_state(session->ssl);
+      SSL_set_options(session->ssl, SSL_OP_COOKIE_EXCHANGE | SSL_OP_NO_QUERY_MTU);
+      DTLS_set_link_mtu(session->ssl, 1400);
+      session->address = address;
+      session->opened = Clock::now();
+      SSL_set_app_data(session->ssl, session.get());
+      it = sessions.emplace(key, std::move(session)).first;
+    }
+    auto& session = *it->second;
+    session.last = Clock::now();
+    BIO_write(SSL_get_rbio(session.ssl), bytes.data(), static_cast<int>(bytes.size()));
+    if (!session.established) {
+      const int r = SSL_do_handshake(session.ssl);
+      if (r == 1) {
+        session.established = true;
+        session.subject = edge::verified_subject(session.ssl);
+        ++stats.dtls_sessions;
+      } else {
+        const int error = SSL_get_error(session.ssl, r);
+        if (error != SSL_ERROR_WANT_READ && error != SSL_ERROR_WANT_WRITE) {
+          ERR_clear_error();
+          ++stats.dtls_failed;
+          dtls_flush(session);
+          sessions.erase(it);
+          return;
+        }
+      }
+    }
+    if (session.established) {
+      for (;;) {
+        const int n = SSL_read(session.ssl, plain.data(), static_cast<int>(plain.size()));
+        if (n > 0) {
+          datagram(std::span<const uint8_t>(plain.data(), static_cast<size_t>(n)), address);
+          // The datagram may have ended the session.
+          if (!sessions.contains(key)) return;
+          continue;
+        }
+        const int error = SSL_get_error(session.ssl, n);
+        ERR_clear_error();
+        if (error == SSL_ERROR_ZERO_RETURN || (error != SSL_ERROR_WANT_READ && error != SSL_ERROR_WANT_WRITE)) {
+          // close_notify, or a fatal alert: the session and its client go.
+          if (const auto client = clients.find(address.key()); client != clients.end()) end(client->second, error != SSL_ERROR_ZERO_RETURN, true);
+          dtls_flush(session);
+          sessions.erase(key);
+          return;
+        }
+        break;
+      }
+    }
+    dtls_flush(session);
+  }
+
+  void dtls_send(const Address& to, const Bytes& bytes) {
+    const auto it = sessions.find(to.peer());
+    if (it == sessions.end() || !it->second->established) return;
+    SSL_write(it->second->ssl, bytes.data(), static_cast<int>(bytes.size()));
+    dtls_flush(*it->second);
+  }
+
+  // Every record OpenSSL has written, one datagram each.
+  void dtls_flush(Dtls& session) {
+    for (;;) {
+      const int n = BIO_read(session.out, record.data(), static_cast<int>(record.size()));
+      if (n <= 0) break;
+      auto copy = std::make_shared<Bytes>(record.begin(), record.begin() + n);
+      dtls_socket.async_send_to(asio::buffer(*copy), session.address.endpoint, [copy](const boost::system::error_code&, size_t) {});
+    }
+  }
+
+  // Retransmits a handshake's lost flight, and lets go of peers that never
+  // finished one or have gone quiet with no client.
+  void dtls_check() {
+    const auto now = Clock::now();
+    const auto handshake_timeout = config.dtls ? config.dtls->handshake_timeout : std::chrono::milliseconds(10000);
+    std::vector<std::string> gone;
+    for (auto& [key, session] : sessions) {
+      if (!session->established) {
+        if (now - session->opened > handshake_timeout) {
+          ++stats.dtls_failed;
+          gone.push_back(key);
+          continue;
+        }
+        if (DTLSv1_handle_timeout(session->ssl) > 0) dtls_flush(*session);
+      } else if (!clients.contains(session->address.key()) && now - session->last > std::chrono::minutes(10)) {
+        gone.push_back(key);
+      }
+    }
+    for (const auto& key : gone) sessions.erase(key);
   }
 
   void to_client(Client& c, Packet packet) {
@@ -182,9 +358,10 @@ struct Gateway::State : std::enable_shared_from_this<Gateway::State> {
     });
   }
 
-  void datagram(std::span<const uint8_t> bytes, const udp::endpoint& from) {
+  void datagram(std::span<const uint8_t> bytes, const udp::endpoint& from) { datagram(bytes, Address{from, std::nullopt, 0, false}); }
+
+  void datagram(std::span<const uint8_t> bytes, Address address) {
     ++stats.datagrams_received;
-    Address address{from, std::nullopt, 0};
     Packet packet;
     try {
       packet = decode(bytes);
@@ -258,7 +435,11 @@ struct Gateway::State : std::enable_shared_from_this<Gateway::State> {
   void link(const std::shared_ptr<Client>& client) {
     auto& c = *client;
     c.phase = Client::Phase::connecting;
-    c.connection = std::make_shared<SnConnection>(c.address.key());
+    std::optional<std::string> subject;
+    if (c.address.secure) {
+      if (const auto session = sessions.find(c.address.peer()); session != sessions.end()) subject = session->second->subject;
+    }
+    c.connection = std::make_shared<SnConnection>(c.address.key(), subject);
     std::weak_ptr<State> weak_state = shared_from_this();
     std::weak_ptr<Client> weak_client = client;
     const auto connection = c.connection.get();
@@ -593,6 +774,7 @@ struct Gateway::State : std::enable_shared_from_this<Gateway::State> {
 
   void check() {
     refresh_predefined();
+    if (dtls_context) dtls_check();
     const auto now = Clock::now();
     std::vector<std::shared_ptr<Client>> lost;
     for (const auto& [key, client] : clients) {
@@ -673,10 +855,24 @@ void Gateway::start() {
   s.socket.bind(endpoint);
   s.port = s.socket.local_endpoint().port();
   s.logger.info("MQTT-SN listening on " + s.config.listen_host + ":" + std::to_string(s.port.load()) + " (UDP)");
+  if (const auto& dtls = s.config.dtls) {
+    s.dtls_context = edge::server_context(*dtls, true);
+    SSL_CTX_set_ex_data(s.dtls_context->native_handle(), state_index(), &s);
+    SSL_CTX_set_cookie_generate_cb(s.dtls_context->native_handle(), &State::make_cookie);
+    SSL_CTX_set_cookie_verify_cb(s.dtls_context->native_handle(), &State::check_cookie);
+    s.cookie_secret = dannan::identity::random_bytes(32);
+    const udp::endpoint dtls_endpoint(asio::ip::make_address(dtls->listen_host), dtls->port);
+    s.dtls_socket.open(dtls_endpoint.protocol());
+    s.dtls_socket.set_option(udp::socket::reuse_address(true));
+    s.dtls_socket.bind(dtls_endpoint);
+    s.dtls_port = s.dtls_socket.local_endpoint().port();
+    s.logger.info("MQTT-SN over DTLS listening on " + dtls->listen_host + ":" + std::to_string(s.dtls_port.load()));
+  }
   s.edge.call<bool>([st = _state](broker::Broker&) {
     st->running = true;
     st->refresh_predefined();
     st->receive();
+    if (st->dtls_context) st->dtls_receive();
     st->poll();
     st->advertise();
     return true;
@@ -692,8 +888,14 @@ void Gateway::stop() {
       st->send_to(client->address, Disconnect{});
       st->end(client, false, true);
     }
+    for (auto& [key, session] : st->sessions) {
+      if (session->established) SSL_shutdown(session->ssl);
+      st->dtls_flush(*session);
+    }
+    st->sessions.clear();
     boost::system::error_code ignored;
     st->socket.close(ignored);
+    st->dtls_socket.close(ignored);
     st->timer.cancel();
     st->advertise_timer.cancel();
     return true;
@@ -701,6 +903,8 @@ void Gateway::stop() {
 }
 
 uint16_t Gateway::port() const noexcept { return _state->port.load(); }
+
+uint16_t Gateway::dtls_port() const noexcept { return _state->dtls_port.load(); }
 
 GatewayStats Gateway::stats() {
   return _state->edge.call<GatewayStats>([st = _state](broker::Broker&) { return st->stats; });
