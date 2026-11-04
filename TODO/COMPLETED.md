@@ -500,3 +500,29 @@ Gate: `lir_tests` 251 passed, 0 failed (3 new).
 - The memory part of the "Open for the maintainer" note under memory pressure is
   settled by this.
 
+## 2026-11-04: the rules engine (the maintainer's decisions, sections file)
+
+Gate: `lir_tests` 270 passed, 0 failed (19 new); the cluster tests passed
+twice more.
+
+- `lir/rules/rules.h`, namespace `rules`: a rule is a retained JSON
+  message on `$lir/rules/<name>`, compiled when its retained value lands
+  on a node (locally or from another node), deleted by an empty one, and
+  refused (counted, logged) when it cannot be compiled. Boost.JSON, used
+  header-only and compiled once as Lugh does (Boost is already a
+  dependency; nothing added).
+- Conditions on topic, client, qos, retain, content_type, user.<name>,
+  payload and payload.<path> (= != < <= > >= exists in; all, any, not).
+  An absent value equals nothing: "!=" holds, the rest fail.
+- Actions: republish (templated topic and payload, QoS, retain;
+  transform: pick, rename, add), set (user properties, content type,
+  expiry), drop. Rules apply in name order; set changes the message for
+  later rules and for delivery.
+- In the broker: applied in `route`, on the publishing node, before
+  retaining and fan-out; a rule's own messages are never ruled on.
+  Produced messages pass through the rules again, at most 8 hops
+  (`Message::hops`, never carried between nodes). Writing `$lir/rules/`
+  is the one reserved prefix a client may publish to: retained, and only
+  with a grant to retain there. Counted in `$lir/nodes/<id>` (`rules`).
+- Cluster test: a rule written on one node applies on another.
+

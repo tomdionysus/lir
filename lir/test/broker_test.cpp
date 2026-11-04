@@ -995,6 +995,68 @@ TEST(BrokerThresholds, AFullLedgerRefusesNewClients) {
   EXPECT_EQ(broker.pressure(), Pressure::none);
 }
 
+// ---- the rules engine
+
+TEST_F(BrokerTest, RulesAreRetainedMessagesOnLirRules) {
+  auto admin = connect("admin");
+  auto sub = connect("sub");
+  subscribe(sub, "junk/#", QoS::at_most_once);
+  admin.send(message("$lir/rules/drop-junk", R"({"from": "junk/#", "do": {"drop": true}})", QoS::at_least_once, true, 1));
+  EXPECT_EQ(admin.take_one<mqtt::Ack>().reason, reason::no_matching_subscribers);
+  EXPECT_EQ(broker.rules(), 1u);
+  admin.send(message("junk/a", "x"));
+  EXPECT_TRUE(sub.take_all<mqtt::Publish>().empty());
+  EXPECT_EQ(broker.stats().rules_dropped, 1u);
+  // An empty retained publish deletes the rule.
+  admin.send(message("$lir/rules/drop-junk", "", QoS::at_most_once, true));
+  EXPECT_EQ(broker.rules(), 0u);
+  admin.send(message("junk/a", "x"));
+  EXPECT_EQ(sub.take_all<mqtt::Publish>().size(), 1u);
+}
+
+TEST_F(BrokerTest, ARuleMustBeRetained) {
+  auto admin = connect("admin");
+  admin.send(message("$lir/rules/r", R"({"from": "a", "do": {"drop": true}})", QoS::at_least_once, false, 1));
+  EXPECT_EQ(admin.take_one<mqtt::Ack>().reason, reason::not_authorized);
+  EXPECT_EQ(broker.rules(), 0u);
+}
+
+TEST_F(BrokerTest, AnInvalidRuleIsCountedAndNotHeld) {
+  auto admin = connect("admin");
+  admin.send(message("$lir/rules/bad", "{not json", QoS::at_most_once, true));
+  EXPECT_EQ(broker.rules(), 0u);
+  EXPECT_EQ(broker.stats().rules_invalid, 1u);
+}
+
+TEST_F(BrokerTest, ARepublishedMessageReachesItsSubscribersAndRetains) {
+  auto admin = connect("admin");
+  auto watcher = connect("watcher");
+  subscribe(watcher, "alerts/#", QoS::at_least_once);
+  admin.send(message("$lir/rules/alert", R"({"from": "t/+", "where": {"payload.v": {">": 30}},
+      "do": {"republish": {"topic": "alerts/{1}", "qos": 1, "retain": true, "transform": {"pick": ["v"]}}}})",
+                     QoS::at_most_once, true));
+  admin.send(message("t/hall", R"({"v": 35, "noise": 1})"));
+  admin.send(message("t/hall", R"({"v": 5})"));
+  const auto got = watcher.take_all<mqtt::Publish>();
+  ASSERT_EQ(got.size(), 1u);
+  EXPECT_EQ(got[0].topic, "alerts/hall");
+  EXPECT_EQ(text(got[0]), R"({"v":35})");
+  EXPECT_EQ(broker.retained(), 2u);
+  EXPECT_EQ(broker.stats().rules_republished, 1u);
+}
+
+TEST_F(BrokerTest, ALoopOfRulesStopsAtEightHops) {
+  auto admin = connect("admin");
+  auto watcher = connect("watcher");
+  subscribe(watcher, "loop", QoS::at_most_once);
+  admin.send(message("$lir/rules/loop", R"({"from": "loop", "do": {"republish": {"topic": "loop"}}})", QoS::at_most_once, true));
+  admin.send(message("loop", "x"));
+  // The original and eight generations; the ninth is dropped.
+  EXPECT_EQ(watcher.take_all<mqtt::Publish>().size(), 9u);
+  EXPECT_EQ(broker.stats().rules_republished, 8u);
+  EXPECT_EQ(broker.stats().rules_too_deep, 1u);
+}
+
 // ---- authentication
 
 class ChallengeOnce final : public contract::Authenticator {
@@ -1289,6 +1351,14 @@ TEST_F(BrokerScopesAtReconnect, AResumedThreeOneOneSessionKeepsOnlyWhatTheNewGra
   const auto got = back.take_all<mqtt::Publish>();
   ASSERT_EQ(got.size(), 1u);
   EXPECT_EQ(got[0].topic, "a/1");
+}
+
+TEST_F(BrokerScopes, WritingRulesNeedsARetainGrantThere) {
+  auto client = open();
+  connect(client, "c");
+  client.send(publish("$lir/rules/r", true));
+  EXPECT_EQ(client.take_one<mqtt::Ack>().reason, reason::not_authorized);
+  EXPECT_EQ(broker.rules(), 0u);
 }
 
 }  // namespace

@@ -11,6 +11,7 @@
 
 #include "dannan/identity/crypto.h"
 #include "lir/mqtt/topic.h"
+#include "lir/rules/rules.h"
 
 namespace lir::broker {
 
@@ -390,7 +391,10 @@ void Link::on_publish(mqtt::Publish&& publish) {
     return send(mqtt::Ack{PacketType::pubrec, id, reason::quota_exceeded, {}});
   }
   uint8_t code = reason::success;
-  if (broker.reserved(publish.topic) || !_grant->may_publish(publish.topic, publish.retain)) {
+  // $lir/rules/ is the one reserved prefix a client may write: retained,
+  // by a grant that allows it (the maintainer, 2026-11-04).
+  const bool rule = publish.topic.starts_with(rules::kPrefix) && publish.topic.size() > rules::kPrefix.size() && publish.retain;
+  if ((broker.reserved(publish.topic) && !rule) || !_grant->may_publish(publish.topic, publish.retain)) {
     code = reason::not_authorized;
   } else if (publish.properties.payload_format_indicator == 1 && !mqtt::valid_utf8(as_text(publish.payload))) {
     code = reason::payload_format_invalid;
@@ -568,7 +572,11 @@ void Link::on_auth(const mqtt::Auth& auth) {
 // ---------------------------------------------------------------- Broker
 
 Broker::Broker(Config config, const dannan::contract::TimeSource& time, contract::Authenticator& authenticator, dannan::status::ScopedLogger logger)
-    : _config(std::move(config)), _time(time), _authenticator(authenticator), _logger(std::move(logger)) {}
+    : _config(std::move(config)), _time(time), _authenticator(authenticator), _logger(std::move(logger)), _rules(std::make_unique<rules::RuleSet>()) {}
+
+Broker::~Broker() = default;
+
+size_t Broker::rules() const noexcept { return _rules->size(); }
 
 std::shared_ptr<Link> Broker::accept(std::shared_ptr<contract::Connection> connection) {
   auto link = std::make_shared<Link>(*this, std::move(connection));
@@ -584,6 +592,37 @@ bool Broker::reserved(std::string_view topic) const {
 }
 
 size_t Broker::route(Message message) {
+  // The rules, where the message is published, before anything else
+  // (rules/rules.h); never on a rule itself.
+  std::vector<Message> produced;
+  if (!_rules->empty() && !message.topic.starts_with(rules::kPrefix)) {
+    auto outcome = _rules->apply(message, _time.now());
+    _stats.rules_skipped += outcome.skipped;
+    produced = std::move(outcome.republished);
+    if (outcome.drop) {
+      ++_stats.rules_dropped;
+      message.retain = false;
+    }
+    if (outcome.drop) {
+      for (auto& m : produced) route_produced(std::move(m));
+      return 0;
+    }
+  }
+  const size_t count = route_here(std::move(message));
+  for (auto& m : produced) route_produced(std::move(m));
+  return count;
+}
+
+void Broker::route_produced(Message message) {
+  if (message.hops > rules::kMaximumHops) {
+    ++_stats.rules_too_deep;
+    return;
+  }
+  ++_stats.rules_republished;
+  route(std::move(message));
+}
+
+size_t Broker::route_here(Message message) {
   if (message.retain) {
     message.version = RetainedVersion{++_lamport, _hooks.node};
     apply_retained(message);
@@ -612,6 +651,16 @@ bool Broker::apply_retained(const Message& message) {
     _retained[message.topic] = message;
     charge_retained(footprint(message));
     _cleared.erase(message.topic);
+  }
+  // A rule: held, changed or deleted on every node as its retained value is.
+  if (message.topic.starts_with(rules::kPrefix)) {
+    const auto name = message.topic.substr(rules::kPrefix.size());
+    if (message.payload.empty()) {
+      _rules->erase(name);
+    } else if (const auto invalid = _rules->set(name, as_text(message.payload))) {
+      ++_stats.rules_invalid;
+      _logger.warn("rule " + name + " refused: " + *invalid);
+    }
   }
   return true;
 }
@@ -1158,6 +1207,7 @@ void Broker::poll() {
   std::erase_if(_retained, [this, now](const auto& entry) {
     const bool expired = entry.second.expires_at && *entry.second.expires_at <= now;
     if (expired) charge_retained(-footprint(entry.second));
+    if (expired && entry.first.starts_with(rules::kPrefix)) _rules->erase(entry.first.substr(rules::kPrefix.size()));
     return expired;
   });
   if (pressure() >= Pressure::shed_qos0) shed();

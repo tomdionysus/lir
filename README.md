@@ -74,6 +74,11 @@ Lir is the broker written once for this stack:
   short-lived MQTT client of the broker, so authentication, retained messages and the
   cluster apply exactly as they do to any client. A bearer token is passed to the
   authenticator as the CONNECT password. HTTPS on its own port.
+- **Rules.** Declarative routes, stored as retained JSON on `$lir/rules/<name>`, so MQTT
+  is their API and they replicate to every node: match a topic filter and conditions on
+  JSON payload fields, properties and the publisher, then republish to a templated topic
+  (reshaping the payload if asked), set properties, or drop. Applied where a message is
+  published, before it reaches anyone; chains stop at 8 hops.
 - **Authentication and topic scopes.** A pluggable `Authenticator` decides CONNECT
   and enhanced authentication, and gives each connection a grant: what it may
   publish, retain and subscribe to, as topic filters (`lir:pub:F`, `lir:retain:F`,
@@ -215,6 +220,27 @@ bytes are also leased from the node's Dannan memory ledger, which every system o
 node shares, so when the node as a whole runs short Lir refuses new clients too. Existing sessions are never evicted. `$lir/nodes/<id>` reports the bytes held
 and the pressure, and `$lir/cluster` says whether every node runs the same limits.
 
+### Rules
+
+A rule is a retained message on `$lir/rules/<name>`; an empty retained publish deletes
+it. Writing one needs a grant to retain there (`lir:retain:$lir/rules/#`):
+
+```
+mosquitto_pub ... -r -t '$lir/rules/hot-rooms' -m '{
+  "from": "sensors/+/temp",
+  "where": {"payload.celsius": {">": 30}},
+  "do": [{"republish": {"topic": "alerts/{1}/hot", "qos": 1,
+                        "transform": {"pick": ["celsius"], "add": {"room": "{1}"}}}}]}'
+```
+
+Conditions test `topic`, `client`, `qos`, `retain`, `content_type`, `user.<name>` and
+`payload.<path>` with `=`, `!=`, `<`, `<=`, `>`, `>=`, `exists` and `in`, combined with
+`all`, `any` and `not`. Actions are `republish` (topic templates `{1}`..`{9}`,
+`{topic}`, `{client}`, `{payload.<path>}`; `payload` or `transform` with `pick`,
+`rename`, `add`), `set` (`user`, `content_type`, `expiry`) and `drop`. `lir/rules/rules.h`
+is the reference. A rule that cannot be compiled is refused and counted in
+`$lir/nodes/<id>`.
+
 ### MQTT over WebSocket
 
 ```
@@ -275,7 +301,8 @@ lir/contract/   the Connection and Authenticator contracts
 lir/broker/     the broker: sessions, QoS, retained, wills, shared groups
 lir/edge/       the TCP and TLS listeners
 lir/cluster/    the cluster on Dannan and its codec
-lir/system/     the system topics
+lir/rules/      the rules engine
+lir/system/     the system topics and the memory ledger
 lir/http/       HTTP publish and SSE
 lir/test/       GoogleTest, one binary (lir_tests); fixtures in lir/test/fixtures/
 lir/fuzz/       libFuzzer targets for untrusted bytes
@@ -289,7 +316,7 @@ Conventions, shared with the stack: [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Status
 
 In development; no release is cut yet. The first, 0.1.0, follows persistence on Dagda.
-Built and tested (251 tests): all of MQTT 3.1, 3.1.1 and 5.0 on one node, over TCP, TLS,
+Built and tested (270 tests): all of MQTT 3.1, 3.1.1 and 5.0 on one node, over TCP, TLS,
 WebSocket and WebSocket over TLS; the cluster on Dannan with sessions that move and are mirrored to standbys; system
 topics; HTTP and HTTPS publish and SSE; topic scopes, with anonymous clients
 refused by default; client certificates. The cluster is an interim one until Dagda:
