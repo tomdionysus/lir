@@ -58,7 +58,8 @@ off `develop` when Tom asks for commits.
    decoded with every MUST of the specification checked; topic names,
    filters, `$share` parsing and matching; the subscription trie; the
    shard function. Fuzz target for the decoder. Gate: `lir_tests`.
-2. **The broker on one node.** The protocol engine over an abstract
+2. **The broker on one node.** Done 2026-11-04, gate `lir_tests` 125;
+   see `COMPLETED.md`. The protocol engine over an abstract
    connection, tested without sockets: connect and session takeover,
    clean start and session expiry, QoS 0/1/2 both ways, retained and
    retain handling, wills with delay, message expiry, topic aliases,

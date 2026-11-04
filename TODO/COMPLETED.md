@@ -44,3 +44,38 @@ failed; built with `-DLIR_WARNINGS_AS_ERRORS=ON`, AppleClang 17.
 - `lir/fuzz/mqtt_packet_fuzz.cpp`: decode, re-encode, decode equal.
   Not built here: this machine has no clang with libFuzzer (AppleClang
   only, no MacPorts LLVM).
+
+## 2026-11-04: step 2, the broker on one node
+
+Gate: `lir_tests` 125 passed, 0 failed (52 new); warnings as errors.
+
+- `lir/contract/connection.h`: the transport under a client.
+  `lir/contract/authenticator.h`: connect, enhanced authentication,
+  publish and subscribe authorisation, synchronous by contract;
+  `AllowAll`.
+- `lir/broker/broker.h`: `Broker` and `Link`, confined to one strand,
+  time injected, `poll()` for what time makes due. Covered by tests:
+  CONNECT for all three versions, first packet must be CONNECT,
+  unsupported level (return code 1), assigned client ids, 3.x id rules,
+  second CONNECT, packets in any split, inbound maximum packet size;
+  QoS 0/1/2 in both directions with QoS 2 dedup until PUBREL, PUBREL
+  for an unknown id, "no matching subscribers", the client's and the
+  server's receive maximum; wildcards and the `$` rule, overlapping
+  subscriptions (one delivery, greatest QoS, every identifier), No
+  Local, per-filter refusals, unsubscribe reasons, shared
+  subscriptions (in turn, connected members first, no retained, No
+  Local refused); retained messages (sent on subscribe, cleared by an
+  empty payload, Retain As Published, Retain Handling 0/1/2);
+  persistent sessions (QoS 1/2 queued offline, QoS 0 dropped, resend
+  with DUP, clean start, session expiry, expiry 0 at disconnect, the
+  DISCONNECT expiry rule), takeover, keep alive at 1.5 periods, connect
+  timeout; wills (abnormal close, DISCONNECT 0x00 and 0x04, delay,
+  cancelled by reconnecting, cut short by session end); inbound topic
+  aliases, message expiry (counted down, queued messages dropped), 5.0
+  properties forwarded, the client's maximum packet size, reserved
+  `$lir/` and `$dannan/` prefixes, payload format checks, wildcard in a
+  topic name; enhanced authentication and authorisation.
+- Not done, all optional in the specification (MAY): topic aliases from
+  server to client, Response Information, queueing QoS 0 for offline
+  sessions. Server Reference (redirecting a client) waits for the
+  cluster, where it means something.

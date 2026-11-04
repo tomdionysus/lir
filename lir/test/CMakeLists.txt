@@ -6,6 +6,7 @@
 #
 
 add_executable(lir_tests
+  broker_test.cpp
   mqtt_packet_test.cpp
   mqtt_properties_test.cpp
   mqtt_topic_test.cpp
