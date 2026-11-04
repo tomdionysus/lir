@@ -195,14 +195,12 @@ TEST_F(HttpTest, AStreamThatCloses_LeavesTheBroker) {
 class TokenOnly final : public contract::Authenticator {
  public:
   contract::AuthDecision connect(const mqtt::Connect& c) override {
-    return c.password == mqtt::Bytes{'g', 'o', 'o', 'd'} ? contract::AuthDecision::accept()
+    return c.password == mqtt::Bytes{'g', 'o', 'o', 'd'} ? contract::AuthDecision::accept(std::make_shared<contract::Unrestricted>())
                                                          : contract::AuthDecision::refuse(mqtt::reason::bad_user_name_or_password);
   }
   contract::AuthDecision auth(const std::string&, const std::string&, const mqtt::Bytes&) override {
     return contract::AuthDecision::refuse(mqtt::reason::bad_authentication_method);
   }
-  bool may_publish(const std::string&, std::string_view) override { return true; }
-  bool may_subscribe(const std::string&, std::string_view) override { return true; }
 };
 
 TokenOnly token_only;

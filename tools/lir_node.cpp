@@ -23,7 +23,15 @@
 //            [--session-standbys N] [--http-port N|-1] [--http-listen ADDR]
 //            [--mqtt-tls-port N --tls-certificate PEM --tls-key PEM]
 //            [--mqtt-tls-listen ADDR] [--https-port N] [--https-listen ADDR]
+//            [--allow-anonymous [--anonymous-scope SCOPE]...]
 //   lir-node --version
+//
+// Clients are refused unless --allow-anonymous is given (design, section
+// 1); until the Lugh plugin there is nothing to check a credential against,
+// so a client presenting one is refused too. An anonymous client may do
+// what the --anonymous-scope values say ("lir:pub:F", "lir:sub:F",
+// "lir:retain:F"; auth/scopes.h), or anything but write the system topics
+// when none is given.
 
 #include <signal.h>
 
@@ -39,6 +47,7 @@
 #include <vector>
 
 #include "dannan/node.h"
+#include "lir/auth/scopes.h"
 #include "lir/cluster/cluster.h"
 #include "lir/edge/edge.h"
 #include "lir/http/http.h"
@@ -87,6 +96,8 @@ struct Options {
   // -1: no HTTPS listener. Uses --tls-certificate and --tls-key.
   int https_port = -1;
   std::string https_listen = "0.0.0.0";
+  bool allow_anonymous = false;
+  std::vector<std::string> anonymous_scopes;
 };
 
 dannan::net::Endpoint endpoint(const std::string& text) {
@@ -137,6 +148,10 @@ Options parse(int argc, char** argv) {
       out.mqtt_tls_port = std::stoi(value());
     else if (option == "--https-port")
       out.https_port = std::stoi(value());
+    else if (option == "--allow-anonymous")
+      out.allow_anonymous = true;
+    else if (option == "--anonymous-scope")
+      out.anonymous_scopes.push_back(value());
     else if (option == "--https-listen")
       out.https_listen = value();
     else if (option == "--mqtt-tls-listen")
@@ -225,8 +240,18 @@ int main(int argc, char** argv) {
     if (options.mqtt_tls_port >= 0) {
       edge_config.tls = lir::edge::TlsConfig{options.mqtt_tls_listen, static_cast<uint16_t>(options.mqtt_tls_port), options.tls_certificate, options.tls_key};
     }
-    lir::contract::AllowAll allow;
-    lir::edge::Edge edge(io, edge_config, dannan::contract::steady_time_source(), allow, node.context().logger("lir"));
+    std::optional<lir::auth::TopicScopes> anonymous;
+    if (options.allow_anonymous) {
+      if (options.anonymous_scopes.empty()) {
+        anonymous = lir::auth::default_anonymous_scopes();
+      } else {
+        auto parsed = lir::auth::parse_scopes(options.anonymous_scopes);
+        if (!parsed.refused.empty()) throw std::runtime_error("--anonymous-scope: not a topic scope: " + parsed.refused.front());
+        anonymous = std::move(parsed.scopes);
+      }
+    }
+    lir::auth::AnonymousAuthenticator authenticator(std::move(anonymous));
+    lir::edge::Edge edge(io, edge_config, dannan::contract::steady_time_source(), authenticator, node.context().logger("lir"));
     // The cluster's routes are registered before the node starts.
     lir::cluster::ClusterConfig cluster_config;
     cluster_config.session_standbys = options.session_standbys;

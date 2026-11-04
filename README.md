@@ -60,8 +60,13 @@ Lir is the broker written once for this stack:
   short-lived MQTT client of the broker, so authentication, retained messages and the
   cluster apply exactly as they do to any client. A bearer token is passed to the
   authenticator as the CONNECT password. HTTPS on its own port.
-- **Pluggable authentication.** An `Authenticator` decides CONNECT, enhanced
-  authentication, and each publish and subscribe.
+- **Authentication and topic scopes.** A pluggable `Authenticator` decides CONNECT
+  and enhanced authentication, and gives each connection a grant: what it may
+  publish, retain and subscribe to, as topic filters (`lir:pub:F`, `lir:retain:F`,
+  `lir:sub:F`, the grammar proposed for Lugh's tokens). Every publish, will and
+  subscribe is checked against it, and the connection is closed when the
+  credential behind it ends. Anonymous clients are refused unless a node allows
+  them.
 
 ## The stack
 
@@ -116,11 +121,21 @@ It reports what it does as one JSON object per line.
 
 ```
 printf '%s' 'a long shared secret' > cluster.key
-./build/lir-node --key cluster.key --state ./a --advertise 127.0.0.1
+./build/lir-node --key cluster.key --state ./a --advertise 127.0.0.1 --allow-anonymous
 #   {"event":"listening","id":"...","port":7437,"mqtt_port":1883,"http_port":8083,...}
 ```
 
-Any MQTT client can now use it:
+Clients are refused unless `--allow-anonymous` is given; until the Lugh
+authenticator there is nothing to check a credential against. An anonymous client
+may publish, retain and subscribe anywhere and read the system topics, or only
+what `--anonymous-scope` allows, repeated:
+
+```
+./build/lir-node ... --allow-anonymous \
+  --anonymous-scope 'lir:sub:sensors/#' --anonymous-scope 'lir:pub:sensors/#'
+```
+
+Any MQTT client can now use the node:
 
 ```
 mosquitto_sub -h 127.0.0.1 -p 1883 -t 'sensors/#' -V mqttv5 &
@@ -134,7 +149,7 @@ joined, every node is equal.
 
 ```
 ./build/lir-node --key cluster.key --state ./b --advertise 127.0.0.1 --port 7438 \
-  --mqtt-port 1884 --http-port 8084 --bootstrap 127.0.0.1:7437
+  --mqtt-port 1884 --http-port 8084 --bootstrap 127.0.0.1:7437 --allow-anonymous
 ```
 
 A subscriber on one node receives what is published on the other, retained messages are
@@ -173,6 +188,7 @@ start and stop them.
 ## Repository layout
 
 ```
+lir/auth/       topic scopes, grants and the node's anonymous authenticator
 lir/mqtt/       the MQTT codec: wire, properties, packets, topics
 lir/subs/       the subscription trie
 lir/shard/      topic shards and ownership prefixes
@@ -194,13 +210,14 @@ Conventions, shared with the stack: [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Status
 
 In development; no release is cut yet. The first, 0.1.0, follows persistence on Dagda.
-Built and tested (170 tests): all of MQTT 3.1, 3.1.1 and 5.0 on one node, over TCP and
+Built and tested (199 tests): all of MQTT 3.1, 3.1.1 and 5.0 on one node, over TCP and
 TLS; the cluster on Dannan with sessions that move and are mirrored to standbys; system
-topics; HTTP and HTTPS publish and SSE. The cluster is an interim one until Dagda:
+topics; HTTP and HTTPS publish and SSE; topic scopes, with anonymous clients
+refused by default. The cluster is an interim one until Dagda:
 retained messages are held in memory on every node and a QoS 1 or 2 publish is
-acknowledged on acceptance, not on replication. Next: topic scopes through Dannan's
-scope check, refusing anonymous clients by default, MQTT over WebSockets, then
-persistence on Dagda and the Lugh authenticator.
+acknowledged on acceptance, not on replication. Next: MQTT over WebSockets, the remaining
+system topics, client certificates, then persistence on Dagda and the Lugh
+authenticator.
 
 ## Licence
 
