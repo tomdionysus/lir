@@ -30,7 +30,10 @@
 //   which gives it to one member session.
 // - Sessions live where their client is connected and move when it
 //   connects elsewhere: the new node asks every other to let go
-//   (lir.session_take), and takes the session if one had it.
+//   (lir.session_take), and takes the session if one had it. Each
+//   persistent session is mirrored to `session_standbys` other nodes
+//   (lir.session_mirror); when its node goes, the first standby takes it
+//   up offline, and a client connecting anywhere gets it from there.
 //
 // Thread safety: every member is touched on the edge's strand; the route
 // handlers Dannan calls on its own threads reach the broker through the
@@ -41,6 +44,7 @@ namespace lir::cluster {
 inline constexpr dannan::net::MessageType snapshot_type{0x4C00};
 inline constexpr dannan::net::MessageType take_type{0x4C01};
 inline constexpr dannan::net::MessageType shared_type{0x4C02};
+inline constexpr dannan::net::MessageType mirror_type{0x4C03};
 
 struct ClusterConfig {
   // How long a node waits for a peer's answer.
@@ -49,6 +53,11 @@ struct ClusterConfig {
   std::chrono::milliseconds resync_every{30000};
   // Each stream channel's replay buffer.
   size_t replay_bytes = 4u << 20;
+  // Other nodes each persistent session is mirrored to, in memory, until
+  // sessions live in Dagda (the maintainer, 2026-11-04: configurable). Zero: none.
+  size_t session_standbys = 1;
+  // How often changed sessions are sent to their standbys.
+  std::chrono::milliseconds mirror_every{100};
 };
 
 class Cluster {

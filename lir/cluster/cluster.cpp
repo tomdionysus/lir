@@ -13,6 +13,7 @@
 #include <map>
 #include <tuple>
 
+#include "dannan/placement/placement.h"
 #include "lir/cluster/codec.h"
 #include "lir/mqtt/topic.h"
 
@@ -55,7 +56,7 @@ bool ok(const dannan::net::CallOutcome& outcome) {
 
 struct Cluster::State : std::enable_shared_from_this<Cluster::State> {
   State(dannan::Context& c, edge::Edge& e, ClusterConfig cfg)
-      : context(c), edge(e), config(cfg), logger(c.logger("lir.cluster")), self(c.identity().id()), timer(e.strand()) {}
+      : context(c), edge(e), config(cfg), logger(c.logger("lir.cluster")), self(c.identity().id()), timer(e.strand()), mirror_timer(e.strand()) {}
 
   dannan::Context& context;
   edge::Edge& edge;
@@ -63,6 +64,15 @@ struct Cluster::State : std::enable_shared_from_this<Cluster::State> {
   dannan::status::ScopedLogger logger;
   NodeId self;
   asio::steady_timer timer;
+  asio::steady_timer mirror_timer;
+
+  // A standby's copy of a session another node holds.
+  struct Held {
+    NodeId owner;
+    broker::SessionImage image;
+    // When the owner was seen to go; the session's expiry runs from then.
+    std::optional<dannan::contract::TimePoint> owner_gone;
+  };
 
   // On the strand from here on.
   bool running = false;
@@ -77,6 +87,7 @@ struct Cluster::State : std::enable_shared_from_this<Cluster::State> {
   std::map<std::pair<std::string, std::string>, size_t> turn;
   std::map<std::tuple<NodeId, NodeId, std::string>, uint64_t> last_sequence;
   bool interest_pending = false;
+  std::map<std::string, Held> mirrors;
 
   broker::Broker& broker() { return edge.broker(); }
   dannan::contract::TimePoint now() { return context.time().now(); }
@@ -235,17 +246,27 @@ struct Cluster::State : std::enable_shared_from_this<Cluster::State> {
     context.channels().publish(groups_channel, "groups", encode_groups(local_groups));
   }
 
+  // Asks every peer to let go of the client. A live session wins over a
+  // standby's mirror, which is only taken when no node had it live.
   void take(const std::string& client_id, bool want_state, std::function<void(std::optional<broker::SessionImage>)> done) {
     struct Gathering {
       size_t waiting = 0;
-      std::optional<broker::SessionImage> image;
+      std::optional<broker::SessionImage> live;
+      std::optional<broker::SessionImage> mirror;
       std::function<void(std::optional<broker::SessionImage>)> done;
+      void finish() {
+        if (!want) return done(std::nullopt);
+        done(live ? std::move(live) : std::move(mirror));
+      }
+      bool want = false;
     };
     auto gathering = std::make_shared<Gathering>();
     gathering->done = std::move(done);
+    gathering->want = want_state;
     gathering->waiting = peers.size();
+    if (auto held = mirrors.extract(client_id)) gathering->mirror = std::move(held.mapped().image);
     if (peers.empty()) {
-      asio::post(edge.strand(), [gathering] { gathering->done(std::nullopt); });
+      asio::post(edge.strand(), [gathering] { gathering->finish(); });
       return;
     }
     const auto request = encode_take(Take{client_id, want_state});
@@ -255,15 +276,105 @@ struct Cluster::State : std::enable_shared_from_this<Cluster::State> {
                             [weak, gathering](dannan::net::CallOutcome outcome) {
                               if (const auto s = weak.lock(); s && ok(outcome)) {
                                 try {
-                                  auto image = decode_taken(outcome.reply->payload, s->now());
-                                  if (image && !gathering->image) gathering->image = std::move(image);
+                                  auto taken = decode_taken(outcome.reply->payload, s->now());
+                                  auto& slot = taken.mirror ? gathering->mirror : gathering->live;
+                                  if (taken.image && !slot) slot = std::move(taken.image);
                                 } catch (const std::exception& e) {
                                   s->logger.warn(std::string("a session handed over could not be read: ") + e.what());
                                 }
                               }
-                              if (--gathering->waiting == 0) gathering->done(std::move(gathering->image));
+                              if (--gathering->waiting == 0) gathering->finish();
                             });
     }
+  }
+
+  // The standbys for a client's session: the first `session_standbys`
+  // other Lir nodes in rendezvous order over its key.
+  std::vector<NodeRecord> standbys(const std::string& client_id) const {
+    if (config.session_standbys == 0) return {};
+    std::vector<NodeRecord> nodes;
+    for (const auto& [id, peer] : peers) nodes.push_back(peer);
+    const std::string key = "lir-session:" + client_id;
+    return dannan::placement::rendezvous(std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(key.data()), key.size()), nodes, config.session_standbys);
+  }
+
+  // What changed in this node's persistent sessions goes to their
+  // standbys, at most every mirror_every.
+  void mirror() {
+    mirror_timer.expires_after(config.mirror_every);
+    mirror_timer.async_wait([weak = weak_from_this()](const boost::system::error_code& ec) {
+      const auto s = weak.lock();
+      if (ec || !s || !s->running) return;
+      s->flush_mirrors();
+      s->expire_mirrors();
+      s->mirror();
+    });
+  }
+
+  void flush_mirrors() {
+    if (config.session_standbys == 0) return;
+    auto changes = broker().take_changes();
+    for (auto& image : changes.changed) {
+      const std::string id = image.client_id;
+      send_mirror(Mirror{id, std::move(image)});
+    }
+    for (const auto& id : changes.ended) send_mirror(Mirror{id, std::nullopt});
+  }
+
+  void send_mirror(const Mirror& mirror) {
+    const auto payload = encode_mirror(mirror, now());
+    for (const auto& standby : standbys(mirror.client_id)) {
+      context.routes().call(standby, mirror_type, payload, dannan::sched::FrameType::control, config.call_deadline, edge.strand(),
+                            [weak = weak_from_this(), id = standby.id](dannan::net::CallOutcome outcome) {
+                              const auto s = weak.lock();
+                              if (s && !ok(outcome)) s->logger.info("a session mirror to " + dannan::identity::to_string(id) + " failed: " + outcome.failure);
+                            });
+    }
+  }
+
+  void hold(const NodeId& owner, Mirror mirror) {
+    if (!mirror.image) {
+      if (const auto it = mirrors.find(mirror.client_id); it != mirrors.end() && it->second.owner == owner) mirrors.erase(it);
+      return;
+    }
+    mirrors[mirror.client_id] = Held{owner, std::move(*mirror.image), std::nullopt};
+  }
+
+  // A node is gone, or restarted with nothing: the first standby of each
+  // of its sessions takes the session up, offline, so what is published
+  // for it is queued here; the others note when it went.
+  void owner_gone(const NodeId& owner) {
+    std::vector<std::string> adopt;
+    for (auto& [client, held] : mirrors) {
+      if (held.owner != owner) continue;
+      const auto order = standbys_with_self(client);
+      if (!order.empty() && order.front().id == self) {
+        adopt.push_back(client);
+      } else if (!held.owner_gone) {
+        held.owner_gone = now();
+      }
+    }
+    for (const auto& client : adopt) {
+      auto held = mirrors.extract(client);
+      if (broker().adopt(std::move(held.mapped().image))) logger.info("took up the session of " + client + " from a mirror");
+    }
+  }
+
+  // The rendezvous order over every Lir node, this one included.
+  std::vector<NodeRecord> standbys_with_self(const std::string& client_id) const {
+    std::vector<NodeRecord> nodes;
+    for (const auto& [id, peer] : peers) nodes.push_back(peer);
+    nodes.push_back(context.nodes().self());
+    const std::string key = "lir-session:" + client_id;
+    return dannan::placement::rendezvous(std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(key.data()), key.size()), nodes, nodes.size());
+  }
+
+  void expire_mirrors() {
+    const auto t = now();
+    std::erase_if(mirrors, [t](const auto& entry) {
+      const auto& held = entry.second;
+      return held.owner_gone && held.image.expiry_interval != 0xFFFFFFFF && t - *held.owner_gone > std::chrono::seconds(held.image.expiry_interval);
+    });
   }
 
   // ---- the roster
@@ -273,14 +384,23 @@ struct Cluster::State : std::enable_shared_from_this<Cluster::State> {
     const auto& node = change.node;
     if (node.id == self) return;
     if (change.kind == dannan::RosterChange::Kind::left || !node.advert(advert)) {
-      peers.erase(node.id);
+      const bool was_peer = peers.erase(node.id) > 0;
       remote_groups.erase(node.id);
+      if (was_peer) {
+        owner_gone(node.id);
+        broker().touch_all();
+      }
       return;
     }
     const auto known = peers.find(node.id);
-    const bool fresh_peer = known == peers.end() || known->second.incarnation != node.incarnation;
+    const bool restarted = known != peers.end() && known->second.incarnation != node.incarnation;
+    const bool fresh_peer = known == peers.end() || restarted;
     peers[node.id] = node;
     if (!fresh_peer) return;
+    // A restarted node holds none of the sessions it had.
+    if (restarted) owner_gone(node.id);
+    // The standby sets may have moved.
+    broker().touch_all();
     remote_groups.erase(node.id);
     catch_up(node);
     publish_groups(true);
@@ -343,8 +463,28 @@ Cluster::Cluster(dannan::Context& context, edge::Edge& edge, ClusterConfig confi
                if (!s) return dannan::net::Handled::failed(503, "stopping", "Lir is stopping");
                try {
                  const auto take = decode_take(request.payload);
-                 auto payload = s->edge.call<Bytes>([&](broker::Broker& b) { return encode_taken(b.surrender(take.client_id, take.want_state), s->now()); });
+                 auto payload = s->edge.call<Bytes>([&](broker::Broker& b) {
+                   Taken taken{b.surrender(take.client_id, take.want_state), false};
+                   // Whoever takes the client, this node's copy is stale now.
+                   auto held = s->mirrors.extract(take.client_id);
+                   if (!taken.image && take.want_state && held) taken = Taken{std::move(held.mapped().image), true};
+                   return encode_taken(taken, s->now());
+                 });
                  return dannan::net::Handled::processed({dannan::net::message::ok, std::move(payload), {}});
+               } catch (const dannan::net::DecodeError& e) {
+                 return bad(e);
+               }
+             });
+  routes.add(mirror_type, {"lir.session_mirror", dannan::net::Lanes::control, dannan::net::Frames::any, false},
+             [weak, bad](const NodeRecord& peer, dannan::sched::FrameType, const dannan::net::Message& request) {
+               const auto s = weak.lock();
+               if (!s) return dannan::net::Handled::failed(503, "stopping", "Lir is stopping");
+               try {
+                 auto mirror = decode_mirror(request.payload, s->now());
+                 asio::post(s->edge.strand(), [weak, owner = peer.id, mirror = std::move(mirror)]() mutable {
+                   if (const auto st = weak.lock(); st && st->running) st->hold(owner, std::move(mirror));
+                 });
+                 return dannan::net::Handled::processed();
                } catch (const dannan::net::DecodeError& e) {
                  return bad(e);
                }
@@ -400,6 +540,7 @@ void Cluster::start() {
       if (const auto st = weak.lock()) st->on_roster(change);
     });
     s->resync();
+    s->mirror();
     return true;
   });
 }
@@ -420,6 +561,7 @@ void Cluster::stop() {
     s->fixed_subscriptions.clear();
     s->prefixes.clear();
     s->timer.cancel();
+    s->mirror_timer.cancel();
     return true;
   });
   if (!was_running) return;
@@ -428,6 +570,7 @@ void Cluster::stop() {
   routes.unbind(snapshot_type);
   routes.unbind(take_type);
   routes.unbind(shared_type);
+  routes.unbind(mirror_type);
 }
 
 }  // namespace lir::cluster

@@ -156,3 +156,29 @@ numbers free from 512 (the maintainer); `lir` advertised, one process per node
 (the maintainer); k-of-N durability is Dagda's Replicated (the maintainer). The per-origin
 sequence lives in a Dagda node-local space and never goes back (with
 Dannan and Dagda; `durability_epoch` is unordered, for dedup only).
+
+## 2026-11-04: session standbys (the maintainer's answer 2)
+
+Gate: `lir_tests` 152 passed, 0 failed; cluster and process tests five
+repeats clean.
+
+- The broker marks persistent sessions (expiry above 0) as changed after
+  every packet their link handles and at delivery, connect, disconnect,
+  import and end; `take_changes()` hands them over as images, with those
+  that ended or left; `adopt()` takes up a mirrored session offline.
+- The cluster sends changed sessions to `session_standbys` other Lir
+  nodes (rendezvous over the client id; default one, `lir-node
+  --session-standbys N`, zero for none) at most every `mirror_every`
+  (100 ms), on route `0x4C03` lir.session_mirror. A standby holds the
+  image. When the owner leaves the roster or restarts, the first node in
+  rendezvous order takes the session up offline (subscribed, queueing);
+  the others note when the owner went and drop the copy once the
+  session's expiry has run from then. A session take prefers a live
+  session to a mirror, and every node drops its copy of a client that
+  is taken.
+- Limits, until step 5: a change made in the last `mirror_every` before
+  a node dies is lost; a partition can leave a live session on one side
+  and an adopted one on the other.
+- Test: a persistent session survives its node being stopped: taken up
+  by its standby, receiving a QoS 1 message published meanwhile, and
+  resumed by its client on another node with that message.

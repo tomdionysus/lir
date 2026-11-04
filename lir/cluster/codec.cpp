@@ -284,19 +284,41 @@ Take decode_take(std::span<const uint8_t> bytes) {
   return take;
 }
 
-Bytes encode_taken(const std::optional<broker::SessionImage>& image, TimePoint now) {
+Bytes encode_taken(const Taken& taken, TimePoint now) {
   Writer w;
   header(w);
-  w.u8(image ? 1 : 0);
-  if (image) write_image(w, *image, now);
+  w.u8(!taken.image ? 0 : taken.mirror ? 2 : 1);
+  if (taken.image) write_image(w, *taken.image, now);
   return w.take();
 }
 
-std::optional<broker::SessionImage> decode_taken(std::span<const uint8_t> bytes, TimePoint now) {
+Taken decode_taken(std::span<const uint8_t> bytes, TimePoint now) {
   Reader r(bytes);
   header(r);
-  std::optional<broker::SessionImage> out;
-  if (present(r)) out = read_image(r, now);
+  Taken out;
+  const uint8_t kind = r.u8();
+  if (kind > 2) throw DecodeError("unknown session answer");
+  if (kind > 0) out.image = read_image(r, now);
+  out.mirror = kind == 2;
+  r.finish();
+  return out;
+}
+
+Bytes encode_mirror(const Mirror& mirror, TimePoint now) {
+  Writer w;
+  header(w);
+  w.string(mirror.client_id);
+  w.u8(mirror.image ? 1 : 0);
+  if (mirror.image) write_image(w, *mirror.image, now);
+  return w.take();
+}
+
+Mirror decode_mirror(std::span<const uint8_t> bytes, TimePoint now) {
+  Reader r(bytes);
+  header(r);
+  Mirror out;
+  out.client_id = r.string();
+  if (present(r)) out.image = read_image(r, now);
   r.finish();
   return out;
 }

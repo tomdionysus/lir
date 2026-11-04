@@ -50,9 +50,23 @@ struct Take {
 Bytes encode_take(const Take& take);
 Take decode_take(std::span<const uint8_t> bytes);
 
-// The answer: the session, if this node held one.
-Bytes encode_taken(const std::optional<broker::SessionImage>& image, TimePoint now);
-std::optional<broker::SessionImage> decode_taken(std::span<const uint8_t> bytes, TimePoint now);
+// The answer: the session, if this node held one, and whether it was the
+// live session or a standby's mirror of it.
+struct Taken {
+  std::optional<broker::SessionImage> image;
+  bool mirror = false;
+};
+Bytes encode_taken(const Taken& taken, TimePoint now);
+Taken decode_taken(std::span<const uint8_t> bytes, TimePoint now);
+
+// A session's owner to its standbys: the session as it now is, or that it
+// has ended (or left the owner).
+struct Mirror {
+  std::string client_id;
+  std::optional<broker::SessionImage> image;
+};
+Bytes encode_mirror(const Mirror& mirror, TimePoint now);
+Mirror decode_mirror(std::span<const uint8_t> bytes, TimePoint now);
 
 // A message for one member of a shared group on the receiving node.
 struct SharedDelivery {
