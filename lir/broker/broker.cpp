@@ -172,6 +172,7 @@ void Link::refuse_connect(uint8_t code) {
 void Link::on_connect(mqtt::Connect&& connect) {
   const auto& config = _broker._config;
   _version = connect.version;
+  if (_broker.clients() >= config.maximum_connections) return refuse_connect(reason::server_busy);
   if (connect.will) {
     const auto& will = *connect.will;
     if (!mqtt::valid_topic_name(will.topic)) return refuse_connect(reason::topic_name_invalid);
@@ -993,6 +994,13 @@ void Broker::detach(Link& link, bool publish_will) {
   } else if (expiry != never) {
     if (const auto again = _sessions.find(client_id); again != _sessions.end()) again->second->expires_at = _time.now() + std::chrono::seconds(expiry);
   }
+}
+
+size_t Broker::clients() const noexcept {
+  return static_cast<size_t>(std::count_if(_links.begin(), _links.end(), [](const auto& entry) {
+    const auto state = entry.second->_state;
+    return state == Link::State::connected || state == Link::State::authenticating || state == Link::State::taking;
+  }));
 }
 
 void Broker::observe(std::function<void(const ClientEvent&)> observer) { _observer = std::move(observer); }

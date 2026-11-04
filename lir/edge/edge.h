@@ -70,7 +70,7 @@ struct EdgeConfig {
   // Zero: any; port() says which.
   uint16_t port = 1883;
   // Bytes queued for one client before it is closed as too slow.
-  size_t maximum_outbound_bytes = 16u << 20;
+  size_t maximum_outbound_bytes = 4u << 20;
   // How often the broker's poll() runs: keep alive, wills, expiry.
   std::chrono::milliseconds poll_every{1000};
   broker::Config broker;
