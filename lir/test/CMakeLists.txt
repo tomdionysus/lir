@@ -10,6 +10,7 @@ add_executable(lir_tests
   cluster_test.cpp
   cluster_codec_test.cpp
   edge_test.cpp
+  http_test.cpp
   mqtt_packet_test.cpp
   mqtt_properties_test.cpp
   mqtt_topic_test.cpp

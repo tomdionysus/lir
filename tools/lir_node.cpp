@@ -9,7 +9,7 @@
 // network) that advertises "lir" and serves MQTT on its own port. It
 // reports what it does as one JSON object per line on stdout:
 //
-//   {"event":"listening","id":"...","port":N,"mqtt_port":M}
+//   {"event":"listening","id":"...","port":N,"mqtt_port":M,"http_port":H}
 //   {"event":"status","connections":N,"sessions":N,"retained":N,...}   every --status-ms
 //   {"event":"stopped"}
 //
@@ -20,7 +20,7 @@
 //            [--bootstrap HOST:PORT]... [--name NAME] [--domain NAME]
 //            [--heartbeat-ms N] [--status-ms N] [--seconds N]
 //            [--log-level LEVEL] [--log-format text|json]
-//            [--session-standbys N]
+//            [--session-standbys N] [--http-port N|-1] [--http-listen ADDR]
 //   lir-node --version
 
 #include <signal.h>
@@ -30,6 +30,7 @@
 #include <chrono>
 #include <iostream>
 #include <mutex>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -38,6 +39,7 @@
 #include "dannan/node.h"
 #include "lir/cluster/cluster.h"
 #include "lir/edge/edge.h"
+#include "lir/http/http.h"
 #include "lir/system/system.h"
 #include "lir/version.h"
 
@@ -72,6 +74,9 @@ struct Options {
   dannan::status::LogFormat log_format = dannan::status::LogFormat::text;
   bool version = false;
   size_t session_standbys = 1;
+  std::string http_listen = "0.0.0.0";
+  // -1: no HTTP endpoint.
+  int http_port = 8083;
 };
 
 dannan::net::Endpoint endpoint(const std::string& text) {
@@ -118,6 +123,10 @@ Options parse(int argc, char** argv) {
       out.seconds = std::stoi(value());
     else if (option == "--log-level")
       out.log_level = dannan::status::parse_log_level(value());
+    else if (option == "--http-port")
+      out.http_port = std::stoi(value());
+    else if (option == "--http-listen")
+      out.http_listen = value();
     else if (option == "--session-standbys")
       out.session_standbys = static_cast<size_t>(std::stoul(value()));
     else if (option == "--log-format")
@@ -200,8 +209,16 @@ int main(int argc, char** argv) {
     edge.start();
     lir::system::SystemTopics system(node.context(), edge);
     system.start();
+    std::optional<lir::http::HttpServer> http;
+    if (options.http_port >= 0) {
+      lir::http::HttpConfig http_config;
+      http_config.listen_host = options.http_listen;
+      http_config.port = static_cast<uint16_t>(options.http_port);
+      http.emplace(io, edge, http_config, node.context().logger("lir.http"));
+      http->start();
+    }
     say("{\"event\":\"listening\",\"id\":\"" + dannan::identity::to_string(node.context().identity().id()) + "\",\"port\":" + std::to_string(node.port()) +
-        ",\"mqtt_port\":" + std::to_string(edge.port()) + "}");
+        ",\"mqtt_port\":" + std::to_string(edge.port()) + ",\"http_port\":" + std::to_string(http ? http->port() : 0) + "}");
 
     const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(options.seconds);
     auto next_status = std::chrono::steady_clock::now() + options.status;
@@ -212,6 +229,7 @@ int main(int argc, char** argv) {
       }
       std::this_thread::sleep_for(50ms);
     }
+    if (http) http->stop();
     system.stop();
     edge.stop();
     cluster.stop();
