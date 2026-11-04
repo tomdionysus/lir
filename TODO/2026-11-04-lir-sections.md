@@ -101,3 +101,36 @@ Left open:
   it may be strengthened later.
 - The grammar of scopes in Lugh tokens is Lugh's to define; Lir waits for it
   (separation of concerns).
+
+## Further decisions (the maintainer, 2026-11-04, asked in turn)
+
+Rules engine:
+
+- Form: each rule is a retained JSON message on `$lir/rules/<name>`, so MQTT is the API,
+  rules replicate like any retained message, an empty publish deletes one, and topic
+  scopes say who may write them. An SQL form may come later.
+- Actions: republish (templated topic: `{1}` the first wildcard level, `{topic}` the
+  whole; optional QoS, retain, payload template), drop, set properties (user properties,
+  content type, expiry), and transform a JSON payload (pick, rename, add fields).
+- Conditions: the topic filter; JSON payload fields by path (=, !=, <, >, exists, in);
+  user properties, content type, QoS, retain flag and the publisher's client id;
+  combined with all, any and not.
+- Loops: a message a rule produces carries a hop count; rules apply to it again, and
+  past 8 hops it is dropped and counted in `$lir/nodes`.
+- Where: on the publishing node, before fan-out; every node holds every rule.
+
+Memory (section 4):
+
+- The budget is configurable, default 512 MiB; the thresholds are configurable, default
+  80% (shed QoS 0), 90% (refuse QoS 1/2 publishes), 100% (refuse new clients).
+- Lir's held bytes are also leased in Dannan's node-wide ledger, in 1 MiB chunks; a
+  refused lease counts as 100% until room returns.
+
+MQTT-SN:
+
+- Gateway discovery (ADVERTISE broadcasts): configurable, off by default; SEARCHGW is
+  always answered.
+- Predefined topic ids: retained messages on `$lir/mqttsn/topics/<id>`, changeable at
+  runtime and replicated.
+- DTLS beside plain UDP, with the same certificate settings and client certificates.
+

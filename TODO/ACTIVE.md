@@ -6,8 +6,10 @@ MQTT over TLS and over WebSocket, client certificates, the
 specification's MAYs, Dannan 0.4.0 (the config file, its percent
 decoder), topic scopes, the moderate default limits and memory pressure
 are on `develop`; gate `lir_tests` 248. `COMPLETED.md` is the record.
-Server Reference at CONNECT is done (248). "Resume here": MQTT-SN 1.2
-and 2.0, the rules engine (its form waits on the maintainer);
+Server Reference at CONNECT is done (248). "Resume here" (the maintainer's further
+decisions, end of the sections file): configurable memory thresholds and
+Dannan's ledger, the rules engine (retained JSON), MQTT-SN 1.2 and 2.0
+with DTLS;
 message history and step 5 wait on Dagda, the Lugh plugin on Lugh
 (tokens in its O7).
 
