@@ -57,6 +57,8 @@ struct NodeProcess {
                                   "127.0.0.1",
                                   "--mqtt-port",
                                   "0",
+                                  "--http-port",
+                                  "0",
                                   "--heartbeat-ms",
                                   "200",
                                   "--status-ms",

@@ -2,7 +2,7 @@
 
 Last updated: 2026-11-04. Steps 1 to 4 are on `develop` (step 4 on
 `feature/cluster`, merged); gate `lir_tests` 151. `COMPLETED.md` is the
-record. "Resume here": step 6, HTTP publish and SSE.
+record. "Resume here": TLS on the MQTT and HTTP ports.
 
 The design is the maintainer's, 2026-11-03: "Lir: Distributed Event System on
 Dannan", a Claude Doc and the master, rendered in
@@ -65,7 +65,8 @@ written new; Macha has no event system to extract (`COMPLETED.md`,
    Lir's merges, Replicated writes for QoS 1/2, leases, objects for
    payloads over 64 KiB, the node-local sequence. Waits on Dagda, whose
    first priority is Macha's DHT.
-6. **System topics, HTTP, authentication.** System topics done (154). `$dannan/` and `$lir/`
+6. **System topics, HTTP, authentication.** System topics done (154);
+   HTTP publish and SSE done (163); the Lugh plugin waits on Lugh. `$dannan/` and `$lir/`
    retained topics from the Context's status; HTTP publish and SSE; a
    Lugh authentication plugin. No dependency but Lugh's tokens for the
    last.
@@ -99,5 +100,7 @@ written new; Macha has no event system to extract (`COMPLETED.md`,
 - Dagda: head spaces with owner merges, Replicated writes, leases,
   objects and claims, a node-local space (step 5).
 - Lugh: tokens an MQTT client can present (step 6's plugin).
-- Dannan: nothing now. `ScopeSource` and `Identity::verify` when Lir
-  checks topic scopes.
+- Dannan: `Identity::verify` (the scope check, `dannan/contract/scope.h`)
+  landed on Dannan's develop (`09a525f`) but is untagged: `0.3.0` waits
+  on the maintainer. An authenticator that checks topic scopes through it waits on
+  that tag.
