@@ -13,6 +13,7 @@
 #include <string_view>
 #include <vector>
 
+#include "dannan/encoding/percent.h"
 #include "lir/contract/authenticator.h"
 
 // Topic scopes: what a client may publish, retain and subscribe to, as
@@ -25,14 +26,14 @@
 // pub is a PUBLISH without the retain flag to a topic the filter matches;
 // retain is a PUBLISH with it (and does not imply pub); sub is a SUBSCRIBE
 // whose filter the granted one covers, the filter inside "$share/<g>/" for
-// a shared one. A level that is exactly "{sub}" is the token's subject;
+// a shared one. Each level is decoded on its own, so an encoded '/' cannot
+// make a level boundary. A level that is exactly "{sub}" is the token's subject;
 // nothing else is substituted ({client} was dropped: a client chooses its
 // own identifier).
 namespace lir::auth {
 
-// %XX decoded; nothing else ('+' stays '+'). Throws std::invalid_argument
-// for a malformed escape.
-std::string percent_decode(std::string_view text);
+// The stack's one decoder (Dannan's), strict: %XX only, '+' stays '+'.
+using dannan::encoding::percent_decode;
 
 struct TopicScopes {
   std::vector<std::string> publish;
