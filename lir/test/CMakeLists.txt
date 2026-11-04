@@ -19,6 +19,7 @@ add_executable(lir_tests
   process_test.cpp
   shard_test.cpp
   subs_trie_test.cpp
+  system_test.cpp
   version_test.cpp
   websocket_test.cpp
 )

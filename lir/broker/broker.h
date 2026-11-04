@@ -159,6 +159,25 @@ struct Stats {
   uint64_t sessions_surrendered = 0;
 };
 
+// A client connected here, or its connection here ended: for the
+// $lir/clients events (design, section 3).
+struct ClientEvent {
+  enum class Kind { connected, disconnected };
+  Kind kind = Kind::connected;
+  std::string client_id;
+  mqtt::Version version = mqtt::Version::v5;
+  std::string peer;
+  std::optional<std::string> username;
+  // connected: whether a session was resumed.
+  bool session_present = false;
+  // disconnected: who ended it, and the reason code the DISCONNECT carried
+  // (sent by the server, or received from the client). Nothing from the
+  // network: the connection was lost.
+  enum class By { client, server, network };
+  By by = By::network;
+  std::optional<uint8_t> reason;
+};
+
 // What the broker asks of the cluster it is attached to. Every hook is
 // called on the broker's strand and must not call back into the broker
 // before returning; a completion it is handed is called on the strand later.
@@ -231,6 +250,9 @@ class Link : public std::enable_shared_from_this<Link> {
   std::optional<std::string> _auth_method;
   // What this connection may do; set on accept, replaced on re-authentication.
   std::shared_ptr<const contract::Grant> _grant;
+  // How the connection ended, for the disconnected event.
+  ClientEvent::By _ended_by = ClientEvent::By::network;
+  std::optional<uint8_t> _end_reason;
   uint16_t _keep_alive = 0;
   TimePoint _opened;
   TimePoint _last_received;
@@ -257,6 +279,10 @@ class Broker {
   // Keep alive and connect timeouts, delayed wills, session expiry: what the
   // injected time has made due. The owner calls it on a timer.
   void poll();
+
+  // `observer` is told of each ClientEvent, on the broker's strand; it must
+  // not call back into the broker before returning. Empty: none.
+  void observe(std::function<void(const ClientEvent&)> observer);
 
   // ---- the cluster's side
 
@@ -376,6 +402,7 @@ class Broker {
   // and its will is scheduled when `publish_will`.
   void detach(Link& link, bool publish_will);
   void interest_changed();
+  void tell(ClientEvent event);
   // Marks a persistent session as changed, for the mirror.
   void touch(const std::string& client_id);
   std::string assign_client_id();
@@ -385,6 +412,7 @@ class Broker {
   contract::Authenticator& _authenticator;
   dannan::status::ScopedLogger _logger;
   ClusterHooks _hooks;
+  std::function<void(const ClientEvent&)> _observer;
   std::map<std::string, std::unique_ptr<Session>> _sessions;
   // Non-shared subscriptions keyed by client id.
   subs::Trie<std::string, Options> _subscriptions;
