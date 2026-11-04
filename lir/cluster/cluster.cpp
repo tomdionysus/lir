@@ -623,4 +623,13 @@ void Cluster::advertise_endpoints() {
   _state->context.nodes().advertise(endpoints_key, dannan::net::Bytes(text.begin(), text.end()));
 }
 
+size_t Cluster::shared_members(const std::string& group, const std::string& filter) {
+  return _state->edge.call<size_t>([s = _state, key = std::make_pair(group, filter)](broker::Broker& b) {
+    const auto has = [&key](const Groups& groups) { return std::find(groups.begin(), groups.end(), key) != groups.end(); };
+    size_t count = has(b.local_shared()) ? 1 : 0;
+    for (const auto& [node, groups] : s->remote_groups) count += s->peers.contains(node) && has(groups) ? 1 : 0;
+    return count;
+  });
+}
+
 }  // namespace lir::cluster
