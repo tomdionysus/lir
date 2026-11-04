@@ -359,3 +359,28 @@ tests passed five runs in a row.
   hand: a raw upgrade to `lir-node` gets 101 with
   `Sec-WebSocket-Protocol: mqtt` and a CONNACK in a binary frame.
 
+## 2026-11-04: the configurable system topics (design, section 3)
+
+Gate: `lir_tests` 222 passed, 0 failed (8 new); the cluster and process
+tests passed three runs in a row.
+
+- `SystemConfig` switches `nodes`, `cluster`, `clients`, `roster`, all on
+  by default; `lir-node --no-system-topics NAME`, repeatable.
+- `$lir/cluster` (retained): nodes, connections, sessions, messages
+  received a second, and the limits that differ between nodes (design
+  section 4, "mismatch reported"). Each Lir node advertises its figures
+  and limits in its Dannan record (`lir.connections`, `lir.sessions`,
+  `lir.received_per_second`, `lir.limits`), changed only when they
+  change; the Lir node with the lowest id publishes, so a subscriber sees
+  one summary, not one per node.
+- `$lir/clients/connected` and `/disconnected` (events): each node its own
+  clients, from a new `Broker::observe` hook (`ClientEvent`: version,
+  peer, user name, session present; by client, server or network, and
+  the reason code). The hook posts the publish to the strand, never
+  calling the broker back from inside it.
+- `$dannan/roster/joined`, `/left`, `/changed` (events), published by the
+  lowest Lir node only; an advert's change is not an event.
+- `$lir/shards/<n>` is not built: shards have no holders, primary or
+  lease until step 5, and the topic would report nothing true. It
+  follows step 5.
+

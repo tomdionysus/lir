@@ -26,6 +26,7 @@
 //            [--mqtt-tls-listen ADDR] [--https-port N] [--https-listen ADDR]
 //            [--ws-port N] [--ws-listen ADDR] [--wss-port N] [--wss-listen ADDR]
 //            [--allow-anonymous [--anonymous-scope SCOPE]...]
+//            [--no-system-topics nodes|cluster|clients|roster]...
 //   lir-node --version
 //
 // Clients are refused unless --allow-anonymous is given (design, section
@@ -104,6 +105,7 @@ struct Options {
   // -1: none. Uses --tls-certificate and --tls-key.
   int wss_port = -1;
   std::string wss_listen = "0.0.0.0";
+  lir::system::SystemConfig system;
   bool allow_anonymous = false;
   std::vector<std::string> anonymous_scopes;
 };
@@ -164,7 +166,19 @@ Options parse(int argc, char** argv) {
       out.wss_port = std::stoi(value());
     else if (option == "--wss-listen")
       out.wss_listen = value();
-    else if (option == "--allow-anonymous")
+    else if (option == "--no-system-topics") {
+      const auto which = value();
+      if (which == "nodes")
+        out.system.nodes = false;
+      else if (which == "cluster")
+        out.system.cluster = false;
+      else if (which == "clients")
+        out.system.clients = false;
+      else if (which == "roster")
+        out.system.roster = false;
+      else
+        throw std::runtime_error("--no-system-topics: one of nodes, cluster, clients, roster; got " + which);
+    } else if (option == "--allow-anonymous")
       out.allow_anonymous = true;
     else if (option == "--anonymous-scope")
       out.anonymous_scopes.push_back(value());
@@ -280,7 +294,7 @@ int main(int argc, char** argv) {
     node.start();
     cluster.start();
     edge.start();
-    lir::system::SystemTopics system(node.context(), edge);
+    lir::system::SystemTopics system(node.context(), edge, options.system);
     system.start();
     std::optional<lir::http::HttpServer> http;
     if (options.http_port >= 0) {
