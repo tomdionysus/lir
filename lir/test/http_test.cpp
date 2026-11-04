@@ -194,7 +194,7 @@ TEST_F(HttpTest, AStreamThatCloses_LeavesTheBroker) {
 
 class TokenOnly final : public contract::Authenticator {
  public:
-  contract::AuthDecision connect(const mqtt::Connect& c) override {
+  contract::AuthDecision connect(const mqtt::Connect& c, const contract::Peer&) override {
     return c.password == mqtt::Bytes{'g', 'o', 'o', 'd'} ? contract::AuthDecision::accept(std::make_shared<contract::Unrestricted>())
                                                          : contract::AuthDecision::refuse(mqtt::reason::bad_user_name_or_password);
   }

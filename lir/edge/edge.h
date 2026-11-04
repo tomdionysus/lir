@@ -8,6 +8,7 @@
 #pragma once
 
 #include <boost/asio/io_context.hpp>
+#include <boost/asio/ssl/context.hpp>
 #include <boost/asio/strand.hpp>
 #include <chrono>
 #include <cstdint>
@@ -40,7 +41,18 @@ struct TlsConfig {
   std::filesystem::path private_key;
   // A client that has not finished its handshake within this is closed.
   std::chrono::milliseconds handshake_timeout{10000};
+  // Client certificates (mutual TLS): the PEM file of the CAs a client's
+  // certificate must chain to. Empty: none is asked for.
+  std::filesystem::path client_ca = {};
+  // With client_ca: whether a client without a certificate is refused at
+  // the handshake, or let in with none (the authenticator then decides).
+  bool require_client_certificate = true;
 };
+
+// A server context for `tls`: TLS 1.2 and up, its certificate and key, and
+// client certificates as it asks. Throws boost::system::system_error for a
+// file that cannot be loaded. The HTTP server's too.
+std::unique_ptr<boost::asio::ssl::context> server_context(const TlsConfig& tls);
 
 // MQTT over WebSocket (MQTT 5.0 and 3.1.1, section 6): one MQTT byte
 // stream carried in binary frames, the "mqtt" subprotocol ("mqttv3.1" for a

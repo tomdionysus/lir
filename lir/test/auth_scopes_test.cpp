@@ -112,14 +112,14 @@ TEST(AuthScopes, SharedSubscriptionsAreCheckedByTheirFilter) {
 TEST(AuthScopes, AnonymousAuthenticatorRefusesByDefault) {
   AnonymousAuthenticator refuse(std::nullopt);
   mqtt::Connect c;
-  EXPECT_EQ(refuse.connect(c).kind, contract::AuthDecision::Kind::refuse);
-  EXPECT_EQ(refuse.connect(c).reason, mqtt::reason::not_authorized);
+  EXPECT_EQ(refuse.connect(c, {}).kind, contract::AuthDecision::Kind::refuse);
+  EXPECT_EQ(refuse.connect(c, {}).reason, mqtt::reason::not_authorized);
 }
 
 TEST(AuthScopes, AnonymousAuthenticatorHoldsAllowedClientsToTheirScopes) {
   AnonymousAuthenticator allow(TopicScopes{{"open/#"}, {"open/#"}, {}});
   mqtt::Connect c;
-  const auto decision = allow.connect(c);
+  const auto decision = allow.connect(c, {});
   ASSERT_EQ(decision.kind, contract::AuthDecision::Kind::accept);
   ASSERT_TRUE(decision.grant);
   EXPECT_TRUE(decision.grant->may_publish("open/a", false));
@@ -132,13 +132,13 @@ TEST(AuthScopes, AnonymousAuthenticatorRefusesCredentials) {
   AnonymousAuthenticator allow(default_anonymous_scopes());
   mqtt::Connect named;
   named.username = "someone";
-  EXPECT_EQ(allow.connect(named).reason, mqtt::reason::bad_user_name_or_password);
+  EXPECT_EQ(allow.connect(named, {}).reason, mqtt::reason::bad_user_name_or_password);
   mqtt::Connect keyed;
   keyed.password = mqtt::Bytes{'k'};
-  EXPECT_EQ(allow.connect(keyed).reason, mqtt::reason::bad_user_name_or_password);
+  EXPECT_EQ(allow.connect(keyed, {}).reason, mqtt::reason::bad_user_name_or_password);
   mqtt::Connect method;
   method.properties.authentication_method = "lugh";
-  EXPECT_EQ(allow.connect(method).reason, mqtt::reason::bad_authentication_method);
+  EXPECT_EQ(allow.connect(method, {}).reason, mqtt::reason::bad_authentication_method);
   EXPECT_EQ(allow.auth("c", "lugh", {}).reason, mqtt::reason::bad_authentication_method);
 }
 
