@@ -10,6 +10,7 @@
 #include <chrono>
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -28,18 +29,31 @@
 
 // The MQTT broker on one node: sessions, subscriptions, retained messages,
 // wills, shared subscriptions and every QoS flow of 3.1, 3.1.1 and 5.0, over
-// any transport (contract::Connection). It knows nothing of the network
-// below or of other nodes; the cluster (step 4) feeds it publishes from
-// elsewhere through publish() and takes its own through the route hook.
+// any transport (contract::Connection). Alone it is a whole broker. Attached
+// to a cluster (attach()), it hands what its clients publish to the cluster,
+// takes what other nodes' clients publish through inject(), keeps the
+// cluster's retained set through apply_retained(), lets the cluster choose
+// which node's member a shared subscription's message goes to, and gives up
+// a session when its client connects elsewhere.
 //
 // Thread safety: none inside. A Broker and its Links are confined to one
-// strand; every call, the transport's receive() and closed() included, is
-// made on it. Nothing here waits: sends are queued by the transport, time is
-// read from the injected source, and poll() does what time has made due.
+// strand; every call, the transport's receive() and closed() and the
+// cluster's hooks and their completions included, is made on it. Nothing
+// here waits: sends are queued by the transport, time is read from the
+// injected source, and poll() does what time has made due.
 namespace lir::broker {
 
 using dannan::contract::TimePoint;
 using mqtt::Bytes;
+
+// Orders a retained topic's values across nodes with no shared clock: a
+// Lamport counter, then the node id. Every node reaches the same value for a
+// topic whatever order the updates arrive in.
+struct RetainedVersion {
+  uint64_t lamport = 0;
+  std::string node;
+  auto operator<=>(const RetainedVersion&) const = default;
+};
 
 // A message as the broker holds it, independent of any one session's
 // protocol version.
@@ -57,6 +71,44 @@ struct Message {
   std::vector<std::pair<std::string, std::string>> user_properties;
   // The publishing client, for No Local; empty for the server's own.
   std::string origin;
+  // Set on a retained message once the broker has stored it.
+  std::optional<RetainedVersion> version;
+};
+
+struct Options {
+  mqtt::QoS qos = mqtt::QoS::at_most_once;
+  bool no_local = false;
+  bool retain_as_published = false;
+  uint8_t retain_handling = 0;
+  std::optional<uint32_t> identifier;
+  bool operator==(const Options&) const = default;
+};
+
+// One message on its way to one session.
+struct Delivery {
+  Message message;
+  mqtt::QoS qos = mqtt::QoS::at_most_once;
+  bool retain = false;
+  std::vector<uint32_t> identifiers;
+};
+
+struct Inflight {
+  enum class State : uint8_t { awaiting_puback = 0, awaiting_pubrec = 1, awaiting_pubcomp = 2 };
+  Delivery delivery;
+  State state = State::awaiting_puback;
+};
+
+// A session as it moves between nodes: everything the specification says
+// the server keeps for it (section 4.1).
+struct SessionImage {
+  std::string client_id;
+  mqtt::Version version = mqtt::Version::v5;
+  uint32_t expiry_interval = 0;
+  std::vector<std::pair<std::string, Options>> subscriptions;
+  std::vector<std::pair<uint16_t, Inflight>> outbound;
+  std::vector<Delivery> queued;
+  std::vector<uint16_t> inbound_qos2;
+  uint16_t next_packet_id = 1;
 };
 
 struct Config {
@@ -90,12 +142,34 @@ struct Stats {
   uint64_t protocol_errors = 0;
   uint64_t messages_received = 0;
   uint64_t messages_delivered = 0;
+  uint64_t messages_injected = 0;
   uint64_t dropped_offline_qos0 = 0;
   uint64_t dropped_queue_full = 0;
   uint64_t dropped_expired = 0;
   uint64_t dropped_too_large = 0;
   uint64_t wills_published = 0;
   uint64_t sessions_expired = 0;
+  uint64_t sessions_taken = 0;
+  uint64_t sessions_surrendered = 0;
+};
+
+// What the broker asks of the cluster it is attached to. Every hook is
+// called on the broker's strand and must not call back into the broker
+// before returning; a completion it is handed is called on the strand later.
+struct ClusterHooks {
+  // This node's id, which versions its retained values.
+  std::string node;
+  // A message published on this node (by a client, a will or publish()),
+  // already delivered to this node's non-shared subscribers: the cluster
+  // carries it to the others, and to one member of each matching shared
+  // group anywhere. Returns how many other nodes took it.
+  std::function<size_t(const Message&)> published;
+  // This node's subscriptions changed (filters or shared groups).
+  std::function<void()> interest_changed;
+  // A client is connecting here: every other node must close its
+  // connection, and hand over its session when `want_state`. `done` gets
+  // the session, if any node had one.
+  std::function<void(const std::string& client_id, bool want_state, std::function<void(std::optional<SessionImage>)> done)> take;
 };
 
 class Broker;
@@ -116,11 +190,15 @@ class Link : public std::enable_shared_from_this<Link> {
 
  private:
   friend class Broker;
-  enum class State { awaiting_connect, authenticating, connected, closed };
+  // `taking`: the CONNECT is accepted and other nodes are being asked to let
+  // go of the client; packets that arrive meanwhile wait in the buffer.
+  enum class State { awaiting_connect, authenticating, taking, connected, closed };
 
+  void process();
   void handle(mqtt::Packet&& packet);
   void on_connect(mqtt::Connect&& connect);
-  void finish_connect(std::optional<Bytes> auth_data);
+  void begin_connect(std::optional<Bytes> auth_data);
+  void finish_connect(std::optional<Bytes> auth_data, std::optional<SessionImage> image);
   void on_publish(mqtt::Publish&& publish);
   void on_ack(const mqtt::Ack& ack);
   void on_subscribe(const mqtt::Subscribe& subscribe);
@@ -140,6 +218,7 @@ class Link : public std::enable_shared_from_this<Link> {
   mqtt::Version _version = mqtt::Version::v5;
   Bytes _buffer;
   std::string _client_id;
+  bool _assigned = false;
   std::optional<mqtt::Connect> _connect;
   std::optional<mqtt::Will> _will;
   std::optional<std::string> _auth_method;
@@ -158,14 +237,40 @@ class Broker {
   // A new client connection. The transport keeps the Link and feeds it.
   std::shared_ptr<Link> accept(std::shared_ptr<contract::Connection> connection);
 
-  // A message from the server itself, or from another node: retained and
-  // delivered as a client's would be, without the authorizer. Returns how
-  // many sessions it was delivered or queued to.
+  // A message from the server itself: retained and delivered as a client's
+  // would be (to the cluster too, when attached), without the authorizer.
+  // Returns how many sessions here, and other nodes, took it.
   size_t publish(Message message);
 
   // Keep alive and connect timeouts, delayed wills, session expiry: what the
   // injected time has made due. The owner calls it on a timer.
   void poll();
+
+  // ---- the cluster's side
+
+  // Attaches to a cluster (or, with empty hooks, detaches). Shared
+  // subscriptions are then the cluster's to choose a member for.
+  void attach(ClusterHooks hooks);
+  // A message another node published: delivered to this node's non-shared
+  // subscribers, never stored or carried further. How many sessions took it.
+  size_t inject(const Message& message);
+  // Another node's retained update (an empty payload clears): kept when its
+  // version is newer than what is held here. Whether it was.
+  bool apply_retained(const Message& message);
+  // Every retained value and every clearing, versioned, for a node catching
+  // up.
+  std::vector<Message> retained_entries() const;
+  // Delivers to one member of the shared group (group, filter) here. False
+  // when this node has none.
+  bool deliver_shared(const Message& message, const std::string& group, const std::string& filter);
+  // The client connected elsewhere: its connection here is closed (session
+  // taken over) and its session given up, as an image when `want_state`,
+  // or ended (its will sent) otherwise.
+  std::optional<SessionImage> surrender(const std::string& client_id, bool want_state);
+  // This node's non-shared filters, and its shared groups as (group,
+  // filter).
+  std::set<std::string> local_filters() const;
+  std::set<std::pair<std::string, std::string>> local_shared() const;
 
   size_t sessions() const noexcept { return _sessions.size(); }
   size_t connections() const noexcept { return _links.size(); }
@@ -175,29 +280,6 @@ class Broker {
 
  private:
   friend class Link;
-
-  struct Options {
-    mqtt::QoS qos = mqtt::QoS::at_most_once;
-    bool no_local = false;
-    bool retain_as_published = false;
-    uint8_t retain_handling = 0;
-    std::optional<uint32_t> identifier;
-    bool operator==(const Options&) const = default;
-  };
-
-  // One message on its way to one session.
-  struct Delivery {
-    Message message;
-    mqtt::QoS qos = mqtt::QoS::at_most_once;
-    bool retain = false;
-    std::vector<uint32_t> identifiers;
-  };
-
-  struct Inflight {
-    enum class State { awaiting_puback, awaiting_pubrec, awaiting_pubcomp };
-    Delivery delivery;
-    State state = State::awaiting_puback;
-  };
 
   struct Session {
     std::string client_id;
@@ -229,9 +311,15 @@ class Broker {
     TimePoint due;
   };
 
+  bool clustered() const noexcept { return static_cast<bool>(_hooks.published); }
   bool reserved(std::string_view topic) const;
-  // Delivers to every matching subscription; how many sessions took it.
-  size_t route(const Message& message);
+  // A message published on this node: stored if retained, delivered here,
+  // and handed to the cluster. How many sessions and nodes took it.
+  size_t route(Message message);
+  // Delivers to this node's subscribers: non-shared ones, and shared groups
+  // too when `shared`.
+  size_t deliver_here(const Message& message, bool shared);
+  bool deliver_to_group(const Message& message, SharedGroup& group);
   void deliver(Session& session, Delivery delivery);
   // Sends queued messages while the client's receive maximum allows.
   void pump(Session& session);
@@ -243,18 +331,25 @@ class Broker {
   void subscribe(Session& session, const std::string& filter, const Options& options);
   bool unsubscribe(Session& session, const std::string& filter);
   void send_retained(Session& session, const std::string& filter, const Options& options);
+  // Ends a session: its pending will goes, then the session.
   void end_session(const std::string& client_id);
+  // Removes a session and its subscriptions, its will untouched.
+  void drop_session(const std::string& client_id);
+  SessionImage image_of(const Session& session) const;
+  Session& import(SessionImage image);
   void schedule_will(const std::string& client_id, const mqtt::Will& will, uint32_t session_expiry);
   void fire_will(const std::string& client_id);
   // The link has closed: its session goes offline (or ends, at expiry 0)
   // and its will is scheduled when `publish_will`.
   void detach(Link& link, bool publish_will);
+  void interest_changed();
   std::string assign_client_id();
 
   Config _config;
   const dannan::contract::TimeSource& _time;
   contract::Authenticator& _authenticator;
   dannan::status::ScopedLogger _logger;
+  ClusterHooks _hooks;
   std::map<std::string, std::unique_ptr<Session>> _sessions;
   // Non-shared subscriptions keyed by client id.
   subs::Trie<std::string, Options> _subscriptions;
@@ -263,6 +358,9 @@ class Broker {
   subs::Trie<std::string, std::string> _shared_filters;
   std::map<std::pair<std::string, std::string>, SharedGroup> _shared;
   std::map<std::string, Message> _retained;
+  // Clearings, kept so an older value arriving late cannot return.
+  std::map<std::string, RetainedVersion> _cleared;
+  uint64_t _lamport = 0;
   std::map<std::string, PendingWill> _wills;
   std::map<Link*, std::shared_ptr<Link>> _links;
   Stats _stats;

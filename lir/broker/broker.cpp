@@ -59,11 +59,15 @@ void Link::send(const mqtt::Packet& packet) { _connection->send(mqtt::encode(pac
 
 void Link::receive(std::span<const uint8_t> bytes) {
   if (_state == State::closed) return;
-  const auto self = shared_from_this();
   _buffer.insert(_buffer.end(), bytes.begin(), bytes.end());
+  if (_state != State::taking) process();
+}
+
+void Link::process() {
+  const auto self = shared_from_this();
   size_t offset = 0;
   try {
-    while (_state != State::closed) {
+    while (_state != State::closed && _state != State::taking) {
       const auto rest = std::span<const uint8_t>(_buffer).subspan(offset);
       const auto frame = mqtt::read_frame(rest, _broker._config.maximum_packet_size);
       if (!frame || rest.size() < frame->size()) break;
@@ -172,7 +176,7 @@ void Link::on_connect(mqtt::Connect&& connect) {
   const auto decision = _broker._authenticator.connect(*_connect);
   switch (decision.kind) {
     case contract::AuthDecision::Kind::accept:
-      return finish_connect(decision.data);
+      return begin_connect(decision.data);
     case contract::AuthDecision::Kind::refuse:
       return refuse_connect(decision.reason);
     case contract::AuthDecision::Kind::challenge: {
@@ -186,14 +190,28 @@ void Link::on_connect(mqtt::Connect&& connect) {
   }
 }
 
-void Link::finish_connect(std::optional<Bytes> auth_data) {
+void Link::begin_connect(std::optional<Bytes> auth_data) {
+  _assigned = _connect->client_id.empty();
+  _client_id = _assigned ? _broker.assign_client_id() : _connect->client_id;
+  // An assigned identifier is new everywhere; any other may be held by
+  // another node, which lets go of it first.
+  if (!_broker.clustered() || _assigned) return finish_connect(std::move(auth_data), std::nullopt);
+  _state = State::taking;
+  std::weak_ptr<Link> weak = shared_from_this();
+  _broker._hooks.take(_client_id, !_connect->clean_start, [weak, auth = std::move(auth_data)](std::optional<SessionImage> image) mutable {
+    const auto self = weak.lock();
+    if (!self || self->_state != State::taking) return;
+    self->finish_connect(std::move(auth), std::move(image));
+    if (self->_state == State::connected && !self->_buffer.empty()) self->process();
+  });
+}
+
+void Link::finish_connect(std::optional<Bytes> auth_data, std::optional<SessionImage> image) {
   auto& broker = _broker;
   const auto& config = broker._config;
   const auto& connect = *_connect;
-  std::string id = connect.client_id;
-  const bool assigned = id.empty();
-  if (assigned) id = broker.assign_client_id();
-  _client_id = id;
+  const std::string id = _client_id;
+  const bool assigned = _assigned;
 
   // Session takeover: the existing connection is told and closed; its will
   // follows the usual rules (a resumed session cancels a delayed one).
@@ -208,6 +226,13 @@ void Link::finish_connect(std::optional<Bytes> auth_data) {
       present = true;
       broker._wills.erase(id);
     }
+  }
+  // A session another node gave up comes here whole.
+  if (!present && image && !connect.clean_start) {
+    image->client_id = id;
+    broker.import(std::move(*image));
+    present = true;
+    ++broker._stats.sessions_taken;
   }
   if (!present) {
     auto session = std::make_unique<Broker::Session>();
@@ -322,7 +347,7 @@ void Link::on_publish(mqtt::Publish&& publish) {
 void Link::on_ack(const mqtt::Ack& ack) {
   auto& broker = _broker;
   auto& session = *broker._sessions.at(_client_id);
-  using State = Broker::Inflight::State;
+  using State = Inflight::State;
   const auto it = session.outbound.find(ack.packet_id);
   const auto not_found = v5() ? reason::packet_identifier_not_found : reason::success;
   switch (ack.type) {
@@ -366,7 +391,7 @@ void Link::on_subscribe(const mqtt::Subscribe& subscribe) {
     identifier = subscribe.properties.subscription_identifiers.front();
   }
   mqtt::Suback ack{subscribe.packet_id, {}, {}};
-  std::vector<std::pair<std::string, Broker::Options>> retained_for;
+  std::vector<std::pair<std::string, Options>> retained_for;
   for (const auto& request : subscribe.subscriptions) {
     const bool shared = mqtt::is_shared(request.filter);
     const auto parsed = shared ? mqtt::parse_shared(request.filter) : std::nullopt;
@@ -382,7 +407,7 @@ void Link::on_subscribe(const mqtt::Subscribe& subscribe) {
     } else if (!broker._authenticator.may_subscribe(_client_id, request.filter)) {
       code = reason::not_authorized;
     } else {
-      Broker::Options options{lesser(request.qos, config.maximum_qos), request.no_local, request.retain_as_published, request.retain_handling, identifier};
+      Options options{lesser(request.qos, config.maximum_qos), request.no_local, request.retain_as_published, request.retain_handling, identifier};
       const bool existed = session.subscriptions.contains(request.filter);
       broker.subscribe(session, request.filter, options);
       code = static_cast<uint8_t>(options.qos);
@@ -432,7 +457,7 @@ void Link::on_auth(const mqtt::Auth& auth) {
   const auto decision = _broker._authenticator.auth(client, *_auth_method, data);
   switch (decision.kind) {
     case contract::AuthDecision::Kind::accept:
-      if (_state == State::authenticating) return finish_connect(decision.data);
+      if (_state == State::authenticating) return begin_connect(decision.data);
       {
         mqtt::Auth done{reason::success, {}};
         done.properties.authentication_method = _auth_method;
@@ -462,21 +487,58 @@ std::shared_ptr<Link> Broker::accept(std::shared_ptr<contract::Connection> conne
   return link;
 }
 
-size_t Broker::publish(Message message) { return route(message); }
+size_t Broker::publish(Message message) { return route(std::move(message)); }
 
 bool Broker::reserved(std::string_view topic) const {
   return std::any_of(_config.reserved_prefixes.begin(), _config.reserved_prefixes.end(),
                      [topic](const std::string& prefix) { return topic.starts_with(prefix); });
 }
 
-size_t Broker::route(const Message& message) {
+size_t Broker::route(Message message) {
   if (message.retain) {
-    if (message.payload.empty()) {
-      _retained.erase(message.topic);
-    } else {
-      _retained[message.topic] = message;
-    }
+    message.version = RetainedVersion{++_lamport, _hooks.node};
+    apply_retained(message);
   }
+  size_t count = deliver_here(message, !clustered());
+  if (clustered()) count += _hooks.published(message);
+  return count;
+}
+
+size_t Broker::inject(const Message& message) {
+  ++_stats.messages_injected;
+  return deliver_here(message, false);
+}
+
+bool Broker::apply_retained(const Message& message) {
+  if (!message.version) return false;
+  const auto& version = *message.version;
+  _lamport = std::max(_lamport, version.lamport);
+  if (const auto held = _retained.find(message.topic); held != _retained.end() && held->second.version && *held->second.version >= version) return false;
+  if (const auto cleared = _cleared.find(message.topic); cleared != _cleared.end() && cleared->second >= version) return false;
+  if (message.payload.empty()) {
+    _retained.erase(message.topic);
+    _cleared[message.topic] = version;
+  } else {
+    _retained[message.topic] = message;
+    _cleared.erase(message.topic);
+  }
+  return true;
+}
+
+std::vector<Message> Broker::retained_entries() const {
+  std::vector<Message> out;
+  for (const auto& [topic, message] : _retained) out.push_back(message);
+  for (const auto& [topic, version] : _cleared) {
+    Message clearing;
+    clearing.topic = topic;
+    clearing.retain = true;
+    clearing.version = version;
+    out.push_back(std::move(clearing));
+  }
+  return out;
+}
+
+size_t Broker::deliver_here(const Message& message, bool shared) {
   // One delivery per session, at the greatest QoS of its matching
   // subscriptions, carrying every matching subscription's identifier.
   struct Target {
@@ -501,36 +563,45 @@ size_t Broker::route(const Message& message) {
     deliver(*it->second, Delivery{message, lesser(message.qos, target.qos), target.retain_as_published && message.retain, std::move(target.identifiers)});
     ++count;
   }
-  // Each matching shared group sends to one member, connected ones first,
-  // in turn.
+  if (!shared) return count;
   std::vector<std::pair<std::string, std::string>> groups;
   _shared_filters.match(message.topic, [&groups](const std::string& group, const std::string& filter) { groups.emplace_back(group, filter); });
   for (const auto& key : groups) {
-    auto& group = _shared.at(key);
-    if (group.members.empty()) continue;
-    std::vector<std::pair<const std::string, Options>*> members;
-    for (auto& member : group.members) members.push_back(&member);
-    const size_t start = group.next % members.size();
-    size_t pick = start;
-    for (size_t i = 0; i < members.size(); ++i) {
-      const size_t index = (start + i) % members.size();
-      const auto it = _sessions.find(members[index]->first);
-      if (it != _sessions.end() && it->second->link) {
-        pick = index;
-        break;
-      }
-    }
-    group.next = pick + 1;
-    const auto* chosen = members[pick];
-    const auto it = _sessions.find(chosen->first);
-    if (it == _sessions.end()) continue;
-    const auto& options = chosen->second;
-    std::vector<uint32_t> ids;
-    if (options.identifier) ids.push_back(*options.identifier);
-    deliver(*it->second, Delivery{message, lesser(message.qos, options.qos), options.retain_as_published && message.retain, std::move(ids)});
-    ++count;
+    if (deliver_to_group(message, _shared.at(key))) ++count;
   }
   return count;
+}
+
+bool Broker::deliver_shared(const Message& message, const std::string& group, const std::string& filter) {
+  const auto it = _shared.find({group, filter});
+  if (it == _shared.end()) return false;
+  return deliver_to_group(message, it->second);
+}
+
+// One member, connected ones first, in turn.
+bool Broker::deliver_to_group(const Message& message, SharedGroup& group) {
+  if (group.members.empty()) return false;
+  std::vector<std::pair<const std::string, Options>*> members;
+  for (auto& member : group.members) members.push_back(&member);
+  const size_t start = group.next % members.size();
+  size_t pick = start;
+  for (size_t i = 0; i < members.size(); ++i) {
+    const size_t index = (start + i) % members.size();
+    const auto it = _sessions.find(members[index]->first);
+    if (it != _sessions.end() && it->second->link) {
+      pick = index;
+      break;
+    }
+  }
+  group.next = pick + 1;
+  const auto* chosen = members[pick];
+  const auto it = _sessions.find(chosen->first);
+  if (it == _sessions.end()) return false;
+  const auto& options = chosen->second;
+  std::vector<uint32_t> ids;
+  if (options.identifier) ids.push_back(*options.identifier);
+  deliver(*it->second, Delivery{message, lesser(message.qos, options.qos), options.retain_as_published && message.retain, std::move(ids)});
+  return true;
 }
 
 void Broker::deliver(Session& session, Delivery delivery) {
@@ -635,6 +706,7 @@ void Broker::subscribe(Session& session, const std::string& filter, const Option
   } else {
     _subscriptions.insert(filter, session.client_id, options);
   }
+  interest_changed();
 }
 
 bool Broker::unsubscribe(Session& session, const std::string& filter) {
@@ -650,6 +722,7 @@ bool Broker::unsubscribe(Session& session, const std::string& filter) {
   } else {
     _subscriptions.erase(filter, session.client_id);
   }
+  interest_changed();
   return true;
 }
 
@@ -666,6 +739,10 @@ void Broker::send_retained(Session& session, const std::string& filter, const Op
 
 void Broker::end_session(const std::string& client_id) {
   fire_will(client_id);
+  drop_session(client_id);
+}
+
+void Broker::drop_session(const std::string& client_id) {
   const auto it = _sessions.find(client_id);
   if (it == _sessions.end()) return;
   auto& session = *it->second;
@@ -673,6 +750,74 @@ void Broker::end_session(const std::string& client_id) {
   for (const auto& [filter, options] : session.subscriptions) filters.push_back(filter);
   for (const auto& filter : filters) unsubscribe(session, filter);
   _sessions.erase(it);
+}
+
+SessionImage Broker::image_of(const Session& session) const {
+  SessionImage image;
+  image.client_id = session.client_id;
+  image.version = session.version;
+  image.expiry_interval = session.expiry_interval;
+  for (const auto& [filter, options] : session.subscriptions) image.subscriptions.emplace_back(filter, options);
+  for (const auto& [id, inflight] : session.outbound) image.outbound.emplace_back(id, inflight);
+  image.queued.assign(session.queued.begin(), session.queued.end());
+  image.inbound_qos2.assign(session.inbound_qos2.begin(), session.inbound_qos2.end());
+  image.next_packet_id = session.next_packet_id;
+  return image;
+}
+
+Broker::Session& Broker::import(SessionImage image) {
+  auto session = std::make_unique<Session>();
+  session->client_id = image.client_id;
+  session->version = image.version;
+  session->expiry_interval = image.expiry_interval;
+  for (auto& [id, inflight] : image.outbound) session->outbound.emplace(id, std::move(inflight));
+  session->queued.assign(std::make_move_iterator(image.queued.begin()), std::make_move_iterator(image.queued.end()));
+  session->inbound_qos2.insert(image.inbound_qos2.begin(), image.inbound_qos2.end());
+  session->next_packet_id = image.next_packet_id;
+  auto& held = *_sessions.emplace(image.client_id, std::move(session)).first->second;
+  for (const auto& [filter, options] : image.subscriptions) subscribe(held, filter, options);
+  return held;
+}
+
+std::optional<SessionImage> Broker::surrender(const std::string& client_id, bool want_state) {
+  if (const auto it = _sessions.find(client_id); it != _sessions.end() && it->second->link) {
+    it->second->link->shutdown(mqtt::reason::session_taken_over, true);
+  }
+  const auto it = _sessions.find(client_id);
+  if (it == _sessions.end()) return std::nullopt;
+  ++_stats.sessions_surrendered;
+  if (!want_state) {
+    end_session(client_id);
+    return std::nullopt;
+  }
+  // Resumed elsewhere: a delayed will is not sent (section 3.1.3.2).
+  auto image = image_of(*it->second);
+  _wills.erase(client_id);
+  drop_session(client_id);
+  return image;
+}
+
+std::set<std::string> Broker::local_filters() const {
+  std::set<std::string> out;
+  _subscriptions.each([&out](const std::string& filter, const std::string&, const Options&) { out.insert(filter); });
+  return out;
+}
+
+std::set<std::pair<std::string, std::string>> Broker::local_shared() const {
+  std::set<std::pair<std::string, std::string>> out;
+  for (const auto& [key, group] : _shared) {
+    if (!group.members.empty()) out.insert(key);
+  }
+  return out;
+}
+
+void Broker::attach(ClusterHooks hooks) {
+  _hooks = std::move(hooks);
+  interest_changed();
+}
+
+void Broker::interest_changed() {
+  if (_hooks.interest_changed) _hooks.interest_changed();
 }
 
 void Broker::schedule_will(const std::string& client_id, const mqtt::Will& will, uint32_t session_expiry) {

@@ -239,4 +239,6 @@ broker::Stats Edge::stats() {
 
 Edge::Strand& Edge::strand() noexcept { return _state->strand; }
 
+broker::Broker& Edge::broker() noexcept { return _state->broker; }
+
 }  // namespace lir::edge

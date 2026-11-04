@@ -107,3 +107,52 @@ reach an existing build tree, which caches it: reconfigure with
   mosquitto waits for Dannan's `child_process.h` fixture (asked for;
   the Dannan session adds it after its 0.2.0 sanitizer run).
 - Not done: TLS on the MQTT port.
+
+## 2026-11-04: step 4, the cluster on Dannan (interim, before Dagda)
+
+Gate: `lir_tests` 151 passed, 0 failed (19 new); the cluster tests
+passed five repeats in a row. Dannan pinned at the `0.2.0` tag
+(FetchContent of the tag; `-U LIR_DANNAN_COMMIT` on an old build tree).
+
+- The broker gains a cluster side (`broker.h`): `ClusterHooks`
+  (published, interest_changed, take), `inject`, `apply_retained` and
+  `retained_entries` with `RetainedVersion` (Lamport, node), clearings
+  kept as versions, `deliver_shared`, `surrender`, `SessionImage`,
+  `import`, and an asynchronous CONNECT (`taking`) that waits while
+  other nodes let go of the client, buffering what the client sends
+  meanwhile. Alone, the broker behaves as before (125 tests unchanged).
+- `lir/cluster/codec.h`: messages, snapshots, session images, groups,
+  take and shared delivery, each with a format number, counts bounded
+  before allocation, expiry carried as what is left.
+- `lir/cluster/cluster.h`: channels `lir.notify` (QoS 0), `lir.seq`
+  (QoS 1/2, deduplicated by origin, incarnation and sequence),
+  `lir.retained` and `lir.groups`; subscriptions by the minimal set of
+  literal filter prefixes; routes `0x4C00` snapshot (retained and
+  groups for a node that joins or restarts), `0x4C01` session take,
+  `0x4C02` shared delivery; the roster feed for peers.
+- `lir-node` assembles node, edge and cluster; the cluster's routes are
+  registered before the node starts.
+- `lir/test/fixtures/mqtt_client.h`: the socket client, with reads
+  bounded by `poll()`; Asio's blocking read retries a timed-out read for
+  ever, which hung the first cluster run.
+- Tests: QoS 0, 1 and 2 across nodes, once each; subscribers on three
+  nodes each get one copy; retained values everywhere, cleared
+  everywhere, the later value winning on every node, a late joiner
+  catching up; a persistent session resumed on another node with what
+  was queued; takeover across nodes; a will across nodes; a shared group
+  across two nodes getting each of ten messages exactly once.
+- `process_test.cpp` (Dannan's `child_process.h`): mosquitto 2 against
+  one `lir-node` over 3.1, 3.1.1 and 5.0; two `lir-node` processes as one
+  broker, live and retained.
+- Interim and its limits are `ACTIVE.md`, questions 1 to 3.
+
+## Findings resolved (2026-11-03 night to 2026-11-04)
+
+The design predates the stack's rules; Lir's findings and their ends:
+store nouns are Dagda's (stack document); multimaster with a per-shard
+lease (the maintainer, 2026-11-04); no `lir.local` (the maintainer); authentication pluggable,
+no token verification in Dannan (the maintainer); HTTP Lir's own (the maintainer); message
+numbers free from 512 (the maintainer); `lir` advertised, one process per node
+(the maintainer); k-of-N durability is Dagda's Replicated (the maintainer). The per-origin
+sequence lives in a Dagda node-local space and never goes back (with
+Dannan and Dagda; `durability_epoch` is unordered, for dedup only).
