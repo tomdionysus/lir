@@ -106,6 +106,8 @@ struct Options {
   dannan::status::LogFormat log_format = dannan::status::LogFormat::text;
   bool version = false;
   size_t session_standbys = 1;
+  // Balancing at CONNECT: over the average by this fraction; negative never.
+  double rebalance_over = 0.2;
   std::string http_listen = "0.0.0.0";
   // -1: no HTTP endpoint.
   int http_port = 8083;
@@ -169,6 +171,7 @@ dannan::config::Reader reader() {
   add("cluster.key", Kind::value, "--key", "the cluster key file");
   add("cluster.bootstrap", Kind::list, "--bootstrap", "HOST:PORT");
   add("cluster.session_standbys", Kind::value, "--session-standbys", "a count, 0 to 16");
+  add("cluster.rebalance_over", Kind::value, "--rebalance-over", "a percentage over the average, or -1 for never");
   add("node.state", Kind::value, "--state", "the state directory");
   add("node.name", Kind::value, "--name", "a name");
   add("node.domain", Kind::value, "--domain", "a failure domain");
@@ -231,6 +234,9 @@ Options parse(int argc, char** argv) {
   out.key = settings.path_of("cluster.key").value_or("");
   for (const auto& seed : settings.list("cluster.bootstrap")) out.bootstrap.push_back(endpoint(seed));
   out.session_standbys = settings.number("cluster.session_standbys", 0, 16).value_or(out.session_standbys);
+  if (const auto over = settings.text("cluster.rebalance_over")) {
+    out.rebalance_over = *over == "-1" ? -1.0 : static_cast<double>(settings.number("cluster.rebalance_over", 0, 10000).value_or(20)) / 100.0;
+  }
   out.state = settings.path_of("node.state").value_or("");
   out.name = settings.text("node.name").value_or("");
   out.domain = settings.text("node.domain").value_or("");
@@ -373,10 +379,12 @@ int main(int argc, char** argv) {
     // The cluster's routes are registered before the node starts.
     lir::cluster::ClusterConfig cluster_config;
     cluster_config.session_standbys = options.session_standbys;
+    cluster_config.rebalance_over = options.rebalance_over;
     lir::cluster::Cluster cluster(node.context(), edge, cluster_config);
     node.start();
     cluster.start();
     edge.start();
+    cluster.advertise_endpoints();
     lir::system::SystemTopics system(node.context(), edge, options.system);
     system.start();
     std::optional<lir::http::HttpServer> http;

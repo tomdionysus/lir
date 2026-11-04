@@ -102,6 +102,8 @@ class VirtualClient final : public contract::Connection {
     if (on_close) on_close();
   }
   std::string peer() const override { return _peer; }
+  // An HTTP request is served where it arrived, never redirected.
+  std::string transport() const override { return "http"; }
 
   std::function<void(mqtt::Packet)> on_packet;
   std::function<void()> on_close;

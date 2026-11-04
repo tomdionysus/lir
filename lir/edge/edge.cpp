@@ -69,6 +69,12 @@ SSL* ssl_of(websocket::stream<Next>& stream) {
   return ssl_of(stream.next_layer());
 }
 
+// How a client on this stream reached the node.
+inline std::string transport_of(const tcp::socket&) { return "tcp"; }
+inline std::string transport_of(const asio::ssl::stream<tcp::socket>&) { return "tls"; }
+inline std::string transport_of(const websocket::stream<tcp::socket>&) { return "ws"; }
+inline std::string transport_of(const websocket::stream<asio::ssl::stream<tcp::socket>>&) { return "wss"; }
+
 // The verified client certificate's subject, RFC 2253 form.
 std::optional<std::string> subject_of(SSL* ssl) {
   if (!ssl || SSL_get_verify_result(ssl) != X509_V_OK) return std::nullopt;
@@ -160,6 +166,7 @@ class StreamConnection final : public ClientConnection, public std::enable_share
 
   std::string peer() const override { return _peer; }
   std::optional<std::string> certificate_subject() const override { return _subject; }
+  std::string transport() const override { return transport_of(_stream); }
 
   void terminate() override {
     if (_closed) return;
