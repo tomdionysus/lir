@@ -1,0 +1,207 @@
+# Lir - The Message Broker
+
+Lir is the event system for a cluster of trusted machines. It is a C++20 library and a
+node binary that turn a set of nodes into one MQTT broker: connect to any node, publish
+or subscribe on any node, drop the connection and resume the session on another, and the
+cluster behaves as a single broker. It speaks MQTT 3.1, 3.1.1 and 5.0 in full, over TCP
+and TLS, with an HTTP publish and Server-Sent Events endpoint beside it for browsers and
+curl. It runs on [Dannan](https://github.com/tomdionysus/dannan), the network, and
+persists in [Dagda](https://github.com/tomdionysus/dagda), the store.
+
+## Why it exists
+
+Publish and subscribe is how the systems in a cluster tell each other, and the people
+watching them, that something happened: a file arrived, a call was answered, a node went
+away. The usual answer is one MQTT broker on one machine, and that is what AthenaSIP (a
+SIP server) leaned on. It works until that machine is rebooted, filled or cut off, and
+then every system that publishes or listens stops at once. Clustered brokers exist, but
+they bring their own membership, their own transport and their own idea of which node is
+in charge, beside the cluster that is already there.
+
+Lir is the broker written once for this stack:
+
+- **No broker machine.** Every node is a broker. There is no leader, no coordinator and
+  no node whose loss stops the bus. Both sides of a network split keep serving, and merge
+  when it heals.
+- **All of MQTT.** Every client library and tool that speaks MQTT works unchanged: QoS 0,
+  1 and 2, retained messages, wills, wildcards, shared subscriptions, persistent sessions,
+  topic aliases, message expiry, request and response, and enhanced authentication.
+  "Supports MQTT" is defined by the specification's conformance statements, each tested.
+- **On the cluster that is already there.** Membership, reachability through NATs, node
+  identity, placement and the wire between nodes are Dannan's; what must survive a node
+  is Dagda's. Lir adds only what makes it a broker, and has no copy of anything below it.
+- **The cluster's own state as topics.** Each node publishes its own state and Dannan's
+  view of the cluster as retained messages, so a dashboard or a script needs nothing but
+  an MQTT client.
+
+## What it does
+
+- **MQTT front end.** A codec for every packet and property of MQTT 3.1, 3.1.1 and 5.0,
+  written here, refusing every malformed packet the specification says must be refused.
+  Listeners on plain TCP and on TLS, each on its own port.
+- **The broker.** Sessions, QoS 0, 1 and 2 with the full PUBREC, PUBREL and PUBCOMP
+  exchange, retained messages, wills with delay, `$share` groups, No Local, Retain As
+  Published, subscription identifiers, topic aliases in both directions, Receive Maximum,
+  maximum packet size, message and session expiry, and optional queueing of QoS 0 for
+  offline sessions. Slow clients are closed, never allowed to grow the node's memory.
+- **The cluster.** Publishes fan out directly to the nodes with matching subscribers over
+  Dannan's channels; a node learns who is subscribed from the subscriptions each node
+  announces. A client that reconnects elsewhere has its session moved to the new node.
+  Each persistent session is mirrored to standby nodes (one by default) chosen by
+  Dannan's placement, and a standby takes the session over if its node is lost. Retained
+  messages are ordered by a Lamport counter, then the node id, so every node agrees on
+  the winner whatever order they arrive in.
+- **System topics.** `$lir/nodes/<node id>` (connections, sessions, retained count,
+  message counters) and `$dannan/nodes/<node id>` (the node's record, its peers and their
+  latency), retained JSON, cleared when a node leaves. Clients may read them, never write
+  them.
+- **HTTP.** `POST /publish?topic=T` publishes the body; `GET /subscribe?filter=F` streams
+  matching messages as Server-Sent Events, retained messages first. Each request is a
+  short-lived MQTT client of the broker, so authentication, retained messages and the
+  cluster apply exactly as they do to any client. A bearer token is passed to the
+  authenticator as the CONNECT password. HTTPS on its own port.
+- **Pluggable authentication.** An `Authenticator` decides CONNECT, enhanced
+  authentication, and each publish and subscribe.
+
+## The stack
+
+Lir is one of a stack of projects, each its own library and repository, written to the
+same conventions. No code is duplicated between them: a piece needed by more than one
+lives in exactly one.
+
+```
+   Lugh            Lir             Macha, AthenaSIP, ...      hosted systems
+     |               |                  |
+   Dagda: the store  (domains, sealing, objects, heads, leases)
+     |
+   Dannan: the network  (reachability, routes, channels, membership,
+                         identity, placement, work classes, status)
+```
+
+- **[Dannan](https://github.com/tomdionysus/dannan)** is the network: reachability
+  through NATs, routes and channels between nodes, membership, identity, placement, work
+  classes, logging and the shared primitives. Lir uses it for every byte between nodes.
+- **[Dagda](https://github.com/tomdionysus/dagda)** is the store: objects, claims, leases
+  and heads with merges their owner supplies, at a durability level each write chooses.
+  Lir keeps its retained messages, in-flight messages and sessions there.
+- **[Lugh](https://github.com/tomdionysus/lugh)** is the directory and sign-on. Lir never
+  links it; to Lir it is an identity provider, and a Lugh authenticator plugin turns a
+  Lugh token into a client's topic scopes.
+
+Hosted systems never address one another. Other systems use Lir as any MQTT client
+would.
+
+## How to use it
+
+### Build
+
+A C++20 compiler, CMake 3.24 or later, Boost 1.88 (Asio and Beast), OpenSSL 3, and
+GoogleTest for the tests. Dannan is fetched from `../dannan` at the pinned release, so
+clone it beside this repository.
+
+```
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DLIR_BUILD_TESTING=ON
+cmake --build build -j8
+./build/lir_tests
+```
+
+Pass `-DCMAKE_PREFIX_PATH` where Boost and OpenSSL are not on the default path (on macOS
+with MacPorts: `"/opt/local/libexec/boost/1.88;/opt/local"`). The process tests use
+`mosquitto_pub` and `mosquitto_sub` when they are installed.
+
+### Run a node
+
+`lir-node` is one node of a cluster: a Dannan node that advertises `lir` and serves MQTT.
+It reports what it does as one JSON object per line.
+
+```
+printf '%s' 'a long shared secret' > cluster.key
+./build/lir-node --key cluster.key --state ./a --advertise 127.0.0.1
+#   {"event":"listening","id":"...","port":7437,"mqtt_port":1883,"http_port":8083,...}
+```
+
+Any MQTT client can now use it:
+
+```
+mosquitto_sub -h 127.0.0.1 -p 1883 -t 'sensors/#' -V mqttv5 &
+mosquitto_pub -h 127.0.0.1 -p 1883 -t sensors/room1/temp -m 21.5 -q 1 -r
+```
+
+### Run a cluster
+
+Start more nodes with the first as a bootstrap seed. The seed is not a master: once
+joined, every node is equal.
+
+```
+./build/lir-node --key cluster.key --state ./b --advertise 127.0.0.1 --port 7438 \
+  --mqtt-port 1884 --http-port 8084 --bootstrap 127.0.0.1:7437
+```
+
+A subscriber on one node receives what is published on the other, retained messages are
+on both, and a client with a persistent session can reconnect to either.
+`--session-standbys N` sets how many other nodes mirror each session.
+
+### Publish and subscribe over HTTP
+
+```
+curl -N 'http://127.0.0.1:8083/subscribe?filter=sensors/%23'
+curl -X POST --data '22.0' 'http://127.0.0.1:8083/publish?topic=sensors/room1/temp&qos=1'
+```
+
+In the query only `%XX` is decoded; `+` is MQTT's wildcard, never a space.
+`--http-port -1` turns HTTP off.
+
+### TLS
+
+Give the node a certificate chain and key, and a port for each listener that should use
+them:
+
+```
+./build/lir-node ... --tls-certificate node.pem --tls-key node.key \
+  --mqtt-tls-port 8883 --https-port 8443
+mosquitto_sub -h node.example -p 8883 --cafile ca.pem -t '$lir/#'
+```
+
+### Embed it
+
+The library is the same pieces `lir-node` puts together: a `dannan::Node`, then
+`lir::edge::Edge` (the listeners and the broker), `lir::cluster::Cluster` (registered
+before the Dannan node starts), `lir::system::SystemTopics` and, if wanted,
+`lir::http::HttpServer`. `tools/lir_node.cpp` is the worked example, in the order to
+start and stop them.
+
+## Repository layout
+
+```
+lir/mqtt/       the MQTT codec: wire, properties, packets, topics
+lir/subs/       the subscription trie
+lir/shard/      topic shards and ownership prefixes
+lir/contract/   the Connection and Authenticator contracts
+lir/broker/     the broker: sessions, QoS, retained, wills, shared groups
+lir/edge/       the TCP and TLS listeners
+lir/cluster/    the cluster on Dannan and its codec
+lir/system/     the system topics
+lir/http/       HTTP publish and SSE
+lir/test/       GoogleTest, one binary (lir_tests); fixtures in lir/test/fixtures/
+lir/fuzz/       libFuzzer targets for untrusted bytes
+tools/          lir-node
+docs/           the principles and laws shared with the stack
+TODO/           now and next (ACTIVE.md), the design, and what shipped (COMPLETED.md)
+```
+
+Conventions, shared with the stack: [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Status
+
+In development; no release is cut yet. The first, 0.1.0, follows persistence on Dagda.
+Built and tested (170 tests): all of MQTT 3.1, 3.1.1 and 5.0 on one node, over TCP and
+TLS; the cluster on Dannan with sessions that move and are mirrored to standbys; system
+topics; HTTP and HTTPS publish and SSE. The cluster is an interim one until Dagda:
+retained messages are held in memory on every node and a QoS 1 or 2 publish is
+acknowledged on acceptance, not on replication. Next: topic scopes through Dannan's
+scope check, refusing anonymous clients by default, MQTT over WebSockets, then
+persistence on Dagda and the Lugh authenticator.
+
+## Licence
+
+Copyright (C) 2026 Tom Cully. Licensed under the GNU GPLv3; see `LICENSE`.
