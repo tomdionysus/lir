@@ -255,6 +255,9 @@ void Link::finish_connect(std::optional<Bytes> auth_data, std::optional<SessionI
     broker._sessions.emplace(id, std::move(session));
   }
   auto& session = *broker._sessions.at(id);
+  // A resumed session keeps only what this connection's grant allows; the
+  // client learns of the rest when it subscribes again.
+  if (present) broker.prune(session, *_grant);
   session.link = this;
   session.expires_at.reset();
   session.version = _version;
@@ -483,6 +486,10 @@ void Link::on_auth(const mqtt::Auth& auth) {
       if (_state == State::authenticating) return begin_connect(decision);
       {
         _grant = decision.grant ? decision.grant : std::make_shared<contract::Nothing>();
+        // A narrower grant: the subscriptions it no longer allows go, and the
+        // client is told by being disconnected, since MQTT has no way to
+        // unsubscribe on its behalf; it resubscribes and sees SUBACK 0x87.
+        if (_broker.prune(*_broker._sessions.at(_client_id), *_grant) > 0) return shutdown(reason::not_authorized, true);
         mqtt::Auth done{reason::success, {}};
         done.properties.authentication_method = _auth_method;
         done.properties.authentication_data = decision.data;
@@ -801,6 +808,15 @@ bool Broker::unsubscribe(Session& session, const std::string& filter) {
   }
   interest_changed();
   return true;
+}
+
+size_t Broker::prune(Session& session, const contract::Grant& grant) {
+  std::vector<std::string> lost;
+  for (const auto& [filter, options] : session.subscriptions) {
+    if (!grant.may_subscribe(filter)) lost.push_back(filter);
+  }
+  for (const auto& filter : lost) unsubscribe(session, filter);
+  return lost.size();
 }
 
 void Broker::send_retained(Session& session, const std::string& filter, const Options& options) {
