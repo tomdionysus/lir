@@ -75,24 +75,6 @@ inline std::string transport_of(const asio::ssl::stream<tcp::socket>&) { return 
 inline std::string transport_of(const websocket::stream<tcp::socket>&) { return "ws"; }
 inline std::string transport_of(const websocket::stream<asio::ssl::stream<tcp::socket>>&) { return "wss"; }
 
-// The verified client certificate's subject, RFC 2253 form.
-std::optional<std::string> subject_of(SSL* ssl) {
-  if (!ssl || SSL_get_verify_result(ssl) != X509_V_OK) return std::nullopt;
-  X509* certificate = SSL_get1_peer_certificate(ssl);
-  if (!certificate) return std::nullopt;
-  std::optional<std::string> out;
-  if (BIO* bio = BIO_new(BIO_s_mem())) {
-    if (X509_NAME_print_ex(bio, X509_get_subject_name(certificate), 0, XN_FLAG_RFC2253) >= 0) {
-      char* data = nullptr;
-      const long size = BIO_get_mem_data(bio, &data);
-      if (size >= 0) out = std::string(data, static_cast<size_t>(size));
-    }
-    BIO_free(bio);
-  }
-  X509_free(certificate);
-  return out;
-}
-
 // The subprotocol to answer with, from the comma-separated list a client
 // offered: "mqtt", else "mqttv3.1" (a 3.1 client); "" when nothing was
 // offered; nothing when only others were.
@@ -135,7 +117,7 @@ class StreamConnection final : public ClientConnection, public std::enable_share
     boost::system::error_code ec;
     const auto remote = beast::get_lowest_layer(_stream).remote_endpoint(ec);
     _peer = ec ? "unknown" : remote.address().to_string() + ":" + std::to_string(remote.port());
-    _subject = subject_of(ssl_of(_stream));
+    _subject = verified_subject(ssl_of(_stream));
   }
 
   void start(std::shared_ptr<broker::Link> link) {
@@ -239,10 +221,37 @@ void listen_on(tcp::acceptor& acceptor, const std::string& host, uint16_t port) 
 
 }  // namespace
 
-std::unique_ptr<asio::ssl::context> server_context(const TlsConfig& tls) {
-  auto context = std::make_unique<asio::ssl::context>(asio::ssl::context::tls_server);
-  context->set_options(asio::ssl::context::default_workarounds | asio::ssl::context::no_sslv2 | asio::ssl::context::no_sslv3 | asio::ssl::context::no_tlsv1 |
-                       asio::ssl::context::no_tlsv1_1);
+// The verified client certificate's subject, RFC 2253 form.
+std::optional<std::string> verified_subject(SSL* ssl) {
+  if (!ssl || SSL_get_verify_result(ssl) != X509_V_OK) return std::nullopt;
+  X509* certificate = SSL_get1_peer_certificate(ssl);
+  if (!certificate) return std::nullopt;
+  std::optional<std::string> out;
+  if (BIO* bio = BIO_new(BIO_s_mem())) {
+    if (X509_NAME_print_ex(bio, X509_get_subject_name(certificate), 0, XN_FLAG_RFC2253) >= 0) {
+      char* data = nullptr;
+      const long size = BIO_get_mem_data(bio, &data);
+      if (size >= 0) out = std::string(data, static_cast<size_t>(size));
+    }
+    BIO_free(bio);
+  }
+  X509_free(certificate);
+  return out;
+}
+
+std::unique_ptr<asio::ssl::context> server_context(const TlsConfig& tls, bool datagram) {
+  std::unique_ptr<asio::ssl::context> context;
+  if (datagram) {
+    // Asio has no DTLS method: the context is OpenSSL's, wrapped.
+    SSL_CTX* raw = SSL_CTX_new(DTLS_server_method());
+    if (!raw) throw std::runtime_error("no DTLS context");
+    SSL_CTX_set_min_proto_version(raw, DTLS1_2_VERSION);
+    context = std::make_unique<asio::ssl::context>(raw);
+  } else {
+    context = std::make_unique<asio::ssl::context>(asio::ssl::context::tls_server);
+    context->set_options(asio::ssl::context::default_workarounds | asio::ssl::context::no_sslv2 | asio::ssl::context::no_sslv3 | asio::ssl::context::no_tlsv1 |
+                         asio::ssl::context::no_tlsv1_1);
+  }
   context->use_certificate_chain_file(tls.certificate_chain.string());
   context->use_private_key_file(tls.private_key.string(), asio::ssl::context::pem);
   if (!tls.client_ca.empty()) {

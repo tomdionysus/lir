@@ -52,6 +52,13 @@ struct GatewayConfig {
   // A woken client is put back to sleep after this, once what was held is
   // sent (section 6.14: it returns to sleep after PINGRESP).
   std::chrono::milliseconds awake_grace{2000};
+  // MQTT-SN over DTLS 1.2 on its own port (Tom: DTLS beside plain UDP),
+  // with the same certificate settings as the TLS listeners, client
+  // certificates included; a verified subject reaches the authenticator.
+  // Nothing: none.
+  std::optional<edge::TlsConfig> dtls;
+  // DTLS peers mid-handshake at once, past which new ones are ignored.
+  size_t maximum_handshakes = 1024;
 };
 
 struct GatewayStats {
@@ -62,6 +69,8 @@ struct GatewayStats {
   uint64_t wills_published = 0;
   uint64_t held_dropped = 0;
   uint64_t qos_minus_one = 0;
+  uint64_t dtls_sessions = 0;
+  uint64_t dtls_failed = 0;
 };
 
 class Gateway {
@@ -77,6 +86,8 @@ class Gateway {
   // Disconnects every client and closes the port. Never from an io thread.
   void stop();
   uint16_t port() const noexcept;
+  // Zero without DTLS.
+  uint16_t dtls_port() const noexcept;
   // Waits on the strand.
   GatewayStats stats();
 

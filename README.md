@@ -4,7 +4,7 @@ Lir is the event system for a cluster of trusted machines. It is a C++20 library
 node binary that turn a set of nodes into one MQTT broker: connect to any node, publish
 or subscribe on any node, drop the connection and resume the session on another, and the
 cluster behaves as a single broker. It speaks MQTT 3.1, 3.1.1 and 5.0 in full, over TCP,
-TLS and WebSocket, and MQTT-SN 1.2 for sensor networks over UDP, with an HTTP publish and Server-Sent Events endpoint beside it for browsers and
+TLS and WebSocket, and MQTT-SN 1.2 for sensor networks over UDP and DTLS, with an HTTP publish and Server-Sent Events endpoint beside it for browsers and
 curl. It runs on [Dannan](https://github.com/tomdionysus/dannan), the network, and
 persists in [Dagda](https://github.com/tomdionysus/dagda), the store.
 
@@ -78,8 +78,9 @@ Lir is the broker written once for this stack:
   predefined topic ids (predefined ones are retained messages on
   `$lir/mqttsn/topics/<id>`), the will exchange, sleeping clients (what arrives while a
   client sleeps is held and delivered when it wakes), QoS -1 from clients that never
-  connected, forwarders' encapsulated packets, and gateway discovery. Each MQTT-SN client
-  is a client of the broker like any other.
+  connected, forwarders' encapsulated packets, and gateway discovery; over plain UDP and
+  over DTLS 1.2, with client certificates. Each MQTT-SN client is a client of the broker
+  like any other.
 - **Rules.** Declarative routes, stored as retained JSON on `$lir/rules/<name>`, so MQTT
   is their API and they replicate to every node: match a topic filter and conditions on
   JSON payload fields, properties and the publisher, then republish to a templated topic
@@ -230,12 +231,15 @@ and the pressure, and `$lir/cluster` says whether every node runs the same limit
 
 ```
 ./build/lir-node ... --mqttsn-port 1884 [--mqttsn-gateway-id 1] [--mqttsn-advertise-seconds 900]
+./build/lir-node ... --mqttsn-port 1884 --mqttsn-dtls-port 8884 \
+  --tls-certificate node.pem --tls-key node.key [--tls-client-ca sensors-ca.pem]
 ```
 
 ADVERTISE broadcasts are off unless `--mqttsn-advertise-seconds` is given; SEARCHGW is
 always answered. A predefined topic id is a retained message, `$lir/mqttsn/topics/5`
 with payload `alarms/door`. MQTT-SN 1.2 carries no credentials, so its clients are
-anonymous to the authenticator.
+anonymous to the authenticator, unless they present a client certificate over DTLS,
+whose verified subject the authenticator is given.
 
 ### Rules
 
@@ -334,7 +338,7 @@ Conventions, shared with the stack: [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Status
 
 In development; no release is cut yet. The first, 0.1.0, follows persistence on Dagda.
-Built and tested (288 tests): all of MQTT 3.1, 3.1.1 and 5.0 on one node, over TCP, TLS,
+Built and tested (291 tests): all of MQTT 3.1, 3.1.1 and 5.0 on one node, over TCP, TLS,
 WebSocket and WebSocket over TLS; the cluster on Dannan with sessions that move and are mirrored to standbys; system
 topics; HTTP and HTTPS publish and SSE; topic scopes, with anonymous clients
 refused by default; client certificates. The cluster is an interim one until Dagda:
