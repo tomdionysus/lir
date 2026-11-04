@@ -9,6 +9,11 @@
 
 #include <gtest/gtest.h>
 
+#include <boost/asio/read.hpp>
+#include <boost/asio/ssl.hpp>
+
+#include "dannan/test/fixtures/child_process.h"
+#include "dannan/test/fixtures/temp_dir.h"
 #include "lir/test/fixtures/mqtt_client.h"
 
 namespace lir::edge {
@@ -121,6 +126,75 @@ TEST_F(SlowEdgeTest, AClientThatDoesNotReadIsClosedNotWaitedFor) {
   // The publisher was never held up: it still gets its answers.
   pub.send(mqtt::Pingreq{});
   EXPECT_TRUE(pub.receive_a<mqtt::Pingresp>());
+}
+
+// MQTT over TLS: a self-signed certificate made for the test, a client
+// that verifies the server against it, and the same broker as the plain
+// port.
+class TlsEdgeTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    const std::string openssl = LIR_OPENSSL;
+    if (openssl.find("NOTFOUND") != std::string::npos) GTEST_SKIP() << "no openssl command";
+    dannan::test::ChildProcess make(
+        {openssl, "req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1", "-nodes", "-keyout", (dir.path() / "key.pem").string(), "-out",
+         (dir.path() / "cert.pem").string(), "-days", "1", "-subj", "/CN=localhost", "-addext", "subjectAltName=IP:127.0.0.1"},
+        dir.path() / "openssl.log");
+    ASSERT_EQ(make.wait(std::chrono::steady_clock::now() + 20s), 0);
+    EdgeConfig config;
+    config.listen_host = "127.0.0.1";
+    config.port = 0;
+    config.tls = TlsConfig{"127.0.0.1", 0, dir.path() / "cert.pem", dir.path() / "key.pem"};
+    edge.emplace(io.context, config, dannan::contract::steady_time_source(), allow,
+                 dannan::status::ScopedLogger{std::make_shared<dannan::status::ConsoleSink>(dannan::status::LogLevel::error), "lir"});
+    edge->start();
+  }
+
+  dannan::test::TempDir dir;
+  test::Io io;
+  contract::AllowAll allow;
+  std::optional<Edge> edge;
+};
+
+TEST_F(TlsEdgeTest, AVerifyingClientConnectsAndReceives) {
+  ASSERT_NE(edge->tls_port(), 0);
+  boost::asio::io_context client_io;
+  boost::asio::ssl::context context(boost::asio::ssl::context::tls_client);
+  context.load_verify_file((dir.path() / "cert.pem").string());
+  boost::asio::ssl::stream<boost::asio::ip::tcp::socket> tls(client_io, context);
+  tls.set_verify_mode(boost::asio::ssl::verify_peer);
+  tls.set_verify_callback(boost::asio::ssl::host_name_verification("127.0.0.1"));
+  tls.lowest_layer().connect({boost::asio::ip::make_address("127.0.0.1"), edge->tls_port()});
+  tls.handshake(boost::asio::ssl::stream_base::client);
+
+  const auto exchange = [&tls](const mqtt::Packet& packet) { boost::asio::write(tls, boost::asio::buffer(mqtt::encode(packet, Version::v5))); };
+  const auto next = [&tls]() -> mqtt::Packet {
+    mqtt::Bytes buffer;
+    for (;;) {
+      if (const auto frame = mqtt::read_frame(buffer, UINT32_MAX); frame && buffer.size() >= frame->size()) return mqtt::decode(buffer, Version::v5);
+      std::array<uint8_t, 1> byte{};
+      boost::asio::read(tls, boost::asio::buffer(byte));
+      buffer.push_back(byte[0]);
+    }
+  };
+  exchange(mqtt::Connect{Version::v5, true, 0, "secure", {}, {}, {}, {}});
+  ASSERT_EQ(std::get<mqtt::Connack>(next()).reason, mqtt::reason::success);
+  exchange(mqtt::Subscribe{1, {}, {{"secret/#", QoS::at_most_once}}});
+  ASSERT_TRUE(std::holds_alternative<mqtt::Suback>(next()));
+
+  MqttClient plain(edge->port());
+  plain.connect("plain");
+  plain.publish("secret/door", "open", QoS::at_least_once);
+  const auto got = std::get<mqtt::Publish>(next());
+  EXPECT_EQ(got.topic, "secret/door");
+  EXPECT_EQ(std::string(got.payload.begin(), got.payload.end()), "open");
+}
+
+TEST_F(TlsEdgeTest, PlaintextOnTheTlsPortGetsNothing) {
+  MqttClient wrong(edge->tls_port(), Version::v5, 0, 1);
+  wrong.send(mqtt::Connect{Version::v5, true, 0, "oops", {}, {}, {}, {}});
+  EXPECT_FALSE(wrong.receive_a<mqtt::Connack>());
+  EXPECT_TRUE(test::eventually([&] { return edge->call<size_t>([](broker::Broker& b) { return b.connections(); }) == 0; }, 2s));
 }
 
 }  // namespace

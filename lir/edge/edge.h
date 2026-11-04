@@ -11,8 +11,10 @@
 #include <boost/asio/strand.hpp>
 #include <chrono>
 #include <cstdint>
+#include <filesystem>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "dannan/contract/time_source.h"
@@ -27,6 +29,18 @@
 // waited for.
 namespace lir::edge {
 
+// MQTT over TLS on its own port, beside the plain one: the same broker.
+struct TlsConfig {
+  std::string listen_host = "0.0.0.0";
+  // Zero: any; tls_port() says which.
+  uint16_t port = 8883;
+  // PEM files: the server's certificate chain, leaf first, and its key.
+  std::filesystem::path certificate_chain;
+  std::filesystem::path private_key;
+  // A client that has not finished its handshake within this is closed.
+  std::chrono::milliseconds handshake_timeout{10000};
+};
+
 struct EdgeConfig {
   std::string listen_host = "0.0.0.0";
   // Zero: any; port() says which.
@@ -36,6 +50,8 @@ struct EdgeConfig {
   // How often the broker's poll() runs: keep alive, wills, expiry.
   std::chrono::milliseconds poll_every{1000};
   broker::Config broker;
+  // Nothing: no TLS listener.
+  std::optional<TlsConfig> tls;
 };
 
 class Edge {
@@ -51,13 +67,16 @@ class Edge {
   Edge(const Edge&) = delete;
   Edge& operator=(const Edge&) = delete;
 
-  // Binds and listens. Throws boost::system::system_error when the address
-  // cannot be bound. Waits on the bind.
+  // Binds and listens, on the TLS port too when configured. Throws
+  // boost::system::system_error when an address cannot be bound or the
+  // certificate or key cannot be loaded. Waits on the bind.
   void start();
   // Closes the listener and every client, then waits for the strand to
   // have done so. Never from one of the io context's threads.
   void stop();
   uint16_t port() const noexcept;
+  // Zero without a TLS listener.
+  uint16_t tls_port() const noexcept;
 
   // Runs `fn` with the broker on its strand. Waits on nothing.
   void post(std::function<void(broker::Broker&)> fn);
