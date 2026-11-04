@@ -8,12 +8,18 @@ decoder), topic scopes, the moderate default limits and memory pressure
 are on `develop`; gate `lir_tests` 248. `COMPLETED.md` is the record.
 Server Reference at CONNECT is done (248); memory thresholds and the
 ledger (251), the rules engine (270), MQTT-SN 1.2 (288) and over DTLS
-(291); close_notify on TLS closes and the HTTPS certificate subject (295).
+(291); close_notify on TLS closes and the HTTPS certificate subject (295);
+Dannan 0.4.1 (295); the Lugh token authenticator's own checks, behind a
+`TokenVerifier` seam (307).
 "Resume here": nothing in Lir is unblocked. MQTT-SN 2.0 waits on OASIS
 (only working drafts exist, the newest 2025-10-19; recommended to the maintainer on
 2026-11-04 to wait for an approved Committee Specification, and he said
 continue); message history and step 5 wait on Dagda, the Lugh plugin on
-Lugh (tokens in its O7).
+Lugh's verification code: Lugh's O7 tokens have landed (RFC 9068
+JWTs, ES256, JWKS at `<issuer>/oauth2/jwks`), and the stack decision is
+that verification stays Lugh's and the plugin links Lugh. Lugh exports no
+small library for it yet (its `lugh_client` is P10); how the plugin links
+it is with the maintainer (asked 2026-11-04).
 
 The design is the maintainer's, 2026-11-03:
 [`2026-11-03-lir-plan.md`](2026-11-03-lir-plan.md), with the seven
@@ -119,7 +125,8 @@ written new; Macha has no event system to extract (`COMPLETED.md`,
 
 - Dagda: head spaces with owner merges, Replicated writes, leases,
   objects and claims, a node-local space (step 5).
-- Lugh: tokens an MQTT client can present (step 6's plugin).
+- Lugh: a linkable token verifier (its `jose.h` and the claim checks), for
+  the plugin's `TokenVerifier`; the tokens themselves have landed (O7).
 - Dannan: nothing. Lir is on `0.4.0`.
 - Lugh: the grammar of scopes in its tokens.
 - OASIS: an approved MQTT-SN 2.0 Committee Specification.

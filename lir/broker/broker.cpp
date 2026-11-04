@@ -217,7 +217,7 @@ void Link::on_connect(mqtt::Connect&& connect) {
   }
   if (v5()) _auth_method = connect.properties.authentication_method;
   _connect = std::move(connect);
-  const auto decision = _broker._authenticator.connect(*_connect, contract::Peer{_connection->peer(), _connection->certificate_subject()});
+  const auto decision = _broker._authenticator.connect(*_connect, peer());
   switch (decision.kind) {
     case contract::AuthDecision::Kind::accept:
       return begin_connect(decision);
@@ -530,6 +530,15 @@ void Link::on_disconnect(const mqtt::Disconnect& disconnect) {
   shutdown(std::nullopt, disconnect.reason == reason::disconnect_with_will);
 }
 
+contract::Peer Link::peer() const {
+  contract::Peer out{_connection->peer(), std::nullopt, std::nullopt};
+  if (const auto certificate = _connection->certificate()) {
+    out.certificate_subject = certificate->subject;
+    out.certificate_thumbprint = certificate->thumbprint;
+  }
+  return out;
+}
+
 void Link::on_auth(const mqtt::Auth& auth) {
   if (!_auth_method || auth.properties.authentication_method != _auth_method) {
     if (_state == State::authenticating) return refuse_connect(reason::protocol_error);
@@ -542,7 +551,7 @@ void Link::on_auth(const mqtt::Auth& auth) {
   } else if (auth.reason != reason::reauthenticate && auth.reason != reason::continue_authentication) {
     return shutdown(reason::protocol_error, true);
   }
-  const auto decision = _broker._authenticator.auth(client, *_auth_method, data);
+  const auto decision = _broker._authenticator.auth(client, *_auth_method, data, peer());
   switch (decision.kind) {
     case contract::AuthDecision::Kind::accept:
       if (_state == State::authenticating) return begin_connect(decision);
