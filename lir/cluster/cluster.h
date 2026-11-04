@@ -85,6 +85,10 @@ class Cluster {
   // after the edge has started, since its ports are bound then. Waits on
   // nothing.
   void advertise_endpoints();
+  // How many nodes, this one included, this node knows to hold a member of
+  // the shared group `group` on `filter`: the nodes a message is offered
+  // to. Waits on the edge's strand; never from an io thread.
+  size_t shared_members(const std::string& group, const std::string& filter);
 
  private:
   struct State;
