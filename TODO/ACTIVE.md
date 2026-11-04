@@ -3,8 +3,8 @@
 Last updated: 2026-11-04. Steps 1 to 4, session standbys, the system
 topics (all but `$lir/shards`, which follows step 5), HTTP and HTTPS,
 MQTT over TLS and over WebSocket, the specification's MAYs, Dannan 0.3.0
-and topic scopes are on `develop`; gate `lir_tests` 222. `COMPLETED.md`
-is the record. "Resume here": client certificates, then section 4's
+topic scopes and client certificates are on `develop`; gate `lir_tests`
+227. `COMPLETED.md` is the record. "Resume here": section 4's
 moderate default limits (not yet applied: `maximum_queued` is 1000, the
 session expiry cap and the connection cap are unset), then Server
 Reference, MQTT-SN and the rules engine.
@@ -63,8 +63,8 @@ written new; Macha has no event system to extract (`COMPLETED.md`,
 1. **Wire and topics.** Done (73).
 2. **The broker on one node.** Done (125).
 3. **The edge.** Done (132; the mosquitto process test landed in step 4;
-   TLS on the MQTT port, 165; HTTPS, 170). Open: client certificates
-   (mutual TLS), a TLS close_notify on close.
+   TLS on the MQTT port, 165; HTTPS, 170; WebSocket, 214; client
+   certificates, 227). Open: a TLS close_notify on close.
 4. **The cluster on Dannan.** Done as an interim (151): see
    `COMPLETED.md`. Sessions mirrored to configurable standbys (answer
    2): done (152).
