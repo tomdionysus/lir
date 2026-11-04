@@ -992,5 +992,88 @@ TEST_F(BrokerScopes, ReauthenticationReplacesTheGrant) {
   EXPECT_EQ(client.take_one<mqtt::Disconnect>().reason, reason::not_authorized);
 }
 
+TEST_F(BrokerScopes, NarrowerReauthenticationDropsSubscriptionsAndDisconnects) {
+  scoped.renewed = {{}, {"open/a/#"}, {}};
+  auto client = open();
+  connect(client, "c", {}, false, true);
+  client.send(mqtt::Subscribe{1, {}, {{"open/#", QoS::at_most_once}, {"open/a/b", QoS::at_most_once}}});
+  client.take_first<mqtt::Suback>();
+  mqtt::Auth again{reason::reauthenticate, {}};
+  again.properties.authentication_method = "TEST";
+  again.properties.authentication_data = Bytes{'m', 'o', 'r', 'e'};
+  client.send(again);
+  const auto packets = client.take();
+  ASSERT_FALSE(packets.empty());
+  ASSERT_TRUE(std::holds_alternative<mqtt::Disconnect>(packets.back()));
+  EXPECT_EQ(std::get<mqtt::Disconnect>(packets.back()).reason, reason::not_authorized);
+  EXPECT_TRUE(client.closed());
+
+  // The covered subscription stayed: a publish reaches the resumed session.
+  auto back = open();
+  EXPECT_TRUE(connect(back, "c", {}, false).session_present);
+  auto pub = open();
+  connect(pub, "pub");
+  pub.send(publish("open/a/b", false, QoS::at_most_once));
+  pub.send(publish("open/x", false, QoS::at_most_once));
+  const auto got = back.take_all<mqtt::Publish>();
+  ASSERT_EQ(got.size(), 1u);
+  EXPECT_EQ(got[0].topic, "open/a/b");
+}
+
+TEST_F(BrokerScopes, AnEqualOrWiderReauthenticationKeepsTheConnection) {
+  scoped.renewed = {{}, {"#"}, {}};
+  auto client = open();
+  connect(client, "c", {}, true, true);
+  client.send(mqtt::Subscribe{1, {}, {{"open/#", QoS::at_most_once}}});
+  client.take_first<mqtt::Suback>();
+  mqtt::Auth again{reason::reauthenticate, {}};
+  again.properties.authentication_method = "TEST";
+  again.properties.authentication_data = Bytes{'m', 'o', 'r', 'e'};
+  client.send(again);
+  EXPECT_EQ(client.take_one<mqtt::Auth>().reason, reason::success);
+  EXPECT_FALSE(client.closed());
+}
+
+class BrokerScopesAtReconnect : public ::testing::Test {
+ protected:
+  // The node's grant for each new connection is set by the test.
+  class Switchable final : public contract::Authenticator {
+   public:
+    contract::AuthDecision connect(const mqtt::Connect&) override { return contract::AuthDecision::accept(std::make_shared<auth::ScopeGrant>(scopes)); }
+    contract::AuthDecision auth(const std::string&, const std::string&, const Bytes&) override {
+      return contract::AuthDecision::refuse(reason::bad_authentication_method);
+    }
+    auth::TopicScopes scopes;
+  };
+  BrokerScopesAtReconnect() : broker({}, time, switchable, {std::make_shared<dannan::status::ConsoleSink>(dannan::status::LogLevel::error), "lir"}) {}
+  Client open(Version version) {
+    auto connection = std::make_shared<FakeConnection>();
+    return Client{connection, broker.accept(connection), version};
+  }
+  dannan::test::SteppedTime time;
+  Switchable switchable;
+  Broker broker;
+};
+
+TEST_F(BrokerScopesAtReconnect, AResumedThreeOneOneSessionKeepsOnlyWhatTheNewGrantAllows) {
+  switchable.scopes = {{"#"}, {"#"}, {}};
+  auto client = open(Version::v3_1_1);
+  client.send(mqtt::Connect{Version::v3_1_1, false, 0, "c", {}, {}, {}, {}});
+  client.take_first<mqtt::Connack>();
+  client.send(mqtt::Subscribe{1, {}, {{"a/#", QoS::at_most_once}, {"b/#", QoS::at_most_once}}});
+  client.take_first<mqtt::Suback>();
+  client.link->closed();
+
+  switchable.scopes = {{"#"}, {"a/#"}, {}};
+  auto back = open(Version::v3_1_1);
+  back.send(mqtt::Connect{Version::v3_1_1, false, 0, "c", {}, {}, {}, {}});
+  EXPECT_TRUE(back.take_first<mqtt::Connack>().session_present);
+  broker.publish(msg("a/1", Bytes{'1'}, QoS::at_most_once));
+  broker.publish(msg("b/1", Bytes{'2'}, QoS::at_most_once));
+  const auto got = back.take_all<mqtt::Publish>();
+  ASSERT_EQ(got.size(), 1u);
+  EXPECT_EQ(got[0].topic, "a/1");
+}
+
 }  // namespace
 }  // namespace lir::broker

@@ -360,6 +360,9 @@ class Broker {
   void resend(Session& session);
   void subscribe(Session& session, const std::string& filter, const Options& options);
   bool unsubscribe(Session& session, const std::string& filter);
+  // Removes the subscriptions `grant` no longer allows (design, section 1:
+  // a narrower grant on re-authentication or at reconnect); how many.
+  size_t prune(Session& session, const contract::Grant& grant);
   void send_retained(Session& session, const std::string& filter, const Options& options);
   // Ends a session: its pending will goes, then the session.
   void end_session(const std::string& client_id);

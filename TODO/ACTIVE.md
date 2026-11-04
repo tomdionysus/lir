@@ -2,7 +2,7 @@
 
 Last updated: 2026-11-04. Steps 1 to 4, session standbys, system
 topics, HTTP and HTTPS, MQTT over TLS, the specification's MAYs, Dannan
-0.3.0 and topic scopes are on `develop`; gate `lir_tests` 199.
+0.3.0 and topic scopes are on `develop`; gate `lir_tests` 202.
 `COMPLETED.md` is the record. "Resume here": MQTT over WebSockets, then
 the configurable system topics, then client certificates (Tom's order,
 design section 6).
