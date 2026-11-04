@@ -134,6 +134,12 @@ struct Config {
   // Topics clients may not publish to: the subscribe-only system prefixes.
   std::vector<std::string> reserved_prefixes{"$dannan/", "$lir/", "$share/"};
   std::string assigned_id_prefix = "lir-";
+  // 5.0 Response Information, sent when a client asks for it; "{client}"
+  // becomes its client id. Nothing: not sent.
+  std::optional<std::string> response_information;
+  // QoS 0 messages queued for an offline session too (the specification
+  // allows it; off, they are dropped and counted).
+  bool queue_qos0_offline = false;
 };
 
 struct Stats {
@@ -227,6 +233,9 @@ class Link : public std::enable_shared_from_this<Link> {
   TimePoint _opened;
   TimePoint _last_received;
   std::map<uint16_t, std::string> _inbound_aliases;
+  // Topic aliases this server has given the client, up to its maximum.
+  std::map<std::string, uint16_t> _outbound_aliases;
+  uint16_t _client_alias_maximum = 0;
 };
 
 class Broker {
@@ -343,6 +352,9 @@ class Broker {
   // packet identifier. False if it was dropped (expired, too large).
   bool transmit(Session& session, Delivery delivery);
   mqtt::Publish build(const Session& session, const Delivery& delivery, uint16_t packet_id, bool dup) const;
+  // The bytes for a PUBLISH to the session's client, with a topic alias
+  // where it may have one; nothing when over the client's maximum size.
+  std::optional<Bytes> outgoing(Session& session, mqtt::Publish publish);
   void resend(Session& session);
   void subscribe(Session& session, const std::string& filter, const Options& options);
   bool unsubscribe(Session& session, const std::string& filter);
