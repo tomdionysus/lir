@@ -72,6 +72,7 @@
 #include "lir/cluster/cluster.h"
 #include "lir/edge/edge.h"
 #include "lir/http/http.h"
+#include "lir/sn/gateway.h"
 #include "lir/system/ledger.h"
 #include "lir/system/system.h"
 #include "lir/version.h"
@@ -133,6 +134,12 @@ struct Options {
   lir::system::SystemConfig system;
   lir::broker::Config limits;
   size_t maximum_outbound_bytes = lir::edge::EdgeConfig{}.maximum_outbound_bytes;
+  // -1: no MQTT-SN gateway.
+  int mqttsn_port = -1;
+  std::string mqttsn_listen = "0.0.0.0";
+  uint8_t mqttsn_gateway_id = 1;
+  uint32_t mqttsn_advertise_seconds = 0;
+  std::string mqttsn_advertise_address = "255.255.255.255";
   bool allow_anonymous = false;
   std::vector<std::string> anonymous_scopes;
 };
@@ -196,6 +203,11 @@ dannan::config::Reader reader() {
   add("http.port", Kind::value, "--http-port", "a port, 0 to 65535, or -1 for none");
   add("http.tls_listen", Kind::value, "--https-listen", "an address");
   add("http.tls_port", Kind::value, "--https-port", "a port, 0 to 65535, or -1 for none");
+  add("mqttsn.listen", Kind::value, "--mqttsn-listen", "an address");
+  add("mqttsn.port", Kind::value, "--mqttsn-port", "a UDP port, 0 to 65535, or -1 for none");
+  add("mqttsn.gateway_id", Kind::value, "--mqttsn-gateway-id", "a gateway id, 0 to 255");
+  add("mqttsn.advertise_seconds", Kind::value, "--mqttsn-advertise-seconds", "seconds between ADVERTISE broadcasts, 0 for none");
+  add("mqttsn.advertise_address", Kind::value, "--mqttsn-advertise-address", "the broadcast address");
   add("tls.certificate", Kind::value, "--tls-certificate", "a PEM certificate chain");
   add("tls.key", Kind::value, "--tls-key", "a PEM private key");
   add("tls.client_ca", Kind::value, "--tls-client-ca", "a PEM file of client CAs");
@@ -264,6 +276,11 @@ Options parse(int argc, char** argv) {
   out.http_port = port_or_none(settings, "http.port", out.http_port);
   out.https_listen = settings.text("http.tls_listen").value_or(out.https_listen);
   out.https_port = port_or_none(settings, "http.tls_port", out.https_port);
+  out.mqttsn_listen = settings.text("mqttsn.listen").value_or(out.mqttsn_listen);
+  out.mqttsn_port = port_or_none(settings, "mqttsn.port", out.mqttsn_port);
+  out.mqttsn_gateway_id = static_cast<uint8_t>(settings.number("mqttsn.gateway_id", 0, 255).value_or(out.mqttsn_gateway_id));
+  out.mqttsn_advertise_seconds = static_cast<uint32_t>(settings.number("mqttsn.advertise_seconds", 0, 65535).value_or(0));
+  out.mqttsn_advertise_address = settings.text("mqttsn.advertise_address").value_or(out.mqttsn_advertise_address);
   out.tls_certificate = settings.path_of("tls.certificate").value_or("");
   out.tls_key = settings.path_of("tls.key").value_or("");
   out.tls_client_ca = settings.path_of("tls.client_ca").value_or("");
@@ -398,6 +415,18 @@ int main(int argc, char** argv) {
     system.start();
     lir::system::LedgerLeases leases(node.context(), edge);
     leases.start();
+    std::optional<lir::sn::Gateway> gateway;
+    if (options.mqttsn_port >= 0) {
+      lir::sn::GatewayConfig sn;
+      sn.listen_host = options.mqttsn_listen;
+      sn.port = static_cast<uint16_t>(options.mqttsn_port);
+      sn.gateway_id = options.mqttsn_gateway_id;
+      if (options.mqttsn_advertise_seconds > 0) sn.advertise_every = std::chrono::seconds(options.mqttsn_advertise_seconds);
+      sn.advertise_address = options.mqttsn_advertise_address;
+      sn.advertise_port = sn.port;
+      gateway.emplace(io, edge, sn, node.context().logger("lir.mqttsn"));
+      gateway->start();
+    }
     std::optional<lir::http::HttpServer> http;
     if (options.http_port >= 0) {
       lir::http::HttpConfig http_config;
@@ -412,7 +441,8 @@ int main(int argc, char** argv) {
     say("{\"event\":\"listening\",\"id\":\"" + dannan::identity::to_string(node.context().identity().id()) + "\",\"port\":" + std::to_string(node.port()) +
         ",\"mqtt_port\":" + std::to_string(edge.port()) + ",\"mqtt_tls_port\":" + std::to_string(edge.tls_port()) +
         ",\"ws_port\":" + std::to_string(edge.websocket_port()) + ",\"wss_port\":" + std::to_string(edge.secure_websocket_port()) +
-        ",\"http_port\":" + std::to_string(http ? http->port() : 0) + ",\"https_port\":" + std::to_string(http ? http->tls_port() : 0) + "}");
+        ",\"mqttsn_port\":" + std::to_string(gateway ? gateway->port() : 0) + ",\"http_port\":" + std::to_string(http ? http->port() : 0) +
+        ",\"https_port\":" + std::to_string(http ? http->tls_port() : 0) + "}");
 
     const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(options.seconds);
     auto next_status = std::chrono::steady_clock::now() + options.status;
@@ -424,6 +454,7 @@ int main(int argc, char** argv) {
       std::this_thread::sleep_for(50ms);
     }
     if (http) http->stop();
+    if (gateway) gateway->stop();
     leases.stop();
     system.stop();
     edge.stop();

@@ -678,6 +678,12 @@ std::vector<Message> Broker::retained_entries() const {
   return out;
 }
 
+std::vector<std::pair<std::string, Bytes>> Broker::retained_under(const std::string& prefix) const {
+  std::vector<std::pair<std::string, Bytes>> out;
+  for (auto it = _retained.lower_bound(prefix); it != _retained.end() && it->first.starts_with(prefix); ++it) out.emplace_back(it->first, it->second.payload);
+  return out;
+}
+
 size_t Broker::deliver_here(const Message& message, bool shared) {
   // One delivery per session, at the greatest QoS of its matching
   // subscriptions, carrying every matching subscription's identifier.
