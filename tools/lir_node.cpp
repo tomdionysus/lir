@@ -72,6 +72,7 @@
 #include "lir/cluster/cluster.h"
 #include "lir/edge/edge.h"
 #include "lir/http/http.h"
+#include "lir/system/ledger.h"
 #include "lir/system/system.h"
 #include "lir/version.h"
 
@@ -209,6 +210,9 @@ dannan::config::Reader reader() {
   add("limits.max_outbound_bytes", Kind::value, "--max-outbound-bytes", "bytes");
   add("limits.max_connections", Kind::value, "--max-connections", "a count");
   add("limits.memory_budget", Kind::value, "--memory-budget", "bytes, 0 for none");
+  add("limits.shed_percent", Kind::value, "--shed-percent", "a percentage of the memory budget");
+  add("limits.refuse_publish_percent", Kind::value, "--refuse-publish-percent", "a percentage of the memory budget");
+  add("limits.refuse_connect_percent", Kind::value, "--refuse-connect-percent", "a percentage of the memory budget");
   return out;
 }
 
@@ -286,6 +290,11 @@ Options parse(int argc, char** argv) {
   out.maximum_outbound_bytes = settings.number("limits.max_outbound_bytes", 1024, UINT64_MAX).value_or(out.maximum_outbound_bytes);
   limits.maximum_connections = settings.number("limits.max_connections", 1, UINT32_MAX).value_or(limits.maximum_connections);
   limits.memory_budget = settings.number("limits.memory_budget", 0, UINT64_MAX).value_or(limits.memory_budget);
+  limits.shed_percent = static_cast<uint32_t>(settings.number("limits.shed_percent", 1, 1000).value_or(limits.shed_percent));
+  limits.refuse_publish_percent = static_cast<uint32_t>(settings.number("limits.refuse_publish_percent", 1, 1000).value_or(limits.refuse_publish_percent));
+  limits.refuse_connect_percent = static_cast<uint32_t>(settings.number("limits.refuse_connect_percent", 1, 1000).value_or(limits.refuse_connect_percent));
+  if (!(limits.shed_percent <= limits.refuse_publish_percent && limits.refuse_publish_percent <= limits.refuse_connect_percent))
+    throw std::runtime_error("the memory thresholds must rise: shed, then refuse publishes, then refuse connections");
   if (out.key.empty() || out.state.empty()) throw std::runtime_error("--key and --state are required");
   if ((out.mqtt_tls_port >= 0 || out.https_port >= 0 || out.wss_port >= 0) && (out.tls_certificate.empty() || out.tls_key.empty()))
     throw std::runtime_error("--mqtt-tls-port, --wss-port and --https-port need --tls-certificate and --tls-key");
@@ -387,6 +396,8 @@ int main(int argc, char** argv) {
     cluster.advertise_endpoints();
     lir::system::SystemTopics system(node.context(), edge, options.system);
     system.start();
+    lir::system::LedgerLeases leases(node.context(), edge);
+    leases.start();
     std::optional<lir::http::HttpServer> http;
     if (options.http_port >= 0) {
       lir::http::HttpConfig http_config;
@@ -413,6 +424,7 @@ int main(int argc, char** argv) {
       std::this_thread::sleep_for(50ms);
     }
     if (http) http->stop();
+    leases.stop();
     system.stop();
     edge.stop();
     cluster.stop();
