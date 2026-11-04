@@ -39,6 +39,22 @@ network layer."
 
 ## Decisions
 
+- (2026-11-04, Tom, in the Dannan session; `../dannan/TODO/ACTIVE.md`)
+  Settles findings 4, 5, 7 and 8:
+  - Authentication in Lir is pluggable, "like everywhere else": Lir's
+    `contract::Authenticator`; a Lugh plugin implements it and depends
+    on Lugh. Token verification does not move into Dannan. Topic scopes
+    may also go through Dannan's `Identity::verify` / `ScopeSource`
+    where a source is installed.
+  - HTTP stays each hosted system's own: Lir writes its own publish and
+    SSE endpoint. No shared HTTPS stack.
+  - Message types: Dannan's are 1 to 511; user types from 512,
+    registered freely, no blocks; a clash shows at registration.
+  - One process per node: `lir-node` is a node and advertises `lir`.
+  - Dannan `0.2.0` with install and export targets
+    (`find_package(dannan 0.2 CONFIG)`, `dannan::dannan`), cut after
+    Dannan's pre-release sanitizer run; Lir moves to it when the Dannan
+    session says it is cut, and pins a commit until then.
 - (2026-11-03 night, Tom) Lir is its own project, with its own agent, and
   takes the stack's styles, conventions and layout (Dannan's).
 - (2026-11-03 night, Tom) Macha is not modified until Tom says so.
@@ -66,7 +82,9 @@ off `develop` when Tom asks for commits.
    subscription identifiers and options, shared subscriptions, receive
    maximum, maximum packet size, keep alive, enhanced authentication
    as an interface, server reference.
-3. **The edge.** Asio TCP listener on the node's io context (TLS
+3. **The edge.** Done 2026-11-04 but for the automated mosquitto
+   process test (waits on Dannan's `child_process.h`) and TLS; gate
+   `lir_tests` 132; see `COMPLETED.md`. Asio TCP listener on the node's io context (TLS
    after), `lir-node`, a two-process test with a real MQTT client.
 4. **The cluster on Dannan.** Shards and holders by Dannan placement
    over `lir`-advertising nodes; publish, deliver and subscribe over
