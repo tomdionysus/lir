@@ -23,6 +23,8 @@ add_library(lir SHARED
   rules/boost_json.cpp
   rules/rules.cpp
   shard/shard.cpp
+  sn/gateway.cpp
+  sn/packet.cpp
   system/ledger.cpp
   system/system.cpp
   version.cpp
