@@ -182,3 +182,22 @@ repeats clean.
 - Test: a persistent session survives its node being stopped: taken up
   by its standby, receiving a QoS 1 message published meanwhile, and
   resumed by its client on another node with that message.
+
+## 2026-11-04: step 6, the system topics
+
+Gate: `lir_tests` 154 passed, 0 failed; cluster and process tests three
+repeats clean.
+
+- `lir/system/system.h` (`lir::system`, a seventh namespace beside the
+  six the maintainer kept): each node publishes, retained, as JSON with content
+  type `application/json`, `$lir/nodes/<node id>` (connections,
+  sessions, retained, accepted, refused, protocol errors, messages
+  received, delivered and injected, wills, session counts, drops) and
+  `$dannan/nodes/<node id>` (its record, path class, incarnation, peers
+  and their latency), when they change, checked every 5 s; every node
+  clears a node's topics when it leaves the roster. Clients may read
+  them; publishing there is refused (5.0 reason 0x87).
+- `lir-node` runs them.
+- Tests: every node's topics retained on every node and readable by a
+  client; a forged publish refused; a node's topics cleared when it
+  leaves.

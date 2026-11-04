@@ -38,6 +38,7 @@
 #include "dannan/node.h"
 #include "lir/cluster/cluster.h"
 #include "lir/edge/edge.h"
+#include "lir/system/system.h"
 #include "lir/version.h"
 
 namespace {
@@ -197,6 +198,8 @@ int main(int argc, char** argv) {
     node.start();
     cluster.start();
     edge.start();
+    lir::system::SystemTopics system(node.context(), edge);
+    system.start();
     say("{\"event\":\"listening\",\"id\":\"" + dannan::identity::to_string(node.context().identity().id()) + "\",\"port\":" + std::to_string(node.port()) +
         ",\"mqtt_port\":" + std::to_string(edge.port()) + "}");
 
@@ -209,6 +212,7 @@ int main(int argc, char** argv) {
       }
       std::this_thread::sleep_for(50ms);
     }
+    system.stop();
     edge.stop();
     cluster.stop();
     node.stop();

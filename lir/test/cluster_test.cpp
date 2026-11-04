@@ -15,10 +15,12 @@
 
 #include <fstream>
 #include <memory>
+#include <set>
 
 #include "dannan/net/fanout.h"
 #include "dannan/node.h"
 #include "dannan/test/fixtures/temp_dir.h"
+#include "lir/system/system.h"
 #include "lir/test/fixtures/mqtt_client.h"
 
 namespace lir::cluster {
@@ -36,6 +38,7 @@ struct LirNode {
   std::unique_ptr<dannan::Node> node;
   std::unique_ptr<edge::Edge> edge;
   std::unique_ptr<Cluster> cluster;
+  std::unique_ptr<system::SystemTopics> system;
   contract::AllowAll allow;
 
   LirNode(boost::asio::io_context& io, const std::filesystem::path& state, const dannan::identity::ClusterKey& key,
@@ -63,8 +66,11 @@ struct LirNode {
     node->start();
     cluster->start();
     edge->start();
+    system = std::make_unique<system::SystemTopics>(node->context(), *edge, system::SystemConfig{200ms});
+    system->start();
   }
   ~LirNode() {
+    system->stop();
     edge->stop();
     cluster->stop();
     node->stop();
@@ -76,8 +82,13 @@ struct LirNode {
   T on_broker(std::function<T(broker::Broker&)> fn) {
     return edge->call<T>(std::move(fn));
   }
+  // Retained values on clients' topics, the system topics left out.
   size_t retained() {
-    return on_broker<size_t>([](broker::Broker& b) { return b.retained(); });
+    return on_broker<size_t>([](broker::Broker& b) {
+      size_t count = 0;
+      for (const auto& m : b.retained_entries()) count += !m.topic.starts_with("$") && !m.payload.empty() ? 1 : 0;
+      return count;
+    });
   }
 
   // Whether this node sees `other` serving Lir and, when `prefix` is given,
@@ -273,6 +284,53 @@ TEST_F(ClusterTest, APersistentSessionSurvivesItsNodeGoing) {
   const auto got = again.next_message();
   ASSERT_TRUE(got);
   EXPECT_EQ(text(*got), "kept for you");
+}
+
+TEST_F(ClusterTest, EveryNodesSystemTopicsAreRetainedEverywhere) {
+  MqttClient watcher(b->port());
+  watcher.connect("watcher");
+  for (const auto* prefix : {"$lir/nodes/", "$dannan/nodes/"}) {
+    std::set<std::string> nodes;
+    ASSERT_TRUE(eventually([&] {
+      nodes.clear();
+      for (const auto& m : b->on_broker<std::vector<broker::Message>>([](broker::Broker& broker) { return broker.retained_entries(); })) {
+        if (m.topic.starts_with(prefix) && !m.payload.empty()) nodes.insert(m.topic.substr(std::string(prefix).size()));
+      }
+      return nodes.size() == 3;
+    }));
+    EXPECT_TRUE(nodes.contains(dannan::identity::to_string(a->id())));
+  }
+  watcher.subscribe("$lir/nodes/" + dannan::identity::to_string(c->id()), QoS::at_most_once);
+  const auto got = watcher.next_message();
+  ASSERT_TRUE(got);
+  EXPECT_TRUE(got->retain);
+  EXPECT_EQ(got->properties.content_type, "application/json");
+  EXPECT_NE(text(*got).find("\"connections\":"), std::string::npos);
+  // Clients may read the system topics, never write them.
+  watcher.send([] {
+    mqtt::Publish p;
+    p.topic = "$lir/nodes/forged";
+    p.qos = QoS::at_least_once;
+    p.packet_id = 77;
+    return p;
+  }());
+  const auto refused = watcher.receive_a<mqtt::Ack>();
+  ASSERT_TRUE(refused);
+  EXPECT_EQ(refused->reason, mqtt::reason::not_authorized);
+}
+
+TEST_F(ClusterTest, ANodeThatLeavesHasItsSystemTopicsCleared) {
+  const auto gone = dannan::identity::to_string(c->id());
+  const auto has = [&](LirNode& node) {
+    return node.on_broker<bool>([&](broker::Broker& broker) {
+      for (const auto& m : broker.retained_entries())
+        if (m.topic == "$lir/nodes/" + gone && !m.payload.empty()) return true;
+      return false;
+    });
+  };
+  ASSERT_TRUE(eventually([&] { return has(*a); }));
+  c.reset();
+  EXPECT_TRUE(eventually([&] { return !has(*a) && !has(*b); }, 15s));
 }
 
 TEST_F(ClusterTest, ConnectingOnAnotherNodeTakesTheClientOver) {
