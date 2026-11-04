@@ -9,6 +9,7 @@
 # "lir/x.h"; everything else is included from the repository root as
 # "lir/<subsystem>/x.h".
 add_library(lir SHARED
+  broker/broker.cpp
   mqtt/packet.cpp
   mqtt/properties.cpp
   mqtt/topic.cpp
