@@ -232,3 +232,22 @@ three repeats clean.
 - A bug found on the way: an event stream's exchange was held only by
   weak references and went as soon as its headers were written; its
   pending read now holds it.
+
+## 2026-11-04: TLS on the MQTT port (step 3's open item)
+
+Gate: `lir_tests` 165 passed, 0 failed.
+
+- `EdgeConfig::tls` (`TlsConfig`: listen address, port, PEM certificate
+  chain and key, handshake timeout): a second listener for MQTT over TLS
+  (1.2 and up), the same broker as the plain port. The connection is one
+  template over a TCP socket or a TLS stream; a TLS client becomes a
+  connection once its handshake is done, within the timeout.
+- `lir-node --mqtt-tls-port N --tls-certificate PEM --tls-key PEM
+  [--mqtt-tls-listen ADDR]`; the listening line reports `mqtt_tls_port`.
+- Tests: a client verifying a self-signed certificate (made by the
+  `openssl` command for the test) receives over TLS what a plain client
+  publishes; plaintext on the TLS port gets nothing and leaves no
+  connection. Checked by hand with `mosquitto_pub` and `mosquitto_sub
+  --cafile` against `lir-node`.
+- Not done: a TLS close_notify on close (the socket is closed); HTTPS on
+  the HTTP port; client certificates.

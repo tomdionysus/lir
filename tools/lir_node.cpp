@@ -9,7 +9,7 @@
 // network) that advertises "lir" and serves MQTT on its own port. It
 // reports what it does as one JSON object per line on stdout:
 //
-//   {"event":"listening","id":"...","port":N,"mqtt_port":M,"http_port":H}
+//   {"event":"listening","id":"...","port":N,"mqtt_port":M,"mqtt_tls_port":T,"http_port":H}
 //   {"event":"status","connections":N,"sessions":N,"retained":N,...}   every --status-ms
 //   {"event":"stopped"}
 //
@@ -21,6 +21,8 @@
 //            [--heartbeat-ms N] [--status-ms N] [--seconds N]
 //            [--log-level LEVEL] [--log-format text|json]
 //            [--session-standbys N] [--http-port N|-1] [--http-listen ADDR]
+//            [--mqtt-tls-port N --tls-certificate PEM --tls-key PEM]
+//            [--mqtt-tls-listen ADDR]
 //   lir-node --version
 
 #include <signal.h>
@@ -77,6 +79,11 @@ struct Options {
   std::string http_listen = "0.0.0.0";
   // -1: no HTTP endpoint.
   int http_port = 8083;
+  // -1: no TLS listener.
+  int mqtt_tls_port = -1;
+  std::string mqtt_tls_listen = "0.0.0.0";
+  std::string tls_certificate;
+  std::string tls_key;
 };
 
 dannan::net::Endpoint endpoint(const std::string& text) {
@@ -123,6 +130,14 @@ Options parse(int argc, char** argv) {
       out.seconds = std::stoi(value());
     else if (option == "--log-level")
       out.log_level = dannan::status::parse_log_level(value());
+    else if (option == "--mqtt-tls-port")
+      out.mqtt_tls_port = std::stoi(value());
+    else if (option == "--mqtt-tls-listen")
+      out.mqtt_tls_listen = value();
+    else if (option == "--tls-certificate")
+      out.tls_certificate = value();
+    else if (option == "--tls-key")
+      out.tls_key = value();
     else if (option == "--http-port")
       out.http_port = std::stoi(value());
     else if (option == "--http-listen")
@@ -135,6 +150,8 @@ Options parse(int argc, char** argv) {
       throw std::runtime_error("unknown option " + option);
   }
   if (!out.version && (out.key.empty() || out.state.empty())) throw std::runtime_error("--key and --state are required");
+  if (out.mqtt_tls_port >= 0 && (out.tls_certificate.empty() || out.tls_key.empty()))
+    throw std::runtime_error("--mqtt-tls-port needs --tls-certificate and --tls-key");
   return out;
 }
 
@@ -198,6 +215,9 @@ int main(int argc, char** argv) {
     lir::edge::EdgeConfig edge_config;
     edge_config.listen_host = options.mqtt_listen;
     edge_config.port = options.mqtt_port;
+    if (options.mqtt_tls_port >= 0) {
+      edge_config.tls = lir::edge::TlsConfig{options.mqtt_tls_listen, static_cast<uint16_t>(options.mqtt_tls_port), options.tls_certificate, options.tls_key};
+    }
     lir::contract::AllowAll allow;
     lir::edge::Edge edge(io, edge_config, dannan::contract::steady_time_source(), allow, node.context().logger("lir"));
     // The cluster's routes are registered before the node starts.
@@ -218,7 +238,8 @@ int main(int argc, char** argv) {
       http->start();
     }
     say("{\"event\":\"listening\",\"id\":\"" + dannan::identity::to_string(node.context().identity().id()) + "\",\"port\":" + std::to_string(node.port()) +
-        ",\"mqtt_port\":" + std::to_string(edge.port()) + ",\"http_port\":" + std::to_string(http ? http->port() : 0) + "}");
+        ",\"mqtt_port\":" + std::to_string(edge.port()) + ",\"mqtt_tls_port\":" + std::to_string(edge.tls_port()) +
+        ",\"http_port\":" + std::to_string(http ? http->port() : 0) + "}");
 
     const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(options.seconds);
     auto next_status = std::chrono::steady_clock::now() + options.status;
