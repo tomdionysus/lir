@@ -58,6 +58,10 @@ struct ClusterConfig {
   size_t session_standbys = 1;
   // How often changed sessions are sent to their standbys.
   std::chrono::milliseconds mirror_every{100};
+  // Balancing at CONNECT (balance.h): a new 5.0 client is sent elsewhere
+  // when this node has more than (1 + this) times the average. Negative:
+  // never.
+  double rebalance_over = 0.2;
 };
 
 class Cluster {
@@ -77,6 +81,10 @@ class Cluster {
   // Detaches from the broker and the roster and unbinds the routes. Waits
   // on the strand and on route calls in flight; never from an io thread.
   void stop();
+  // Where this node serves clients, for the others to send clients to:
+  // after the edge has started, since its ports are bound then. Waits on
+  // nothing.
+  void advertise_endpoints();
 
  private:
   struct State;

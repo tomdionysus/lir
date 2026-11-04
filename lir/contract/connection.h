@@ -30,6 +30,9 @@ class Connection {
   // The subject of the certificate the client presented, verified (RFC 2253
   // form); nothing without one, or off TLS.
   virtual std::optional<std::string> certificate_subject() const { return std::nullopt; }
+  // How the client reached this node: "tcp", "tls", "ws", "wss", or
+  // another word for a transport no client can be redirected to.
+  virtual std::string transport() const { return "tcp"; }
 };
 
 }  // namespace lir::contract

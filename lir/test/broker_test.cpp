@@ -825,6 +825,36 @@ TEST_F(BrokerOptionsTest, QoS0CanBeQueuedForAnOfflineSession) {
   EXPECT_EQ(back.take_all<mqtt::Publish>().size(), 1u);
 }
 
+// ---- balancing (design, section 7): Server Reference at CONNECT
+
+TEST_F(BrokerTest, ABusyClusterSendsANewFiveClientElsewhere) {
+  ClusterHooks hooks;
+  hooks.node = "n";
+  hooks.published = [](const Message&) -> size_t { return 0; };
+  hooks.interest_changed = [] {};
+  hooks.take = [](const std::string&, bool, std::function<void(std::optional<SessionImage>)> done) { done(std::nullopt); };
+  std::vector<std::string> asked;
+  hooks.redirect = [&asked](const std::string& transport) -> std::optional<std::string> {
+    asked.push_back(transport);
+    return std::string("other:1883");
+  };
+  broker.attach(hooks);
+  auto five = open(Version::v5);
+  five.send(mqtt::Connect{Version::v5, true, 0, "five", {}, {}, {}, {}});
+  const auto ack = five.take_one<mqtt::Connack>();
+  EXPECT_EQ(ack.reason, reason::use_another_server);
+  EXPECT_EQ(ack.properties.server_reference, "other:1883");
+  EXPECT_TRUE(five.closed());
+  EXPECT_EQ(broker.sessions(), 0u);
+  // A 3.x client cannot be redirected: it is served.
+  auto old = open(Version::v3_1_1);
+  old.send(mqtt::Connect{Version::v3_1_1, true, 0, "old", {}, {}, {}, {}});
+  EXPECT_EQ(old.take_first<mqtt::Connack>().reason, reason::success);
+  EXPECT_EQ(asked, (std::vector<std::string>{"tcp"}));
+  EXPECT_EQ(broker.stats().connections_redirected, 1u);
+  broker.attach({});
+}
+
 // ---- memory pressure (design, section 4)
 
 class BrokerPressureTest : public BrokerTest {

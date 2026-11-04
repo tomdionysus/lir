@@ -11,6 +11,7 @@
 add_library(lir SHARED
   auth/scopes.cpp
   broker/broker.cpp
+  cluster/balance.cpp
   cluster/cluster.cpp
   cluster/codec.cpp
   edge/edge.cpp

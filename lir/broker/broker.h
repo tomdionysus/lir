@@ -177,6 +177,7 @@ struct Stats {
   uint64_t dropped_pressure = 0;
   uint64_t refused_pressure_publishes = 0;
   uint64_t refused_pressure_connections = 0;
+  uint64_t connections_redirected = 0;
 };
 
 // A client connected here, or its connection here ended: for the
@@ -215,6 +216,10 @@ struct ClusterHooks {
   // connection, and hand over its session when `want_state`. `done` gets
   // the session, if any node had one.
   std::function<void(const std::string& client_id, bool want_state, std::function<void(std::optional<SessionImage>)> done)> take;
+  // A 5.0 client is connecting on `transport`: another node's address to
+  // send it to (CONNACK 0x9C, Server Reference), or nothing to serve it
+  // here. Empty: never.
+  std::function<std::optional<std::string>(const std::string& transport)> redirect;
 };
 
 class Broker;
