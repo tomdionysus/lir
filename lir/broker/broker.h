@@ -342,6 +342,9 @@ class Broker {
   // Every retained value and every clearing, versioned, for a node catching
   // up.
   std::vector<Message> retained_entries() const;
+  // The retained values whose topics start with `prefix`, as (topic,
+  // payload).
+  std::vector<std::pair<std::string, Bytes>> retained_under(const std::string& prefix) const;
   // Delivers to one member of the shared group (group, filter) here. False
   // when this node has none.
   bool deliver_shared(const Message& message, const std::string& group, const std::string& filter);

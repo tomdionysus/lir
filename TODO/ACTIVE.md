@@ -7,9 +7,9 @@ specification's MAYs, Dannan 0.4.0 (the config file, its percent
 decoder), topic scopes, the moderate default limits and memory pressure
 are on `develop`; gate `lir_tests` 248. `COMPLETED.md` is the record.
 Server Reference at CONNECT is done (248). "Resume here" (the maintainer's further
-decisions, end of the sections file): MQTT-SN 1.2 and 2.0 with DTLS
-(memory thresholds and the ledger, 251, and the rules engine, 270, are
-done);
+decisions, end of the sections file): MQTT-SN over DTLS, then MQTT-SN
+2.0 (memory thresholds and the ledger, 251, the rules engine, 270, and
+MQTT-SN 1.2, 288, are done);
 message history and step 5 wait on Dagda, the Lugh plugin on Lugh
 (tokens in its O7).
 

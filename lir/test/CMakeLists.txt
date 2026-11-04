@@ -21,6 +21,7 @@ add_executable(lir_tests
   process_test.cpp
   rules_test.cpp
   shard_test.cpp
+  sn_gateway_test.cpp
   sn_packet_test.cpp
   subs_trie_test.cpp
   system_test.cpp

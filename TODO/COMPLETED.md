@@ -526,3 +526,33 @@ twice more.
   with a grant to retain there. Counted in `$lir/nodes/<id>` (`rules`).
 - Cluster test: a rule written on one node applies on another.
 
+## 2026-11-04: MQTT-SN 1.2 (design sections 5 and 7; the maintainer's MQTT-SN decisions)
+
+Gate: `lir_tests` 288 passed, 0 failed (18 new); the gateway tests passed
+three runs in a row.
+
+- `lir/sn/packet.h`, namespace `sn`: every MQTT-SN 1.2 packet, one-byte
+  and three-byte lengths, the flags byte with QoS -1 and the three topic
+  id types, and the encapsulated form (its length runs to the end of the
+  node id; the relayed packet follows).
+- `lir/sn/gateway.h`: UDP, on the edge's strand. Each client is a client
+  of the broker (a connection like HTTP's), so sessions, the
+  authenticator, the rules and the cluster apply. Topic ids registered
+  per client both ways (the gateway REGISTERs a new name and sends the
+  PUBLISH on the REGACK); short names; predefined ids from retained
+  `$lir/mqttsn/topics/<id>` (the maintainer). The will is asked for, held by the
+  gateway (so WILLTOPICUPD and WILLMSGUPD work) and published when the
+  client is lost (keep alive or sleep overrun), not on an orderly
+  DISCONNECT. Sleep: the broker connection stays, with receive maximum
+  64, and the gateway holds what arrives (bounded, oldest QoS 0 first)
+  until PINGREQ wakes the client, then PINGRESP, then asleep again after
+  a grace. QoS -1 from unconnected clients goes in as an anonymous
+  client's. Forwarders are answered through the forwarder. ADVERTISE is
+  off unless configured (the maintainer); SEARCHGW is always answered.
+- `lir-node --mqttsn-port --mqttsn-listen --mqttsn-gateway-id
+  --mqttsn-advertise-seconds --mqttsn-advertise-address`; the listening
+  line reports `mqttsn_port`. Checked by hand: a raw MQTT-SN client
+  connects to `lir-node`, publishes on a short topic, and `mosquitto_sub`
+  receives it.
+- Not done: DTLS (next), MQTT-SN 2.0 (after checking the OASIS text).
+
