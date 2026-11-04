@@ -76,5 +76,47 @@ TEST(MqttTopic, Levels) {
   EXPECT_EQ(levels("x"), (std::vector<std::string_view>{"x"}));
 }
 
+// A granted filter covers a requested one when every name the requested
+// filter matches, the granted one matches too.
+TEST(MqttTopic, CoversExactAndWildcards) {
+  EXPECT_TRUE(covers("a/b", "a/b"));
+  EXPECT_FALSE(covers("a/b", "a/c"));
+  EXPECT_TRUE(covers("a/+", "a/b"));
+  EXPECT_TRUE(covers("a/+", "a/+"));
+  EXPECT_FALSE(covers("a/b", "a/+"));
+  EXPECT_TRUE(covers("a/#", "a/b/c"));
+  EXPECT_TRUE(covers("a/#", "a/+/c"));
+  EXPECT_TRUE(covers("a/#", "a/#"));
+  EXPECT_TRUE(covers("#", "#"));
+  EXPECT_TRUE(covers("#", "a/+/#"));
+  EXPECT_FALSE(covers("a/+", "a/#"));
+  EXPECT_FALSE(covers("a/+", "a/b/c"));
+  EXPECT_FALSE(covers("a/b/c", "a/b"));
+  EXPECT_FALSE(covers("a/b", "a/b/c"));
+  EXPECT_FALSE(covers("+/b", "#"));
+}
+
+TEST(MqttTopic, CoversTheParentThroughHash) {
+  // "a/#" matches "a" itself (section 4.7.1.2), so it covers a subscription to "a".
+  EXPECT_TRUE(covers("a/#", "a"));
+  EXPECT_TRUE(covers("a/b/#", "a/b"));
+  EXPECT_FALSE(covers("a/b/+", "a/b"));
+}
+
+TEST(MqttTopic, CoversKeepsEmptyLevels) {
+  EXPECT_TRUE(covers("a//b", "a//b"));
+  EXPECT_TRUE(covers("/+", "/x"));
+  EXPECT_FALSE(covers("a/b", "a//b"));
+}
+
+TEST(MqttTopic, CoversKeepsTheDollarRule) {
+  EXPECT_FALSE(covers("#", "$lir/nodes/x"));
+  EXPECT_FALSE(covers("+/nodes/+", "$lir/nodes/x"));
+  EXPECT_TRUE(covers("$lir/#", "$lir/nodes/x"));
+  EXPECT_TRUE(covers("$lir/+/+", "$lir/nodes/+"));
+  // A requested first-level wildcard matches no '$' name, so a granted one covers it.
+  EXPECT_TRUE(covers("#", "+/x"));
+}
+
 }  // namespace
 }  // namespace lir::mqtt

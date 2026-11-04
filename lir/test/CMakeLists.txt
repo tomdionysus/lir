@@ -6,6 +6,7 @@
 #
 
 add_executable(lir_tests
+  auth_scopes_test.cpp
   broker_test.cpp
   cluster_test.cpp
   cluster_codec_test.cpp

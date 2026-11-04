@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "dannan/status/log.h"
+#include "lir/auth/scopes.h"
 #include "lir/edge/edge.h"
 
 // HTTP publish and Server-Sent Events subscribe on the same bus, for
@@ -59,7 +60,8 @@ struct Target {
   std::map<std::string, std::vector<std::string>> query;
 };
 Target parse_target(std::string_view target);
-std::string percent_decode(std::string_view text);
+// One decoder for the query and the scope grammar (auth/scopes.h).
+using auth::percent_decode;
 
 // One SSE event for a delivered message.
 std::string sse_event(const mqtt::Publish& publish);

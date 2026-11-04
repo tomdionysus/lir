@@ -41,7 +41,9 @@ struct NodeProcess {
   uint16_t port = 0;
   uint16_t mqtt_port = 0;
 
-  NodeProcess(const std::filesystem::path& dir, const std::string& name, std::optional<uint16_t> bootstrap) {
+  // Anonymous clients are allowed unless `extra` says otherwise.
+  NodeProcess(const std::filesystem::path& dir, const std::string& name, std::optional<uint16_t> bootstrap,
+              const std::vector<std::string>& extra = {"--allow-anonymous"}) {
     std::vector<std::string> argv{LIR_NODE_BINARY,
                                   "--key",
                                   (dir / "cluster.key").string(),
@@ -63,6 +65,7 @@ struct NodeProcess {
                                   "200",
                                   "--status-ms",
                                   "60000"};
+    argv.insert(argv.end(), extra.begin(), extra.end());
     if (bootstrap) {
       argv.push_back("--bootstrap");
       argv.push_back("127.0.0.1:" + std::to_string(*bootstrap));
@@ -145,6 +148,15 @@ TEST_F(ProcessTest, TwoNodesInTwoProcessesAreOneBroker) {
   for (int i = 0; i < 20 && read != 0; ++i) std::tie(read, out) = run(dir.path(), sub(first.mqtt_port, "door", "mqttv311", 1));
   EXPECT_EQ(read, 0);
   EXPECT_EQ(out, "door open\n");
+}
+
+TEST_F(ProcessTest, AnonymousClientsAreRefusedByDefault) {
+  NodeProcess node(dir.path(), "a", std::nullopt, {});
+  ASSERT_NE(node.mqtt_port, 0);
+  for (const std::string version : {"mqttv31", "mqttv311", "mqttv5"}) {
+    const auto [status, out] = run(dir.path(), pub(node.mqtt_port, "t", "x", version));
+    EXPECT_NE(status, 0) << version << ": " << out;
+  }
 }
 
 }  // namespace

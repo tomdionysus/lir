@@ -204,7 +204,7 @@ class Link : public std::enable_shared_from_this<Link> {
   void handle(mqtt::Packet&& packet);
   void dispatch(mqtt::Packet&& packet);
   void on_connect(mqtt::Connect&& connect);
-  void begin_connect(std::optional<Bytes> auth_data);
+  void begin_connect(const contract::AuthDecision& accepted);
   void finish_connect(std::optional<Bytes> auth_data, std::optional<SessionImage> image);
   void on_publish(mqtt::Publish&& publish);
   void on_ack(const mqtt::Ack& ack);
@@ -229,6 +229,8 @@ class Link : public std::enable_shared_from_this<Link> {
   std::optional<mqtt::Connect> _connect;
   std::optional<mqtt::Will> _will;
   std::optional<std::string> _auth_method;
+  // What this connection may do; set on accept, replaced on re-authentication.
+  std::shared_ptr<const contract::Grant> _grant;
   uint16_t _keep_alive = 0;
   TimePoint _opened;
   TimePoint _last_received;
