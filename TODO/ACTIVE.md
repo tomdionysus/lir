@@ -2,7 +2,7 @@
 
 Last updated: 2026-11-04. Steps 1 to 4 are on `develop` (step 4 on
 `feature/cluster`, merged); gate `lir_tests` 151. `COMPLETED.md` is the
-record. "Resume here": session replication (Tom's answer 2), then step 6.
+record. "Resume here": step 6.
 
 The design is Tom's, 2026-11-03: "Lir: Distributed Event System on
 Dannan", a Claude Doc and the master, rendered in
@@ -59,8 +59,8 @@ written new; Macha has no event system to extract (`COMPLETED.md`,
 3. **The edge.** Done (132; the mosquitto process test landed in step 4).
    Open: TLS on the MQTT port.
 4. **The cluster on Dannan.** Done as an interim (151): see
-   `COMPLETED.md`. Next: session replication to configurable standbys
-   (answer 2).
+   `COMPLETED.md`. Sessions mirrored to configurable standbys (answer
+   2): done (152).
 5. **On Dagda.** Retained, inflight and sessions as head spaces with
    Lir's merges, Replicated writes for QoS 1/2, leases, objects for
    payloads over 64 KiB, the node-local sequence. Waits on Dagda, whose

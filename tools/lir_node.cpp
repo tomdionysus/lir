@@ -20,6 +20,7 @@
 //            [--bootstrap HOST:PORT]... [--name NAME] [--domain NAME]
 //            [--heartbeat-ms N] [--status-ms N] [--seconds N]
 //            [--log-level LEVEL] [--log-format text|json]
+//            [--session-standbys N]
 //   lir-node --version
 
 #include <signal.h>
@@ -69,6 +70,7 @@ struct Options {
   dannan::status::LogLevel log_level = dannan::status::LogLevel::info;
   dannan::status::LogFormat log_format = dannan::status::LogFormat::text;
   bool version = false;
+  size_t session_standbys = 1;
 };
 
 dannan::net::Endpoint endpoint(const std::string& text) {
@@ -115,6 +117,8 @@ Options parse(int argc, char** argv) {
       out.seconds = std::stoi(value());
     else if (option == "--log-level")
       out.log_level = dannan::status::parse_log_level(value());
+    else if (option == "--session-standbys")
+      out.session_standbys = static_cast<size_t>(std::stoul(value()));
     else if (option == "--log-format")
       out.log_format = dannan::status::parse_log_format(value());
     else
@@ -187,7 +191,9 @@ int main(int argc, char** argv) {
     lir::contract::AllowAll allow;
     lir::edge::Edge edge(io, edge_config, dannan::contract::steady_time_source(), allow, node.context().logger("lir"));
     // The cluster's routes are registered before the node starts.
-    lir::cluster::Cluster cluster(node.context(), edge);
+    lir::cluster::ClusterConfig cluster_config;
+    cluster_config.session_standbys = options.session_standbys;
+    lir::cluster::Cluster cluster(node.context(), edge, cluster_config);
     node.start();
     cluster.start();
     edge.start();

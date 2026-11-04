@@ -244,6 +244,37 @@ TEST_F(ClusterTest, APersistentSessionResumesOnAnotherNodeWithWhatWasQueued) {
   EXPECT_EQ(a->on_broker<size_t>([](broker::Broker& broker) { return broker.sessions(); }), 0u);
 }
 
+// Tom, 2026-11-04: sessions are mirrored to a standby until they live in
+// Dagda, so one node's loss does not lose them.
+TEST_F(ClusterTest, APersistentSessionSurvivesItsNodeGoing) {
+  mqtt::Properties keep;
+  keep.session_expiry_interval = 600;
+  {
+    MqttClient first(a->port());
+    first.connect("survivor", false, std::nullopt, keep);
+    first.subscribe("inbox", QoS::at_least_once);
+    first.send(mqtt::Disconnect{});
+  }
+  // The mirror goes to the standby within a mirror interval or two.
+  std::this_thread::sleep_for(500ms);
+  a.reset();
+  const auto holds = [](LirNode& node) { return node.on_broker<bool>([](broker::Broker& broker) { return broker.local_filters().contains("inbox"); }); };
+  ASSERT_TRUE(eventually([&] { return holds(*b) || holds(*c); }, 15s));
+  LirNode& keeper = holds(*b) ? *b : *c;
+  LirNode& other = &keeper == b.get() ? *c : *b;
+  ASSERT_TRUE(eventually([&] { return other.sees(keeper, "lir.seq", "inbox"); }));
+  MqttClient pub(other.port());
+  pub.connect("pub");
+  pub.publish("inbox", "kept for you", QoS::at_least_once);
+  ASSERT_TRUE(eventually([&] { return keeper.on_broker<uint64_t>([](broker::Broker& broker) { return broker.stats().messages_injected; }) >= 1; }));
+  MqttClient again(other.port());
+  const auto ack = again.connect("survivor", false, std::nullopt, keep);
+  EXPECT_TRUE(ack.session_present);
+  const auto got = again.next_message();
+  ASSERT_TRUE(got);
+  EXPECT_EQ(text(*got), "kept for you");
+}
+
 TEST_F(ClusterTest, ConnectingOnAnotherNodeTakesTheClientOver) {
   MqttClient first(a->port());
   first.connect("same");
