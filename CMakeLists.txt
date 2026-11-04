@@ -27,13 +27,12 @@ find_package(Boost 1.87 CONFIG REQUIRED COMPONENTS headers)
 find_package(OpenSSL 3 REQUIRED COMPONENTS Crypto SSL)
 find_package(Threads REQUIRED)
 
-# Dannan, the network layer, from the sibling checkout, pinned to one commit
-# and cloned into the build tree, so building Lir never touches ../dannan.
-# Moves to find_package(dannan 0.2 CONFIG) once the 0.2.0 tag is cut.
+# Dannan, the network layer, at its tag, cloned from the sibling checkout
+# into the build tree, so building Lir never touches ../dannan.
 set(LIR_DANNAN_REPOSITORY "${CMAKE_CURRENT_SOURCE_DIR}/../dannan" CACHE PATH "Dannan's repository")
-set(LIR_DANNAN_COMMIT "295ca4bc88a8b18a32d797a62509d55aebfb501a" CACHE STRING "The Dannan commit Lir builds against")
+set(LIR_DANNAN_TAG "0.2.0" CACHE STRING "The Dannan tag Lir builds against")
 include(FetchContent)
-FetchContent_Declare(dannan GIT_REPOSITORY "${LIR_DANNAN_REPOSITORY}" GIT_TAG "${LIR_DANNAN_COMMIT}")
+FetchContent_Declare(dannan GIT_REPOSITORY "${LIR_DANNAN_REPOSITORY}" GIT_TAG "${LIR_DANNAN_TAG}")
 set(DANNAN_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(dannan)
 

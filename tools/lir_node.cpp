@@ -35,6 +35,7 @@
 #include <vector>
 
 #include "dannan/node.h"
+#include "lir/cluster/cluster.h"
 #include "lir/edge/edge.h"
 #include "lir/version.h"
 
@@ -180,14 +181,15 @@ int main(int argc, char** argv) {
     config.version = std::string("lir-node ") + lir::kVersion;
     config.log = dannan::status::console_sink(options.log_format, options.log_level);
     dannan::Node node(io, config);
-    node.start();
-    node.context().nodes().advertise("lir", {});
-
     lir::edge::EdgeConfig edge_config;
     edge_config.listen_host = options.mqtt_listen;
     edge_config.port = options.mqtt_port;
     lir::contract::AllowAll allow;
     lir::edge::Edge edge(io, edge_config, dannan::contract::steady_time_source(), allow, node.context().logger("lir"));
+    // The cluster's routes are registered before the node starts.
+    lir::cluster::Cluster cluster(node.context(), edge);
+    node.start();
+    cluster.start();
     edge.start();
     say("{\"event\":\"listening\",\"id\":\"" + dannan::identity::to_string(node.context().identity().id()) + "\",\"port\":" + std::to_string(node.port()) +
         ",\"mqtt_port\":" + std::to_string(edge.port()) + "}");
@@ -202,6 +204,7 @@ int main(int argc, char** argv) {
       std::this_thread::sleep_for(50ms);
     }
     edge.stop();
+    cluster.stop();
     node.stop();
   } catch (const std::exception& error) {
     std::cerr << "lir-node: " << error.what() << "\n";
