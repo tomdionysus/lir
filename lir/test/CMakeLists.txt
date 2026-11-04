@@ -7,6 +7,7 @@
 
 add_executable(lir_tests
   auth_scopes_test.cpp
+  auth_tokens_test.cpp
   broker_test.cpp
   client_certificate_test.cpp
   cluster_balance_test.cpp

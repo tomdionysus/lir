@@ -81,7 +81,7 @@ class AnonymousAuthenticator final : public contract::Authenticator {
   // Nothing: anonymous clients are refused.
   explicit AnonymousAuthenticator(std::optional<TopicScopes> anonymous);
   contract::AuthDecision connect(const mqtt::Connect& connect, const contract::Peer& peer) override;
-  contract::AuthDecision auth(const std::string& client_id, const std::string& method, const mqtt::Bytes& data) override;
+  contract::AuthDecision auth(const std::string& client_id, const std::string& method, const mqtt::Bytes& data, const contract::Peer& peer) override;
 
  private:
   std::shared_ptr<const ScopeGrant> _anonymous;

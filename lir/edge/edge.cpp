@@ -27,6 +27,8 @@
 #include <map>
 #include <stdexcept>
 
+#include "dannan/identity/crypto.h"
+
 namespace lir::edge {
 
 namespace {
@@ -139,7 +141,7 @@ class StreamConnection final : public ClientConnection, public std::enable_share
     boost::system::error_code ec;
     const auto remote = beast::get_lowest_layer(_stream).remote_endpoint(ec);
     _peer = ec ? "unknown" : remote.address().to_string() + ":" + std::to_string(remote.port());
-    _subject = verified_subject(ssl_of(_stream));
+    _certificate = verified_certificate(ssl_of(_stream));
   }
 
   void start(std::shared_ptr<broker::Link> link) {
@@ -169,7 +171,7 @@ class StreamConnection final : public ClientConnection, public std::enable_share
   }
 
   std::string peer() const override { return _peer; }
-  std::optional<std::string> certificate_subject() const override { return _subject; }
+  std::optional<contract::ClientCertificate> certificate() const override { return _certificate; }
   std::string transport() const override { return transport_of(_stream); }
 
   void terminate() override {
@@ -228,7 +230,7 @@ class StreamConnection final : public ClientConnection, public std::enable_share
   dannan::status::ScopedLogger _logger;
   std::function<void(ClientConnection*)> _forget;
   std::string _peer;
-  std::optional<std::string> _subject;
+  std::optional<contract::ClientCertificate> _certificate;
   std::shared_ptr<broker::Link> _link;
   std::array<uint8_t, 16384> _buffer{};
   std::deque<mqtt::Bytes> _queue;
@@ -257,20 +259,27 @@ void listen_on(tcp::acceptor& acceptor, const std::string& host, uint16_t port) 
 
 }  // namespace
 
-// The verified client certificate's subject, RFC 2253 form.
-std::optional<std::string> verified_subject(SSL* ssl) {
+// The verified client certificate: its subject in RFC 2253 form, and the
+// SHA-256 of its DER.
+std::optional<contract::ClientCertificate> verified_certificate(SSL* ssl) {
   if (!ssl || SSL_get_verify_result(ssl) != X509_V_OK) return std::nullopt;
   X509* certificate = SSL_get1_peer_certificate(ssl);
   if (!certificate) return std::nullopt;
-  std::optional<std::string> out;
-  if (BIO* bio = BIO_new(BIO_s_mem())) {
-    if (X509_NAME_print_ex(bio, X509_get_subject_name(certificate), 0, XN_FLAG_RFC2253) >= 0) {
-      char* data = nullptr;
-      const long size = BIO_get_mem_data(bio, &data);
-      if (size >= 0) out = std::string(data, static_cast<size_t>(size));
+  std::optional<contract::ClientCertificate> out;
+  unsigned char* der = nullptr;
+  const int der_size = i2d_X509(certificate, &der);
+  BIO* bio = BIO_new(BIO_s_mem());
+  if (der_size > 0 && bio && X509_NAME_print_ex(bio, X509_get_subject_name(certificate), 0, XN_FLAG_RFC2253) >= 0) {
+    char* data = nullptr;
+    const long size = BIO_get_mem_data(bio, &data);
+    if (size >= 0) {
+      out.emplace();
+      out->subject = std::string(data, static_cast<size_t>(size));
+      out->thumbprint = dannan::identity::sha256(std::span<const uint8_t>(der, static_cast<size_t>(der_size))).bytes;
     }
-    BIO_free(bio);
   }
+  if (bio) BIO_free(bio);
+  OPENSSL_free(der);
   X509_free(certificate);
   return out;
 }

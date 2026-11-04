@@ -6,12 +6,15 @@
 //
 
 #include <gtest/gtest.h>
+#include <openssl/pem.h>
+#include <openssl/x509.h>
 
 #include <array>
 #include <boost/asio/ssl.hpp>
 #include <boost/asio/write.hpp>
 #include <mutex>
 
+#include "dannan/identity/crypto.h"
 #include "dannan/test/fixtures/child_process.h"
 #include "dannan/test/fixtures/temp_dir.h"
 #include "lir/edge/edge.h"
@@ -34,22 +37,44 @@ class Recording final : public contract::Authenticator {
   contract::AuthDecision connect(const mqtt::Connect&, const contract::Peer& peer) override {
     std::lock_guard lock(_mutex);
     _seen = peer.certificate_subject;
+    _thumbprint = peer.certificate_thumbprint;
     _asked = true;
     return contract::AuthDecision::accept(std::make_shared<contract::Unrestricted>());
   }
-  contract::AuthDecision auth(const std::string&, const std::string&, const mqtt::Bytes&) override {
+  contract::AuthDecision auth(const std::string&, const std::string&, const mqtt::Bytes&, const contract::Peer&) override {
     return contract::AuthDecision::refuse(mqtt::reason::bad_authentication_method);
   }
   std::pair<bool, std::optional<std::string>> seen() {
     std::lock_guard lock(_mutex);
     return {_asked, _seen};
   }
+  std::optional<std::array<uint8_t, 32>> thumbprint() {
+    std::lock_guard lock(_mutex);
+    return _thumbprint;
+  }
 
  private:
   std::mutex _mutex;
   bool _asked = false;
   std::optional<std::string> _seen;
+  std::optional<std::array<uint8_t, 32>> _thumbprint;
 };
+
+// The SHA-256 of a PEM certificate's DER, worked out here, not by the edge.
+std::array<uint8_t, 32> thumbprint_of(const std::string& pem) {
+  FILE* file = std::fopen(pem.c_str(), "r");
+  if (!file) return {};
+  X509* certificate = PEM_read_X509(file, nullptr, nullptr, nullptr);
+  std::fclose(file);
+  if (!certificate) return {};
+  unsigned char* der = nullptr;
+  const int size = i2d_X509(certificate, &der);
+  std::array<uint8_t, 32> out{};
+  if (size > 0) out = dannan::identity::sha256(std::span<const uint8_t>(der, static_cast<size_t>(size))).bytes;
+  OPENSSL_free(der);
+  X509_free(certificate);
+  return out;
+}
 
 class ClientCertificateTest : public ::testing::Test {
  protected:
@@ -167,6 +192,15 @@ TEST_F(ClientCertificateTest, TheAuthenticatorSeesTheVerifiedSubject) {
   ASSERT_TRUE(subject);
   EXPECT_NE(subject->find("CN=device-17"), std::string::npos) << *subject;
   EXPECT_NE(subject->find("O=lir"), std::string::npos) << *subject;
+}
+
+// For a token bound to the certificate (RFC 8705, x5t#S256).
+TEST_F(ClientCertificateTest, TheAuthenticatorSeesTheCertificatesThumbprint) {
+  start(true);
+  EXPECT_EQ(connect_as("device"), mqtt::reason::success);
+  const auto thumbprint = recording.thumbprint();
+  ASSERT_TRUE(thumbprint);
+  EXPECT_EQ(*thumbprint, thumbprint_of(path("device.pem")));
 }
 
 TEST_F(ClientCertificateTest, RequiredRefusesAClientWithoutOne) {
