@@ -483,3 +483,20 @@ tests passed three runs in a row.
   Reference; counted (`connections_redirected`). 3.x clients and HTTP
   requests are never redirected. `Connection::transport()`.
 
+## 2026-11-04: memory thresholds configurable; Dannan's ledger
+
+Gate: `lir_tests` 251 passed, 0 failed (3 new).
+
+- Tom: budget configurable (512 MiB), thresholds configurable (80, 90,
+  100): `Config::shed_percent`, `refuse_publish_percent`,
+  `refuse_connect_percent`; `lir-node --shed-percent
+  --refuse-publish-percent --refuse-connect-percent`, refused unless they
+  rise.
+- Tom: Lir's held bytes are also leased in Dannan's ledger.
+  `system::LedgerLeases` follows the broker's count each second in 1 MiB
+  foreground leases; a refused lease sets `Broker::ledger_full`, which
+  puts the pressure at refuse_connect until room returns. Test: three
+  MiB retained on a node are leased and released as they come and go.
+- The memory part of the "Open for Tom" note under memory pressure is
+  settled by this.
+

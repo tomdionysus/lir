@@ -21,6 +21,7 @@ add_library(lir SHARED
   mqtt/topic.cpp
   mqtt/wire.cpp
   shard/shard.cpp
+  system/ledger.cpp
   system/system.cpp
   version.cpp
 )

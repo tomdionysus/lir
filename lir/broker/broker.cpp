@@ -1075,11 +1075,13 @@ const char* pressure_name(Pressure pressure) noexcept {
 }
 
 Pressure Broker::pressure() const noexcept {
+  if (_ledger_full) return Pressure::refuse_connect;
   const uint64_t budget = _config.memory_budget;
   if (budget == 0) return Pressure::none;
-  if (_held >= budget) return Pressure::refuse_connect;
-  if (_held >= budget / 10 * 9) return Pressure::refuse_publish;
-  if (_held >= budget / 10 * 8) return Pressure::shed_qos0;
+  const auto at = [&](uint32_t percent) { return _held >= budget / 100 * percent + budget % 100 * percent / 100; };
+  if (at(_config.refuse_connect_percent)) return Pressure::refuse_connect;
+  if (at(_config.refuse_publish_percent)) return Pressure::refuse_publish;
+  if (at(_config.shed_percent)) return Pressure::shed_qos0;
   return Pressure::none;
 }
 
