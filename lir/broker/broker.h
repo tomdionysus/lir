@@ -146,7 +146,18 @@ struct Config {
   // QoS 0 messages queued for an offline session too (the specification
   // allows it; off, they are dropped and counted).
   bool queue_qos0_offline = false;
+  // The bytes of messages this node holds (queued, in flight, retained)
+  // before it gives way, in the design's order (section 4): at 80% QoS 0
+  // is no longer queued and what is queued is dropped, oldest first; at 90%
+  // QoS 1 and 2 publishes are refused (0x97; a 3.x client is closed, and
+  // resends when it returns); at 100% new clients are refused (0x89).
+  // Existing sessions are never evicted. Zero: no budget.
+  uint64_t memory_budget = 512ull << 20;
 };
+
+// How hard the memory budget presses, in the order it gives way.
+enum class Pressure : uint8_t { none, shed_qos0, refuse_publish, refuse_connect };
+const char* pressure_name(Pressure pressure) noexcept;
 
 struct Stats {
   uint64_t connections_accepted = 0;
@@ -163,6 +174,9 @@ struct Stats {
   uint64_t sessions_expired = 0;
   uint64_t sessions_taken = 0;
   uint64_t sessions_surrendered = 0;
+  uint64_t dropped_pressure = 0;
+  uint64_t refused_pressure_publishes = 0;
+  uint64_t refused_pressure_connections = 0;
 };
 
 // A client connected here, or its connection here ended: for the
@@ -336,6 +350,12 @@ class Broker {
   // Connections past CONNECT: connected, or on their way to it.
   size_t clients() const noexcept;
   size_t retained() const noexcept { return _retained.size(); }
+  // The bytes of messages held, as counted, and the pressure they make.
+  uint64_t held_bytes() const noexcept { return _held; }
+  Pressure pressure() const noexcept;
+  // The same bytes counted afresh from every queue and the retained set;
+  // for tests, which check that the running count never drifts.
+  uint64_t recount_held_bytes() const;
   const Stats& stats() const noexcept { return _stats; }
   const Config& config() const noexcept { return _config; }
 
@@ -356,6 +376,8 @@ class Broker {
     uint16_t next_packet_id = 1;
     Link* link = nullptr;
     std::optional<TimePoint> expires_at;
+    // Bytes of its queued and in-flight messages.
+    uint64_t held = 0;
     uint16_t client_receive_maximum = 65535;
     uint32_t client_maximum_packet_size = 0xFFFFFFFF;
   };
@@ -411,6 +433,10 @@ class Broker {
   void detach(Link& link, bool publish_will);
   void interest_changed();
   void tell(ClientEvent event);
+  void charge(Session& session, int64_t bytes);
+  void charge_retained(int64_t bytes);
+  // Drops queued QoS 0 messages, oldest first, until the pressure eases.
+  void shed();
   // Marks a persistent session as changed, for the mirror.
   void touch(const std::string& client_id);
   std::string assign_client_id();
@@ -421,6 +447,7 @@ class Broker {
   dannan::status::ScopedLogger _logger;
   ClusterHooks _hooks;
   std::function<void(const ClientEvent&)> _observer;
+  uint64_t _held = 0;
   std::map<std::string, std::unique_ptr<Session>> _sessions;
   // Non-shared subscriptions keyed by client id.
   subs::Trie<std::string, Options> _subscriptions;
