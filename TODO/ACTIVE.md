@@ -6,10 +6,11 @@ on `develop`; gate `lir_tests` 170. `COMPLETED.md` is the
 record. "Resume here": what waits on others (below); client certificates
 otherwise.
 
-The design is Tom's, 2026-11-03: "Lir: Distributed Event System on
-Dannan", a Claude Doc and the master, rendered in
-[`2026-11-03-lir-plan.md`](2026-11-03-lir-plan.md) (revision 7; seven
-sections unwritten). How the projects divide the work is
+The design is Tom's, 2026-11-03:
+[`2026-11-03-lir-plan.md`](2026-11-03-lir-plan.md), with the seven
+further sections in [`2026-11-04-lir-sections.md`](2026-11-04-lir-sections.md).
+These files are the source of truth; the Claude Doc it began as is a
+starter that will be deleted (Tom, 2026-11-04). How the projects divide the work is
 `../dagda/TODO/2026-11-03-stack.md`, the one copy, which has Lir in it
 ("Lir on Dagda", and Tom's "Decided (Tom, 2026-11-04)").
 
@@ -96,14 +97,20 @@ written new; Macha has no event system to extract (`COMPLETED.md`,
 7. Namespaces kept: `mqtt`, `subs`, `shard`, `broker`, `edge`, `cluster`.
 8. Next: session replication, then step 6 (system topics, then HTTP
    publish and SSE).
-9. Still Tom's: the design doc's seven unwritten sections.
+9. The design doc's seven unwritten sections: answered in turn on
+   2026-11-04, recorded in
+   [`2026-11-04-lir-sections.md`](2026-11-04-lir-sections.md). New scope from them: MQTT over WebSockets, MQTT-SN
+   1.2 and 2.0, a declarative rules engine, opt-in message history,
+   Server Reference for load balancing. Order: Dannan 0.3.0 and scopes,
+   anonymous refused, WebSockets, configurable system topics, config
+   file (Dannan's), client certificates; first release after step 5.
 
 ## What Lir waits on
 
 - Dagda: head spaces with owner merges, Replicated writes, leases,
   objects and claims, a node-local space (step 5).
 - Lugh: tokens an MQTT client can present (step 6's plugin).
-- Dannan: `Identity::verify` (the scope check, `dannan/contract/scope.h`)
-  landed on Dannan's develop (`09a525f`) but is untagged: `0.3.0` waits
-  on Tom. An authenticator that checks topic scopes through it waits on
-  that tag.
+- Dannan: nothing. `0.3.0` is tagged (main `277adab`, 2026-11-04) with
+  the scope seam; Lir moves to it with `find_package(dannan 0.3 CONFIG)`.
+  A config-file reader is to be asked of Dannan (section 4).
+- Lugh: the grammar of scopes in its tokens.
