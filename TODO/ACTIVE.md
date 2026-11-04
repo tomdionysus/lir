@@ -2,8 +2,7 @@
 
 Last updated: 2026-11-04. Steps 1 to 4 are on `develop` (step 4 on
 `feature/cluster`, merged); gate `lir_tests` 151. `COMPLETED.md` is the
-record. "Resume here": the questions for the maintainer below, then step 5 (waits on
-Dagda) or step 6.
+record. "Resume here": session replication (the maintainer's answer 2), then step 6.
 
 The design is the maintainer's, 2026-11-03: "Lir: Distributed Event System on
 Dannan", a Claude Doc and the master, rendered in
@@ -60,7 +59,8 @@ written new; Macha has no event system to extract (`COMPLETED.md`,
 3. **The edge.** Done (132; the mosquitto process test landed in step 4).
    Open: TLS on the MQTT port.
 4. **The cluster on Dannan.** Done as an interim (151): see
-   `COMPLETED.md` and question 1.
+   `COMPLETED.md`. Next: session replication to configurable standbys
+   (answer 2).
 5. **On Dagda.** Retained, inflight and sessions as head spaces with
    Lir's merges, Replicated writes for QoS 1/2, leases, objects for
    payloads over 64 KiB, the node-local sequence. Waits on Dagda, whose
@@ -70,36 +70,29 @@ written new; Macha has no event system to extract (`COMPLETED.md`,
    Lugh authentication plugin. No dependency but Lugh's tokens for the
    last.
 
-## Questions for the maintainer
+## The maintainer's answers (2026-11-04, asked in turn)
 
-1. **Fan-out without a shard primary (step 4).** Dannan's channels now
-   route by gossiped prefix interest, so an edge publishes straight to
-   the edges with matching subscribers: one hop, no primary, no lease.
-   The design (and the maintainer's 2026-11-04 decision) has each shard's lease
-   holder fan out. Recommended: keep direct fan-out for delivery, which
-   needs no coordinator and loses nothing on a split, and use per-shard
-   leases only where one writer matters (the inflight log and retained
-   heads on Dagda, step 5). Or: route every publish through the shard
-   primary as designed.
-2. **Interim state, until step 5.** Every node holds every retained value
-   (spread on `lir.retained`, fetched whole from each node that joins),
-   not R shard holders; a session lives on the node its client last
-   used and moves on connect (`lir.session_take`); PUBACK means accepted
-   and queued for the other nodes, not replicated. A node's crash loses
-   its sessions and what it had not yet sent. Accept as interim?
-3. **Retained ordering.** The design's merge orders a topic's values by
-   dot, "lowest origin byte-wise" across origins, so a later value from
-   a higher node id loses to an earlier one. Step 4 uses a Lamport
-   counter, then the node id: a value set after another node's value was
-   seen always wins. Recommended for the design too.
-4. **From earlier, still open:** the expected publish rate and size (for
-   step 5's batching); the per-shard storage layout and in-memory
-   wildcard index (stack document, "yours to bring to the maintainer"); the
-   monotonic per-origin sequence on restart; the header tagline ("Lir -
-   The Distributed Event System" is a placeholder); namespaces
-   (`mqtt`, `subs`, `shard`, `broker`, `edge`, `cluster` so far).
-5. **The doc's seven unwritten sections.** Writing them is the maintainer's; Lir
-   can draft them into the doc on request.
+1. Fan-out: direct, on Dannan's channels. Per-shard leases only where
+   one writer matters: the inflight log and retained heads on Dagda
+   (step 5).
+2. Interim: sessions are replicated now, before Dagda: each persistent
+   session mirrored in memory to standby nodes chosen by Dannan's
+   placement, updated as it changes, taken from a standby when its node
+   is gone. The number of standbys is configurable (Lir's default: one,
+   two copies, as Dagda's k = 2). Retained everywhere and PUBACK on
+   acceptance stay interim until step 5.
+3. Retained ordering: the Lamport counter, then the node id, in the
+   design too.
+4. Load: up to about 10,000 messages a second across the cluster;
+   messages mostly under 1 KiB; 64 KiB inline limit kept.
+5. Header tagline: "Lir - The Message Broker".
+6. Storage layout on Dagda approved: per-shard spaces for retained,
+   inflight and sessions (3 x 256), writes batched per shard, the
+   wildcard index in memory.
+7. Namespaces kept: `mqtt`, `subs`, `shard`, `broker`, `edge`, `cluster`.
+8. Next: session replication, then step 6 (system topics, then HTTP
+   publish and SSE).
+9. Still the maintainer's: the design doc's seven unwritten sections.
 
 ## What Lir waits on
 
