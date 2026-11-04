@@ -190,6 +190,24 @@ TEST_F(TlsEdgeTest, AVerifyingClientConnectsAndReceives) {
   EXPECT_EQ(std::string(got.payload.begin(), got.payload.end()), "open");
 }
 
+// A close the broker makes ends the TLS session with close_notify (RFC 8446,
+// section 6.1), so the client reads a clean end, not a truncation.
+TEST_F(TlsEdgeTest, TheBrokersCloseSendsCloseNotify) {
+  boost::asio::io_context client_io;
+  boost::asio::ssl::context context(boost::asio::ssl::context::tls_client);
+  context.load_verify_file((dir.path() / "cert.pem").string());
+  boost::asio::ssl::stream<boost::asio::ip::tcp::socket> tls(client_io, context);
+  tls.set_verify_mode(boost::asio::ssl::verify_peer);
+  tls.lowest_layer().connect({boost::asio::ip::make_address("127.0.0.1"), edge->tls_port()});
+  tls.handshake(boost::asio::ssl::stream_base::client);
+  boost::asio::write(tls, boost::asio::buffer(mqtt::encode(mqtt::Connect{Version::v5, true, 0, "leaving", {}, {}, {}, {}}, Version::v5)));
+  boost::asio::write(tls, boost::asio::buffer(mqtt::encode(mqtt::Disconnect{}, Version::v5)));
+  std::array<uint8_t, 256> buffer{};
+  boost::system::error_code ec;
+  while (!ec) tls.read_some(boost::asio::buffer(buffer), ec);
+  EXPECT_EQ(ec, boost::asio::error::eof) << ec.message();
+}
+
 TEST_F(TlsEdgeTest, PlaintextOnTheTlsPortGetsNothing) {
   MqttClient wrong(edge->tls_port(), Version::v5, 0, 1);
   wrong.send(mqtt::Connect{Version::v5, true, 0, "oops", {}, {}, {}, {}});
