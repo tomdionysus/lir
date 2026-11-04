@@ -1,11 +1,13 @@
 # Lir - Active Work
 
-Last updated: 2026-11-04. Steps 1 to 4, session standbys, system
-topics, HTTP and HTTPS, MQTT over TLS and over WebSocket, the
-specification's MAYs, Dannan 0.3.0 and topic scopes are on `develop`;
-gate `lir_tests` 214. `COMPLETED.md` is the record. "Resume here": the
-configurable system topics, then client certificates (Tom's order,
-design section 6).
+Last updated: 2026-11-04. Steps 1 to 4, session standbys, the system
+topics (all but `$lir/shards`, which follows step 5), HTTP and HTTPS,
+MQTT over TLS and over WebSocket, the specification's MAYs, Dannan 0.3.0
+and topic scopes are on `develop`; gate `lir_tests` 222. `COMPLETED.md`
+is the record. "Resume here": client certificates, then section 4's
+moderate default limits (not yet applied: `maximum_queued` is 1000, the
+session expiry cap and the connection cap are unset), then Server
+Reference, MQTT-SN and the rules engine.
 
 The design is Tom's, 2026-11-03:
 [`2026-11-03-lir-plan.md`](2026-11-03-lir-plan.md), with the seven

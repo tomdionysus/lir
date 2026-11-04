@@ -53,10 +53,18 @@ Lir is the broker written once for this stack:
   Dannan's placement, and a standby takes the session over if its node is lost. Retained
   messages are ordered by a Lamport counter, then the node id, so every node agrees on
   the winner whatever order they arrive in.
-- **System topics.** `$lir/nodes/<node id>` (connections, sessions, retained count,
-  message counters) and `$dannan/nodes/<node id>` (the node's record, its peers and their
-  latency), retained JSON, cleared when a node leaves. Clients may read them, never write
-  them.
+- **System topics**, JSON, each switchable and on by default. Clients may read them,
+  never write them:
+  - `$lir/nodes/<node id>`, retained: connections, sessions, retained count, message
+    counters; `$dannan/nodes/<node id>`, retained: the node's record, its peers and their
+    latency. Cleared when the node leaves.
+  - `$lir/cluster`, retained: nodes, connections, sessions, messages received a second, and
+    whether every node runs the same limits, from figures each node carries in its Dannan
+    record.
+  - `$lir/clients/connected` and `$lir/clients/disconnected`: each client's connection
+    and how it ended (by the client, the server or the network, with the reason code).
+  - `$dannan/roster/joined`, `/left` and `/changed`: the cluster's membership, once per
+    change.
 - **HTTP.** `POST /publish?topic=T` publishes the body; `GET /subscribe?filter=F` streams
   matching messages as Server-Sent Events, retained messages first. Each request is a
   short-lived MQTT client of the broker, so authentication, retained messages and the
@@ -222,13 +230,12 @@ Conventions, shared with the stack: [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Status
 
 In development; no release is cut yet. The first, 0.1.0, follows persistence on Dagda.
-Built and tested (214 tests): all of MQTT 3.1, 3.1.1 and 5.0 on one node, over TCP, TLS,
+Built and tested (222 tests): all of MQTT 3.1, 3.1.1 and 5.0 on one node, over TCP, TLS,
 WebSocket and WebSocket over TLS; the cluster on Dannan with sessions that move and are mirrored to standbys; system
 topics; HTTP and HTTPS publish and SSE; topic scopes, with anonymous clients
 refused by default. The cluster is an interim one until Dagda:
 retained messages are held in memory on every node and a QoS 1 or 2 publish is
-acknowledged on acceptance, not on replication. Next: the remaining system topics, client
-certificates, then persistence on Dagda and the Lugh
+acknowledged on acceptance, not on replication. Next: client certificates, then persistence on Dagda and the Lugh
 authenticator.
 
 ## Licence
