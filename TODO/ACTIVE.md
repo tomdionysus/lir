@@ -1,10 +1,10 @@
 # Lir - Active Work
 
 Last updated: 2026-11-04. Steps 1 to 4, session standbys, system
-topics, HTTP and HTTPS, MQTT over TLS, the specification's MAYs, Dannan
-0.3.0 and topic scopes are on `develop`; gate `lir_tests` 202.
-`COMPLETED.md` is the record. "Resume here": MQTT over WebSockets, then
-the configurable system topics, then client certificates (the maintainer's order,
+topics, HTTP and HTTPS, MQTT over TLS and over WebSocket, the
+specification's MAYs, Dannan 0.3.0 and topic scopes are on `develop`;
+gate `lir_tests` 214. `COMPLETED.md` is the record. "Resume here": the
+configurable system topics, then client certificates (the maintainer's order,
 design section 6).
 
 The design is the maintainer's, 2026-11-03:
@@ -111,7 +111,9 @@ written new; Macha has no event system to extract (`COMPLETED.md`,
 - Dagda: head spaces with owner merges, Replicated writes, leases,
   objects and claims, a node-local space (step 5).
 - Lugh: tokens an MQTT client can present (step 6's plugin).
-- Dannan: nothing. `0.3.0` is tagged (main `277adab`, 2026-11-04) with
-  the scope seam; Lir moves to it with `find_package(dannan 0.3 CONFIG)`.
-  A config-file reader is to be asked of Dannan (section 4).
+- Dannan: a config-file reader (design section 4, asked 2026-11-04);
+  percent-encoding as a shared foundation (the maintainer, 2026-11-04: "it should
+  absolutely be in Dannan. everyone else should use it"; asked, with
+  strict and form decoding and a configurable encoder). Lir then deletes
+  `auth::percent_decode`. Lir is on `0.3.0`.
 - Lugh: the grammar of scopes in its tokens.

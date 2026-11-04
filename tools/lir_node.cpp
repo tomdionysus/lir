@@ -9,7 +9,8 @@
 // network) that advertises "lir" and serves MQTT on its own port. It
 // reports what it does as one JSON object per line on stdout:
 //
-//   {"event":"listening","id":"...","port":N,"mqtt_port":M,"mqtt_tls_port":T,"http_port":H}
+//   {"event":"listening","id":"...","port":N,"mqtt_port":M,"mqtt_tls_port":T,"ws_port":W,"wss_port":S,
+//    "http_port":H,"https_port":P}                     (zero: that listener is off)
 //   {"event":"status","connections":N,"sessions":N,"retained":N,...}   every --status-ms
 //   {"event":"stopped"}
 //
@@ -23,6 +24,7 @@
 //            [--session-standbys N] [--http-port N|-1] [--http-listen ADDR]
 //            [--mqtt-tls-port N --tls-certificate PEM --tls-key PEM]
 //            [--mqtt-tls-listen ADDR] [--https-port N] [--https-listen ADDR]
+//            [--ws-port N] [--ws-listen ADDR] [--wss-port N] [--wss-listen ADDR]
 //            [--allow-anonymous [--anonymous-scope SCOPE]...]
 //   lir-node --version
 //
@@ -96,6 +98,12 @@ struct Options {
   // -1: no HTTPS listener. Uses --tls-certificate and --tls-key.
   int https_port = -1;
   std::string https_listen = "0.0.0.0";
+  // -1: no MQTT over WebSocket listener.
+  int ws_port = -1;
+  std::string ws_listen = "0.0.0.0";
+  // -1: none. Uses --tls-certificate and --tls-key.
+  int wss_port = -1;
+  std::string wss_listen = "0.0.0.0";
   bool allow_anonymous = false;
   std::vector<std::string> anonymous_scopes;
 };
@@ -148,6 +156,14 @@ Options parse(int argc, char** argv) {
       out.mqtt_tls_port = std::stoi(value());
     else if (option == "--https-port")
       out.https_port = std::stoi(value());
+    else if (option == "--ws-port")
+      out.ws_port = std::stoi(value());
+    else if (option == "--ws-listen")
+      out.ws_listen = value();
+    else if (option == "--wss-port")
+      out.wss_port = std::stoi(value());
+    else if (option == "--wss-listen")
+      out.wss_listen = value();
     else if (option == "--allow-anonymous")
       out.allow_anonymous = true;
     else if (option == "--anonymous-scope")
@@ -240,6 +256,11 @@ int main(int argc, char** argv) {
     if (options.mqtt_tls_port >= 0) {
       edge_config.tls = lir::edge::TlsConfig{options.mqtt_tls_listen, static_cast<uint16_t>(options.mqtt_tls_port), options.tls_certificate, options.tls_key};
     }
+    if (options.ws_port >= 0) edge_config.websocket = lir::edge::WebSocketConfig{options.ws_listen, static_cast<uint16_t>(options.ws_port)};
+    if (options.wss_port >= 0) {
+      edge_config.secure_websocket =
+          lir::edge::TlsConfig{options.wss_listen, static_cast<uint16_t>(options.wss_port), options.tls_certificate, options.tls_key};
+    }
     std::optional<lir::auth::TopicScopes> anonymous;
     if (options.allow_anonymous) {
       if (options.anonymous_scopes.empty()) {
@@ -274,6 +295,7 @@ int main(int argc, char** argv) {
     }
     say("{\"event\":\"listening\",\"id\":\"" + dannan::identity::to_string(node.context().identity().id()) + "\",\"port\":" + std::to_string(node.port()) +
         ",\"mqtt_port\":" + std::to_string(edge.port()) + ",\"mqtt_tls_port\":" + std::to_string(edge.tls_port()) +
+        ",\"ws_port\":" + std::to_string(edge.websocket_port()) + ",\"wss_port\":" + std::to_string(edge.secure_websocket_port()) +
         ",\"http_port\":" + std::to_string(http ? http->port() : 0) + ",\"https_port\":" + std::to_string(http ? http->tls_port() : 0) + "}");
 
     const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(options.seconds);
