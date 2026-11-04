@@ -18,6 +18,7 @@ add_library(lir SHARED
   mqtt/topic.cpp
   mqtt/wire.cpp
   shard/shard.cpp
+  system/system.cpp
   version.cpp
 )
 target_include_directories(lir
