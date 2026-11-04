@@ -1,9 +1,10 @@
 # Lir - Active Work
 
-Last updated: 2026-11-04. Steps 1 to 4 are on `develop` (step 4 on
-`feature/cluster`, merged); gate `lir_tests` 151. `COMPLETED.md` is the
-record. "Resume here": what waits on others (below); otherwise HTTPS and
-client certificates.
+Last updated: 2026-11-04. Steps 1 to 4, session standbys, system
+topics, HTTP and HTTPS, MQTT over TLS and the specification's MAYs are
+on `develop`; gate `lir_tests` 170. `COMPLETED.md` is the
+record. "Resume here": what waits on others (below); client certificates
+otherwise.
 
 The design is the maintainer's, 2026-11-03: "Lir: Distributed Event System on
 Dannan", a Claude Doc and the master, rendered in
@@ -58,7 +59,8 @@ written new; Macha has no event system to extract (`COMPLETED.md`,
 1. **Wire and topics.** Done (73).
 2. **The broker on one node.** Done (125).
 3. **The edge.** Done (132; the mosquitto process test landed in step 4;
-   TLS on the MQTT port, 165). Open: HTTPS, client certificates.
+   TLS on the MQTT port, 165; HTTPS, 170). Open: client certificates
+   (mutual TLS), a TLS close_notify on close.
 4. **The cluster on Dannan.** Done as an interim (151): see
    `COMPLETED.md`. Sessions mirrored to configurable standbys (answer
    2): done (152).
