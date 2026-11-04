@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "dannan/test/fixtures/stepped_time.h"
+#include "lir/auth/scopes.h"
 
 namespace lir::broker {
 namespace {
@@ -786,10 +787,15 @@ class ChallengeOnce final : public contract::Authenticator {
  public:
   contract::AuthDecision connect(const mqtt::Connect&) override { return contract::AuthDecision::challenge(Bytes{'?'}); }
   contract::AuthDecision auth(const std::string&, const std::string&, const Bytes& data) override {
-    return data == Bytes{'!'} ? contract::AuthDecision::accept() : contract::AuthDecision::refuse(reason::not_authorized);
+    return data == Bytes{'!'} ? contract::AuthDecision::accept(std::make_shared<NotSecret>()) : contract::AuthDecision::refuse(reason::not_authorized);
   }
-  bool may_publish(const std::string&, std::string_view) override { return true; }
-  bool may_subscribe(const std::string&, std::string_view filter) override { return filter != "secret"; }
+
+ private:
+  class NotSecret final : public contract::Grant {
+   public:
+    bool may_publish(std::string_view, bool) const override { return true; }
+    bool may_subscribe(std::string_view filter) const override { return filter != "secret"; }
+  };
 };
 
 TEST(BrokerAuth, EnhancedAuthenticationExchange) {
@@ -826,6 +832,164 @@ TEST(BrokerAuth, AllowAllRefusesAnUnknownMethod) {
   client.send(c);
   EXPECT_EQ(client.take_one<mqtt::Connack>().reason, reason::bad_authentication_method);
   EXPECT_TRUE(client.closed());
+}
+
+// ---- topic scopes (design, section 1)
+
+// Grants scopes good for `lifetime` from each CONNECT or AUTH; a 5.0
+// client naming the method "TEST" may re-authenticate with data "more" to
+// get `renewed` instead.
+class Scoped final : public contract::Authenticator {
+ public:
+  Scoped(const dannan::test::SteppedTime& time, auth::TopicScopes scopes, std::chrono::seconds lifetime)
+      : _time(time), _scopes(std::move(scopes)), _lifetime(lifetime) {}
+  contract::AuthDecision connect(const mqtt::Connect&) override { return grant(_scopes); }
+  contract::AuthDecision auth(const std::string&, const std::string&, const Bytes& data) override {
+    return data == Bytes{'m', 'o', 'r', 'e'} ? grant(renewed) : contract::AuthDecision::refuse(reason::not_authorized);
+  }
+  auth::TopicScopes renewed;
+
+ private:
+  contract::AuthDecision grant(const auth::TopicScopes& scopes) {
+    return contract::AuthDecision::accept(std::make_shared<auth::ScopeGrant>(scopes, _time.now() + _lifetime));
+  }
+  const dannan::test::SteppedTime& _time;
+  auth::TopicScopes _scopes;
+  std::chrono::seconds _lifetime;
+};
+
+class BrokerScopes : public ::testing::Test {
+ protected:
+  BrokerScopes() : scoped(time, {{"open/#"}, {"open/#", "$lir/#"}, {"status/+"}}, 60s), broker({}, time, scoped, logger()) {}
+
+  static dannan::status::ScopedLogger logger() { return {std::make_shared<dannan::status::ConsoleSink>(dannan::status::LogLevel::error), "lir"}; }
+
+  Client open(Version version = Version::v5) {
+    auto connection = std::make_shared<FakeConnection>();
+    return Client{connection, broker.accept(connection), version};
+  }
+  mqtt::Connack connect(Client& client, const std::string& id, std::optional<mqtt::Will> will = {}, bool clean = true, bool method = false) {
+    mqtt::Connect c{client.version, clean, 0, id, std::move(will), {}, {}, {}};
+    if (client.version == Version::v5 && !clean) c.properties.session_expiry_interval = 3600;
+    if (method) c.properties.authentication_method = "TEST";
+    client.send(c);
+    return client.take_first<mqtt::Connack>();
+  }
+  static mqtt::Publish publish(const std::string& topic, bool retain = false, QoS qos = QoS::at_least_once) {
+    mqtt::Publish p;
+    p.topic = topic;
+    p.payload = Bytes{'x'};
+    p.qos = qos;
+    p.retain = retain;
+    p.packet_id = qos == QoS::at_most_once ? 0 : 1;
+    return p;
+  }
+  void advance(std::chrono::milliseconds by) {
+    time.advance(by);
+    broker.poll();
+  }
+
+  dannan::test::SteppedTime time;
+  Scoped scoped;
+  Broker broker;
+};
+
+TEST_F(BrokerScopes, PublishOutsideTheScopesIsRefusedAndNotDelivered) {
+  auto sub = open();
+  connect(sub, "sub");
+  sub.send(mqtt::Subscribe{1, {}, {{"open/#", QoS::at_least_once}}});
+  sub.take_first<mqtt::Suback>();
+  auto pub = open();
+  connect(pub, "pub");
+  pub.send(publish("closed/a"));
+  EXPECT_EQ(pub.take_one<mqtt::Ack>().reason, reason::not_authorized);
+  // A refused publish reaches no one, even a subscriber it would match.
+  pub.send(publish("open/a", true));
+  EXPECT_EQ(pub.take_one<mqtt::Ack>().reason, reason::not_authorized);
+  EXPECT_TRUE(sub.take_all<mqtt::Publish>().empty());
+  pub.send(publish("open/a"));
+  pub.take_one<mqtt::Ack>();
+  EXPECT_EQ(sub.take_all<mqtt::Publish>().size(), 1u);
+}
+
+TEST_F(BrokerScopes, ThreeOneOneIsToldSuccessButNothingIsDelivered) {
+  auto sub = open();
+  connect(sub, "sub");
+  sub.send(mqtt::Subscribe{1, {}, {{"open/#", QoS::at_least_once}}});
+  sub.take_first<mqtt::Suback>();
+  auto pub = open(Version::v3_1_1);
+  connect(pub, "pub");
+  pub.send(publish("open/a", true));
+  EXPECT_EQ(pub.take_one<mqtt::Ack>().reason, reason::success);
+  EXPECT_TRUE(sub.take_all<mqtt::Publish>().empty());
+}
+
+TEST_F(BrokerScopes, RetainNeedsTheRetainAction) {
+  auto pub = open();
+  connect(pub, "pub");
+  pub.send(publish("open/a", true));
+  EXPECT_EQ(pub.take_one<mqtt::Ack>().reason, reason::not_authorized);
+  pub.send(publish("status/a", true));
+  pub.take_one<mqtt::Ack>();
+  EXPECT_EQ(broker.retained(), 1u);
+  pub.send(publish("status/a", false));
+  EXPECT_EQ(pub.take_one<mqtt::Ack>().reason, reason::not_authorized);
+}
+
+TEST_F(BrokerScopes, SubscribeNeedsCoverage) {
+  auto sub = open();
+  connect(sub, "sub");
+  sub.send(mqtt::Subscribe{
+      1, {}, {{"open/+", QoS::at_most_once}, {"#", QoS::at_most_once}, {"$share/g/open/x", QoS::at_most_once}, {"$lir/nodes/+", QoS::at_most_once}}});
+  EXPECT_EQ(sub.take_one<mqtt::Suback>().reasons, (std::vector<uint8_t>{0, reason::not_authorized, 0, 0}));
+}
+
+TEST_F(BrokerScopes, AWillOutsideTheScopesRefusesTheConnection) {
+  for (const bool retain : {false, true}) {
+    auto client = open();
+    mqtt::Will will;
+    will.topic = retain ? "open/gone" : "closed/gone";
+    will.retain = retain;
+    EXPECT_EQ(connect(client, "w", will).reason, reason::not_authorized) << retain;
+    EXPECT_TRUE(client.closed());
+  }
+  auto client = open();
+  mqtt::Will will;
+  will.topic = "open/gone";
+  EXPECT_EQ(connect(client, "w", will).reason, reason::success);
+}
+
+TEST_F(BrokerScopes, TheConnectionClosesWhenTheGrantEndsAndTheSessionStays) {
+  auto client = open();
+  connect(client, "c", {}, false);
+  advance(59s);
+  EXPECT_FALSE(client.closed());
+  advance(2s);
+  EXPECT_EQ(client.take_one<mqtt::Disconnect>().reason, reason::not_authorized);
+  EXPECT_TRUE(client.closed());
+  auto again = open();
+  EXPECT_TRUE(connect(again, "c", {}, false).session_present);
+}
+
+TEST_F(BrokerScopes, ReauthenticationReplacesTheGrant) {
+  scoped.renewed = {{"other/#"}, {}, {}};
+  auto client = open();
+  connect(client, "c", {}, true, true);
+  advance(50s);
+  mqtt::Auth again{reason::reauthenticate, {}};
+  again.properties.authentication_method = "TEST";
+  again.properties.authentication_data = Bytes{'m', 'o', 'r', 'e'};
+  client.send(again);
+  EXPECT_EQ(client.take_one<mqtt::Auth>().reason, reason::success);
+  // The old grant would have ended at 60 s; the new one runs to 110 s.
+  advance(20s);
+  EXPECT_FALSE(client.closed());
+  client.send(publish("open/a"));
+  EXPECT_EQ(client.take_one<mqtt::Ack>().reason, reason::not_authorized);
+  client.send(publish("other/a"));
+  EXPECT_EQ(client.take_one<mqtt::Ack>().reason, reason::no_matching_subscribers);
+  advance(41s);
+  EXPECT_EQ(client.take_one<mqtt::Disconnect>().reason, reason::not_authorized);
 }
 
 }  // namespace

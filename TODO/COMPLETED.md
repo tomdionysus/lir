@@ -281,3 +281,46 @@ Gate: `lir_tests` 170 passed, 0 failed.
 - Test: a verifying client publishes over HTTPS to an MQTT subscriber.
   Checked by hand with `curl --cacert` (a retained publish, then an
   event stream reading it back) against `lir-node`.
+
+## 2026-11-04: the design's seven sections, the README, Dannan 0.3.0
+
+- Tom answered the seven unwritten sections in turn:
+  `TODO/2026-11-04-lir-sections.md`. The repositories are the sources of
+  truth; the starter Claude Docs will be deleted (Tom), and the stack's
+  sessions were told.
+- `README.md` in the stack's form (why, what, the stack, how to use it);
+  remote `origin` is `git@github.com:tomdionysus/lir.git`, not pushed.
+- Built against Dannan `0.3.0` (`277adab`). Gate: `lir_tests` 170.
+
+## 2026-11-04: topic scopes; anonymous refused by default
+
+Gate: `lir_tests` 199 passed, 0 failed (29 new); the process tests ran
+against mosquitto.
+
+- Tom, 2026-11-04: Lir checks token scopes itself. Dannan 0.3.0's scope
+  seam (`ScopeSource`, `Identity::verify`) answers only "may P write under
+  prefix S", with data a Lugh source installs on a node; it is not used
+  for MQTT.
+- Contract: an accept carries a `contract::Grant` (may publish, with the
+  retain flag; may subscribe; when it ends), held by the link and
+  replaced on 5.0 re-authentication. The authenticator keeps no
+  per-client state. `Unrestricted` and `Nothing` grants; `AllowAll`
+  gives the first.
+- Broker: publish, retain and subscribe checked against the grant; the
+  will checked once the client is accepted, against pub or retain; a
+  connection whose grant ends is sent DISCONNECT 0x87 and its session
+  kept (design, section 1).
+- `mqtt::covers(granted, requested)`: filter coverage with the '$' rule
+  and "a/#" covering "a".
+- `lir/auth/scopes.h`: the grammar Lugh proposed (`lir:pub|sub|retain:`
+  percent-encoded filter, "{sub}" a whole level), `ScopeGrant`, and
+  `AnonymousAuthenticator`: anonymous clients refused unless allowed,
+  credentials refused until the Lugh plugin. The percent decoder moved
+  here from `http` (one copy).
+- `lir-node --allow-anonymous [--anonymous-scope S]...`: without a scope,
+  anything but writing the system topics.
+- Open: what re-authentication does to subscriptions the new grant no
+  longer covers (Lugh's draft and Lir's reply go to Tom); `{client}` is
+  refused as unsafe (the client chooses its id) unless Tom binds client
+  ids to principals; the grammar itself is Lugh's proposal, not yet Tom's.
+

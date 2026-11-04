@@ -35,13 +35,6 @@ using tcp = asio::ip::tcp;
 using mqtt::Bytes;
 using mqtt::Version;
 
-int hex_digit(char c) {
-  if (c >= '0' && c <= '9') return c - '0';
-  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-  return -1;
-}
-
 std::string json_string(std::string_view text) { return "\"" + system::escaped(std::string(text)) + "\""; }
 
 std::string json_error(std::string_view error, std::optional<uint8_t> reason = std::nullopt) {
@@ -133,23 +126,6 @@ mqtt::Connect connect_packet(const std::optional<std::string>& token) {
 }
 
 }  // namespace
-
-std::string percent_decode(std::string_view text) {
-  std::string out;
-  for (size_t i = 0; i < text.size(); ++i) {
-    if (text[i] != '%') {
-      out += text[i];
-      continue;
-    }
-    if (i + 2 >= text.size()) throw std::invalid_argument("truncated %-escape");
-    const int high = hex_digit(text[i + 1]);
-    const int low = hex_digit(text[i + 2]);
-    if (high < 0 || low < 0) throw std::invalid_argument("bad %-escape");
-    out += static_cast<char>(high * 16 + low);
-    i += 2;
-  }
-  return out;
-}
 
 Target parse_target(std::string_view target) {
   Target out;

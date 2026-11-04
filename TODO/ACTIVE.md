@@ -1,10 +1,11 @@
 # Lir - Active Work
 
 Last updated: 2026-11-04. Steps 1 to 4, session standbys, system
-topics, HTTP and HTTPS, MQTT over TLS and the specification's MAYs are
-on `develop`; gate `lir_tests` 170. `COMPLETED.md` is the
-record. "Resume here": what waits on others (below); client certificates
-otherwise.
+topics, HTTP and HTTPS, MQTT over TLS, the specification's MAYs, Dannan
+0.3.0 and topic scopes are on `develop`; gate `lir_tests` 199.
+`COMPLETED.md` is the record. "Resume here": MQTT over WebSockets, then
+the configurable system topics, then client certificates (Tom's order,
+design section 6).
 
 The design is Tom's, 2026-11-03:
 [`2026-11-03-lir-plan.md`](2026-11-03-lir-plan.md), with the seven

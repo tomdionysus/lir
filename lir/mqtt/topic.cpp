@@ -85,4 +85,23 @@ bool matches(std::string_view filter, std::string_view name) noexcept {
   }
 }
 
+bool covers(std::string_view granted, std::string_view requested) {
+  const auto g = levels(granted);
+  const auto r = levels(requested);
+  for (size_t i = 0; i < g.size(); ++i) {
+    const bool first_dollar = i == 0 && !r.empty() && r[0].starts_with('$');
+    if (g[i] == "#") return !first_dollar;
+    // The requested filter ended here: it matches the name of its own
+    // levels, which a longer granted filter matches only through a "#" next.
+    if (i >= r.size()) return false;
+    if (r[i] == "#") return false;
+    if (g[i] == "+") {
+      if (first_dollar) return false;
+      continue;
+    }
+    if (r[i] == "+" || g[i] != r[i]) return false;
+  }
+  return g.size() == r.size();
+}
+
 }  // namespace lir::mqtt
