@@ -763,6 +763,50 @@ class BrokerOptionsTest : public BrokerTest {
   }
 };
 
+// The design's moderate defaults (section 4).
+TEST_F(BrokerTest, TheDefaultsAreTheModerateSet) {
+  const auto& c = broker.config();
+  EXPECT_EQ(c.maximum_packet_size, 1u << 20);
+  EXPECT_EQ(c.receive_maximum, 1024);
+  EXPECT_EQ(c.maximum_queued, 10000u);
+  EXPECT_EQ(c.maximum_session_expiry, 7u * 24 * 3600);
+  EXPECT_EQ(c.maximum_connections, 10000u);
+}
+
+TEST_F(BrokerTest, SessionExpiryIsCappedAtSevenDays) {
+  mqtt::Properties forever;
+  forever.session_expiry_interval = 0xFFFFFFFF;
+  connect("long", Version::v5, false, forever);
+  EXPECT_EQ(last_connack.properties.session_expiry_interval, 7u * 24 * 3600);
+}
+
+class BrokerCapTest : public BrokerTest {
+ protected:
+  BrokerCapTest() : BrokerTest(capped()) {}
+  static Config capped() {
+    Config c;
+    c.maximum_connections = 2;
+    return c;
+  }
+};
+
+TEST_F(BrokerCapTest, PastTheCapANewClientIsToldServerBusy) {
+  auto one = connect("one");
+  auto two = connect("two", Version::v3_1_1);
+  auto three = open();
+  three.send(mqtt::Connect{Version::v5, true, 0, "three", {}, {}, {}, {}});
+  EXPECT_EQ(three.take_one<mqtt::Connack>().reason, reason::server_busy);
+  EXPECT_TRUE(three.closed());
+  auto old = open(Version::v3_1_1);
+  old.send(mqtt::Connect{Version::v3_1_1, true, 0, "old", {}, {}, {}, {}});
+  EXPECT_EQ(old.take_one<mqtt::Connack>().reason, 0x03);
+  // The existing clients were never touched; a place frees when one goes.
+  EXPECT_FALSE(one.closed());
+  EXPECT_FALSE(two.closed());
+  two.link->closed();
+  connect("four");
+}
+
 TEST_F(BrokerOptionsTest, ResponseInformationOnlyWhenAskedFor) {
   mqtt::Properties ask;
   ask.request_response_information = 1;

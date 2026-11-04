@@ -405,3 +405,20 @@ Gate: `lir_tests` 227 passed, 0 failed (5 new).
 - Not done: HTTPS hands no subject to the authenticator (its exchanges
   are virtual clients).
 
+## 2026-11-04: the moderate default limits (design, section 4)
+
+Gate: `lir_tests` 230 passed, 0 failed (3 new).
+
+- Defaults now the moderate set the maintainer chose: 1 MiB packets and receive
+  maximum 1024 (as before), 10,000 queued per offline session (was 1000),
+  session expiry capped at 7 days (was never), 4 MiB queued for a slow
+  client (was 16 MiB), and `Config::maximum_connections` 10,000, past
+  which a CONNECT is refused with 0x89 Server busy (3.x: return code 3);
+  existing clients are never evicted.
+- `lir-node --max-packet-size --receive-maximum --max-queued
+  --max-session-expiry --max-outbound-bytes --max-connections`.
+- Not done from section 4: the memory budget's order under pressure
+  (drop QoS 0, then refuse QoS 1/2 with 0x97, then 0x89) needs a node
+  memory budget, Dannan's `budget()`, which Lir has not declared yet;
+  the config file waits on Dannan's reader.
+

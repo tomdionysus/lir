@@ -111,6 +111,9 @@ struct SessionImage {
   uint16_t next_packet_id = 1;
 };
 
+// The defaults are the design's moderate set (section 4, the maintainer 2026-11-04),
+// sized for about 10,000 messages a second across a cluster, mostly under
+// 1 KiB; every one is configurable.
 struct Config {
   // Inbound limits, advertised in a 5.0 CONNACK.
   uint32_t maximum_packet_size = 1 << 20;
@@ -123,12 +126,15 @@ struct Config {
   bool shared_subscription_available = true;
   // A client's requested session expiry is capped at this (seconds;
   // 0xFFFFFFFF is never).
-  uint32_t maximum_session_expiry = 0xFFFFFFFF;
+  uint32_t maximum_session_expiry = 7 * 24 * 3600;
   // Overrides the client's keep alive when set (5.0 Server Keep Alive).
   std::optional<uint16_t> server_keep_alive;
   // QoS 1/2 messages held per session while it is offline or at its
   // receive maximum; the oldest is dropped past it, and counted.
-  size_t maximum_queued = 1000;
+  size_t maximum_queued = 10000;
+  // Clients connected to this node past which a new one is refused with
+  // 0x89 (Server busy); the existing are never evicted (section 4).
+  size_t maximum_connections = 10000;
   // A connection that sends no CONNECT within this is closed.
   std::chrono::milliseconds connect_timeout{10000};
   // Topics clients may not publish to: the subscribe-only system prefixes.
@@ -327,6 +333,8 @@ class Broker {
 
   size_t sessions() const noexcept { return _sessions.size(); }
   size_t connections() const noexcept { return _links.size(); }
+  // Connections past CONNECT: connected, or on their way to it.
+  size_t clients() const noexcept;
   size_t retained() const noexcept { return _retained.size(); }
   const Stats& stats() const noexcept { return _stats; }
   const Config& config() const noexcept { return _config; }
