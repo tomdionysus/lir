@@ -721,6 +721,65 @@ TEST_F(BrokerTest, WildcardInPublishTopicDisconnects) {
   EXPECT_EQ(client.take_one<mqtt::Disconnect>().reason, reason::topic_name_invalid);
 }
 
+// ---- what the specification leaves to the server (MAY)
+
+TEST_F(BrokerTest, OutboundTopicAliasesWithinTheClientsMaximum) {
+  mqtt::Properties props;
+  props.topic_alias_maximum = 1;
+  auto sub = connect("sub", Version::v5, true, props);
+  subscribe(sub, "#", QoS::at_most_once);
+  for (const auto* topic : {"long/topic", "long/topic", "other"}) broker.publish(msg(topic, {}, QoS::at_most_once));
+  const auto got = sub.take_all<mqtt::Publish>();
+  ASSERT_EQ(got.size(), 3u);
+  EXPECT_EQ(got[0].topic, "long/topic");
+  EXPECT_EQ(got[0].properties.topic_alias, 1);
+  EXPECT_EQ(got[1].topic, "");
+  EXPECT_EQ(got[1].properties.topic_alias, 1);
+  // The maximum is one: a new topic goes in full, with no alias.
+  EXPECT_EQ(got[2].topic, "other");
+  EXPECT_FALSE(got[2].properties.topic_alias);
+}
+
+TEST_F(BrokerTest, NoAliasesForAClientThatAllowsNone) {
+  auto sub = connect("sub");
+  subscribe(sub, "t", QoS::at_most_once);
+  broker.publish(msg("t", {}, QoS::at_most_once));
+  broker.publish(msg("t", {}, QoS::at_most_once));
+  for (const auto& p : sub.take_all<mqtt::Publish>()) {
+    EXPECT_EQ(p.topic, "t");
+    EXPECT_FALSE(p.properties.topic_alias);
+  }
+}
+
+class BrokerOptionsTest : public BrokerTest {
+ protected:
+  BrokerOptionsTest() : BrokerTest(options()) {}
+  static Config options() {
+    Config c;
+    c.response_information = "reply/{client}/";
+    c.queue_qos0_offline = true;
+    return c;
+  }
+};
+
+TEST_F(BrokerOptionsTest, ResponseInformationOnlyWhenAskedFor) {
+  mqtt::Properties ask;
+  ask.request_response_information = 1;
+  connect("asker", Version::v5, true, ask);
+  EXPECT_EQ(last_connack.properties.response_information, "reply/asker/");
+  connect("quiet");
+  EXPECT_FALSE(last_connack.properties.response_information);
+}
+
+TEST_F(BrokerOptionsTest, QoS0CanBeQueuedForAnOfflineSession) {
+  auto sub = connect("sub", Version::v3_1_1, false);
+  subscribe(sub, "t", QoS::at_most_once);
+  sub.link->closed();
+  broker.publish(msg("t", Bytes{'0'}, QoS::at_most_once));
+  auto back = connect("sub", Version::v3_1_1, false);
+  EXPECT_EQ(back.take_all<mqtt::Publish>().size(), 1u);
+}
+
 // ---- authentication
 
 class ChallengeOnce final : public contract::Authenticator {
