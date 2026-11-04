@@ -22,8 +22,9 @@
 #include "lir/broker/broker.h"
 #include "lir/contract/authenticator.h"
 
-// The edge: where MQTT clients connect. A TCP listener on the node's io
-// context, one connection per socket, and the broker they share, all on one
+// The edge: where MQTT clients connect. Listeners on the node's io context
+// (TCP, and TLS, WebSocket and WebSocket over TLS as configured), one
+// connection per socket, and the broker they share, all on one
 // strand, so the broker's confinement (broker.h) holds by construction. A
 // slow client is closed once what is queued for it passes a bound, never
 // waited for.
@@ -41,6 +42,17 @@ struct TlsConfig {
   std::chrono::milliseconds handshake_timeout{10000};
 };
 
+// MQTT over WebSocket (MQTT 5.0 and 3.1.1, section 6): one MQTT byte
+// stream carried in binary frames, the "mqtt" subprotocol ("mqttv3.1" for a
+// 3.1 client), on any path; a text frame closes the connection.
+struct WebSocketConfig {
+  std::string listen_host = "0.0.0.0";
+  // Zero: any; websocket_port() says which.
+  uint16_t port = 8080;
+  // A client that has not finished its upgrade within this is closed.
+  std::chrono::milliseconds handshake_timeout{10000};
+};
+
 struct EdgeConfig {
   std::string listen_host = "0.0.0.0";
   // Zero: any; port() says which.
@@ -52,6 +64,11 @@ struct EdgeConfig {
   broker::Config broker;
   // Nothing: no TLS listener.
   std::optional<TlsConfig> tls;
+  // Nothing: no WebSocket listener.
+  std::optional<WebSocketConfig> websocket;
+  // WebSocket over TLS (wss), with its own certificate and key. Nothing:
+  // none.
+  std::optional<TlsConfig> secure_websocket;
 };
 
 class Edge {
@@ -67,7 +84,7 @@ class Edge {
   Edge(const Edge&) = delete;
   Edge& operator=(const Edge&) = delete;
 
-  // Binds and listens, on the TLS port too when configured. Throws
+  // Binds and listens, on each configured port. Throws
   // boost::system::system_error when an address cannot be bound or the
   // certificate or key cannot be loaded. Waits on the bind.
   void start();
@@ -77,6 +94,9 @@ class Edge {
   uint16_t port() const noexcept;
   // Zero without a TLS listener.
   uint16_t tls_port() const noexcept;
+  // Zero without the listener.
+  uint16_t websocket_port() const noexcept;
+  uint16_t secure_websocket_port() const noexcept;
 
   // Runs `fn` with the broker on its strand. Waits on nothing.
   void post(std::function<void(broker::Broker&)> fn);
