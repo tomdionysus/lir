@@ -14,6 +14,7 @@
 #include <boost/asio/read.hpp>
 #include <boost/asio/ssl.hpp>
 #include <boost/asio/write.hpp>
+#include <mutex>
 
 #include "dannan/test/fixtures/child_process.h"
 #include "dannan/test/fixtures/temp_dir.h"
@@ -227,23 +228,86 @@ class HttpsTest : public ::testing::Test {
          (dir.path() / "cert.pem").string(), "-days", "1", "-subj", "/CN=localhost", "-addext", "subjectAltName=IP:127.0.0.1"},
         dir.path() / "openssl.log");
     ASSERT_EQ(make.wait(std::chrono::steady_clock::now() + 20s), 0);
+    // A self-signed client certificate, its own CA: asked for, not required.
+    dannan::test::ChildProcess client(
+        {openssl, "req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1", "-nodes", "-keyout", (dir.path() / "client.key").string(),
+         "-out", (dir.path() / "client.pem").string(), "-days", "1", "-subj", "/CN=sensor-9/O=lir"},
+        dir.path() / "openssl-client.log");
+    ASSERT_EQ(client.wait(std::chrono::steady_clock::now() + 20s), 0);
     edge::EdgeConfig edge_config;
     edge_config.listen_host = "127.0.0.1";
     edge_config.port = 0;
-    edge.emplace(io.context, edge_config, dannan::contract::steady_time_source(), allow, logger());
+    edge.emplace(io.context, edge_config, dannan::contract::steady_time_source(), recording, logger());
     edge->start();
     HttpConfig config;
     config.listen_host = "127.0.0.1";
     config.port = 0;
-    config.tls = edge::TlsConfig{"127.0.0.1", 0, dir.path() / "cert.pem", dir.path() / "key.pem"};
+    edge::TlsConfig tls;
+    tls.listen_host = "127.0.0.1";
+    tls.port = 0;
+    tls.certificate_chain = dir.path() / "cert.pem";
+    tls.private_key = dir.path() / "key.pem";
+    tls.client_ca = dir.path() / "client.pem";
+    tls.require_client_certificate = false;
+    config.tls = tls;
     http.emplace(io.context, *edge, config, logger());
     http->start();
   }
   static dannan::status::ScopedLogger logger() { return {std::make_shared<dannan::status::ConsoleSink>(dannan::status::LogLevel::error), "lir"}; }
 
+  // A POST /publish over HTTPS, presenting the client certificate or not:
+  // the response, and how the read ended.
+  std::pair<std::string, boost::system::error_code> post(bool present_certificate) {
+    asio::io_context client_io;
+    asio::ssl::context context(asio::ssl::context::tls_client);
+    context.load_verify_file((dir.path() / "cert.pem").string());
+    if (present_certificate) {
+      context.use_certificate_chain_file((dir.path() / "client.pem").string());
+      context.use_private_key_file((dir.path() / "client.key").string(), asio::ssl::context::pem);
+    }
+    asio::ssl::stream<tcp::socket> tls(client_io, context);
+    tls.set_verify_mode(asio::ssl::verify_peer);
+    tls.set_verify_callback(asio::ssl::host_name_verification("127.0.0.1"));
+    tls.lowest_layer().connect({asio::ip::make_address("127.0.0.1"), http->tls_port()});
+    tls.handshake(asio::ssl::stream_base::client);
+    const std::string request = "POST /publish?topic=secure/door HTTP/1.1\r\nHost: test\r\nContent-Length: 4\r\n\r\nopen";
+    asio::write(tls, asio::buffer(request));
+    std::string response;
+    boost::system::error_code ec;
+    std::array<char, 4096> chunk{};
+    while (!ec) {
+      const size_t got = tls.read_some(asio::buffer(chunk), ec);
+      response.append(chunk.data(), got);
+    }
+    return {response, ec};
+  }
+
+  // Accepts everyone, remembering the certificate subject it was last shown.
+  class Recording final : public contract::Authenticator {
+   public:
+    contract::AuthDecision connect(const mqtt::Connect&, const contract::Peer& peer) override {
+      std::lock_guard lock(_mutex);
+      _asked = true;
+      _seen = peer.certificate_subject;
+      return contract::AuthDecision::accept(std::make_shared<contract::Unrestricted>());
+    }
+    contract::AuthDecision auth(const std::string&, const std::string&, const mqtt::Bytes&) override {
+      return contract::AuthDecision::refuse(mqtt::reason::bad_authentication_method);
+    }
+    std::pair<bool, std::optional<std::string>> seen() {
+      std::lock_guard lock(_mutex);
+      return {_asked, _seen};
+    }
+
+   private:
+    std::mutex _mutex;
+    bool _asked = false;
+    std::optional<std::string> _seen;
+  };
+
   dannan::test::TempDir dir;
   test::Io io;
-  contract::AllowAll allow;
+  Recording recording;
   std::optional<edge::Edge> edge;
   std::optional<HttpServer> http;
 };
@@ -275,6 +339,33 @@ TEST_F(HttpsTest, PublishOverHttpsReachesAnMqttSubscriber) {
   const auto got = sub.next_message();
   ASSERT_TRUE(got);
   EXPECT_EQ(got->topic, "secure/door");
+}
+
+// The response's close ends the TLS session with close_notify (RFC 8446,
+// section 6.1), so the client reads a clean end, not a truncation.
+TEST_F(HttpsTest, TheResponseEndsWithCloseNotify) {
+  const auto [response, ended] = post(false);
+  EXPECT_TRUE(response.starts_with("HTTP/1.1 200")) << response;
+  EXPECT_EQ(ended, asio::error::eof) << ended.message();
+}
+
+// A client certificate presented over HTTPS reaches the authenticator, as
+// it does on the MQTT TLS port.
+TEST_F(HttpsTest, TheAuthenticatorSeesAClientCertificatesSubject) {
+  const auto [response, ended] = post(true);
+  EXPECT_TRUE(response.starts_with("HTTP/1.1 200")) << response;
+  const auto [asked, subject] = recording.seen();
+  ASSERT_TRUE(asked);
+  ASSERT_TRUE(subject);
+  EXPECT_NE(subject->find("CN=sensor-9"), std::string::npos) << *subject;
+}
+
+TEST_F(HttpsTest, WithoutACertificateThereIsNoSubject) {
+  const auto [response, ended] = post(false);
+  EXPECT_TRUE(response.starts_with("HTTP/1.1 200")) << response;
+  const auto [asked, subject] = recording.seen();
+  EXPECT_TRUE(asked);
+  EXPECT_FALSE(subject);
 }
 
 }  // namespace
