@@ -14,6 +14,7 @@
 #include <tuple>
 
 #include "dannan/placement/placement.h"
+#include "lir/cluster/balance.h"
 #include "lir/cluster/codec.h"
 #include "lir/mqtt/topic.h"
 
@@ -31,6 +32,10 @@ const std::string seq_channel = "lir.seq";
 const std::string retained_channel = "lir.retained";
 const std::string groups_channel = "lir.groups";
 const std::string advert = "lir";
+// Where this node serves clients (balance.h), and how many it has (the
+// system topics advertise it).
+const std::string endpoints_key = "lir.endpoints";
+const std::string clients_advert = "lir.connections";
 
 // The part of a filter before its first wildcard: every topic it matches
 // starts with it.
@@ -88,6 +93,34 @@ struct Cluster::State : std::enable_shared_from_this<Cluster::State> {
   std::map<std::tuple<NodeId, NodeId, std::string>, uint64_t> last_sequence;
   bool interest_pending = false;
   std::map<std::string, Held> mirrors;
+  // Balancing: per node, the client count it last advertised and how many
+  // clients this node has sent it since, so a burst is not all sent to one
+  // node before its advert catches up.
+  std::map<NodeId, std::pair<uint64_t, uint64_t>> sent_to;
+
+  std::optional<std::string> redirect(const std::string& transport) {
+    if (config.rebalance_over < 0) return std::nullopt;
+    std::vector<Load> others;
+    for (const auto& node : context.nodes().active()) {
+      if (node.id == self || !node.advert(advert)) continue;
+      const auto clients = node.advert_u64(clients_advert);
+      const auto where = node.advert(endpoints_key);
+      if (!clients || !where) continue;
+      auto& [seen, since] = sent_to[node.id];
+      if (seen != *clients) {
+        seen = *clients;
+        since = 0;
+      }
+      others.push_back({dannan::identity::to_string(node.id), *clients + since, parse_endpoints(std::string(where->begin(), where->end()))});
+    }
+    const Load me{dannan::identity::to_string(self), broker().clients(), {}};
+    const auto chosen = choose_redirect(me, others, transport, config.rebalance_over);
+    if (!chosen) return std::nullopt;
+    for (auto& [id, counts] : sent_to) {
+      if (dannan::identity::to_string(id) == chosen->node) ++counts.second;
+    }
+    return chosen->address;
+  }
 
   broker::Broker& broker() { return edge.broker(); }
   dannan::contract::TimePoint now() { return context.time().now(); }
@@ -531,6 +564,10 @@ void Cluster::start() {
     hooks.interest_changed = [weak] {
       if (const auto st = weak.lock()) st->interest_changed();
     };
+    hooks.redirect = [weak](const std::string& transport) -> std::optional<std::string> {
+      const auto st = weak.lock();
+      return st && st->running ? st->redirect(transport) : std::nullopt;
+    };
     hooks.take = [weak](const std::string& id, bool want, std::function<void(std::optional<broker::SessionImage>)> done) {
       if (const auto st = weak.lock(); st && st->running) return st->take(id, want, std::move(done));
       done(std::nullopt);
@@ -566,11 +603,24 @@ void Cluster::stop() {
   });
   if (!was_running) return;
   state.context.nodes().withdraw(advert);
+  state.context.nodes().withdraw(endpoints_key);
   auto& routes = state.context.routes();
   routes.unbind(snapshot_type);
   routes.unbind(take_type);
   routes.unbind(shared_type);
   routes.unbind(mirror_type);
+}
+
+void Cluster::advertise_endpoints() {
+  auto& edge = _state->edge;
+  const auto host = _state->context.nodes().self().host;
+  Endpoints endpoints;
+  if (edge.port()) endpoints["tcp"] = host + ":" + std::to_string(edge.port());
+  if (edge.tls_port()) endpoints["tls"] = host + ":" + std::to_string(edge.tls_port());
+  if (edge.websocket_port()) endpoints["ws"] = host + ":" + std::to_string(edge.websocket_port());
+  if (edge.secure_websocket_port()) endpoints["wss"] = host + ":" + std::to_string(edge.secure_websocket_port());
+  const auto text = endpoints_advert(endpoints);
+  _state->context.nodes().advertise(endpoints_key, dannan::net::Bytes(text.begin(), text.end()));
 }
 
 }  // namespace lir::cluster

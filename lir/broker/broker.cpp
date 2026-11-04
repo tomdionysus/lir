@@ -188,6 +188,21 @@ void Link::on_connect(mqtt::Connect&& connect) {
     ++_broker._stats.refused_pressure_connections;
     return refuse_connect(reason::server_busy);
   }
+  // Balancing (design, section 7): only a 5.0 client can be told where to
+  // go; a 3.x client is always served.
+  if (connect.version == mqtt::Version::v5 && _broker._hooks.redirect) {
+    if (auto elsewhere = _broker._hooks.redirect(_connection->transport())) {
+      ++_broker._stats.connections_redirected;
+      ++_broker._stats.connections_refused;
+      mqtt::Connack moved{false, reason::use_another_server, {}};
+      moved.properties.server_reference = std::move(*elsewhere);
+      send(moved);
+      _state = State::closed;
+      _connection->close();
+      _broker.detach(*this, false);
+      return;
+    }
+  }
   if (connect.will) {
     const auto& will = *connect.will;
     if (!mqtt::valid_topic_name(will.topic)) return refuse_connect(reason::topic_name_invalid);
