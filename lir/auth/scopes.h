@@ -17,15 +17,17 @@
 
 // Topic scopes: what a client may publish, retain and subscribe to, as
 // carried in a Lugh token (design, section 1: Lir checks the token's scopes
-// itself, the maintainer 2026-11-04). The grammar is the one Lugh proposed on
-// 2026-11-04, not yet decided by the maintainer:
+// itself, the maintainer 2026-11-04). The grammar, decided by the maintainer on 2026-11-04
+// (../lugh/TODO/2026-11-04-oauth.md, "Topic scopes, for Lir"):
 //
 //   "lir:" ("pub" | "sub" | "retain") ":" percent-encoded MQTT filter
 //
 // pub is a PUBLISH without the retain flag to a topic the filter matches;
 // retain is a PUBLISH with it (and does not imply pub); sub is a SUBSCRIBE
 // whose filter the granted one covers, the filter inside "$share/<g>/" for
-// a shared one. A level that is exactly "{sub}" is the token's subject.
+// a shared one. A level that is exactly "{sub}" is the token's subject;
+// nothing else is substituted ({client} was dropped: a client chooses its
+// own identifier).
 namespace lir::auth {
 
 // %XX decoded; nothing else ('+' stays '+'). Throws std::invalid_argument
