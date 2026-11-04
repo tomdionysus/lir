@@ -445,3 +445,21 @@ Gate: `lir_tests` 234 passed, 0 failed (4 new).
   in Dannan's retained-memory ledger (that would make other systems'
   memory press on Lir too).
 
+## 2026-11-04: Dannan 0.4.0; the config file; one percent decoder
+
+Gate: `lir_tests` 239 passed, 0 failed (5 new).
+
+- Built against Dannan `0.4.0` (`d657a9b`).
+- Percent-decoding is Dannan's (`dannan::encoding::percent_decode`,
+  strict), for the HTTP query and topic scopes; Lir's copy is deleted
+  (rule 3; Tom). Scope filters are now decoded level by level: an encoded
+  '/' (`%2F`) can no longer make a level boundary, and the subject is
+  never decoded. Lugh's encoder output (Lugh `2c63171`) and the strings
+  Lugh refuses are tests here.
+- `lir-node` reads its settings through Dannan's reader
+  (`dannan::config`): a YAML file (`--config`, `$LIR_CONFIG`,
+  `/usr/local/etc/lir/config.yaml`), `secrets.yaml` beside it, `LIR_*`
+  variables, then the flags. Every flag kept; `reader()` lists the keys.
+  Process tests: a setting from the file alone takes effect; a bad one
+  stops the node with status 2, naming the file and the key.
+
