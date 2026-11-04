@@ -16,8 +16,8 @@
 #include <string_view>
 #include <vector>
 
+#include "dannan/encoding/percent.h"
 #include "dannan/status/log.h"
-#include "lir/auth/scopes.h"
 #include "lir/edge/edge.h"
 
 // HTTP publish and Server-Sent Events subscribe on the same bus, for
@@ -60,8 +60,9 @@ struct Target {
   std::map<std::string, std::vector<std::string>> query;
 };
 Target parse_target(std::string_view target);
-// One decoder for the query and the scope grammar (auth/scopes.h).
-using auth::percent_decode;
+// The stack's one decoder (Dannan's), strict: '+' is MQTT's wildcard in a
+// query here, never a space.
+using dannan::encoding::percent_decode;
 
 // One SSE event for a delivered message.
 std::string sse_event(const mqtt::Publish& publish);

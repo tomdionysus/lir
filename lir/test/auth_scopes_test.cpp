@@ -77,6 +77,29 @@ TEST(AuthScopes, AnEncodedBraceIsLiteral) {
   EXPECT_EQ(parsed.scopes.publish, (Strings{"{sub}"}));
 }
 
+// Strings Lugh's encoder produced (Lugh develop 2c63171), decoded as Lugh
+// decodes them.
+TEST(AuthScopes, LughsEncoderRoundTrips) {
+  const auto parsed = parse_scopes(
+      Strings{"lir:retain:home/living%20room/%7Bsub%7D/{sub}/caf%C3%A9%20100%25/+/#", "lir:sub:$lir/#", "lir:pub:/a/", "lir:pub:devices/{sub}/#"}, "d-1");
+  EXPECT_TRUE(parsed.refused.empty());
+  EXPECT_EQ(parsed.scopes.retain, (Strings{"home/living room/{sub}/d-1/caf\xC3\xA9 100%/+/#"}));
+  EXPECT_EQ(parsed.scopes.subscribe, (Strings{"$lir/#"}));
+  EXPECT_EQ(parsed.scopes.publish, (Strings{"/a/", "devices/d-1/#"}));
+}
+
+TEST(AuthScopes, WhatLughRefusesLirRefusesToo) {
+  const Strings bad{"lir:sub:a%2Bb", "lir:pub:a%2Fb", "lir:pub:a%00b", "lir:pub:100%", "lir:pub:%zz", "lir:pub:devices/{client}/#"};
+  const auto parsed = parse_scopes(bad, "d-1");
+  EXPECT_TRUE(parsed.scopes.empty());
+  EXPECT_EQ(parsed.refused, bad);
+}
+
+TEST(AuthScopes, ASubjectIsNeverDecoded) {
+  const auto parsed = parse_scopes(Strings{"lir:pub:d/{sub}"}, "a%41");
+  EXPECT_EQ(parsed.scopes.publish, (Strings{"d/a%41"}));
+}
+
 TEST(AuthScopes, PublishAndRetainAreSeparate) {
   const ScopeGrant grant({{"a/#"}, {}, {"status/+"}});
   EXPECT_TRUE(grant.may_publish("a/b", false));

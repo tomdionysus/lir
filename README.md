@@ -111,8 +111,8 @@ would.
 ### Build
 
 A C++20 compiler, CMake 3.24 or later, Boost 1.88 (Asio and Beast), OpenSSL 3, and
-GoogleTest for the tests. Dannan is fetched from `../dannan` at the pinned release, so
-clone it beside this repository.
+GoogleTest for the tests. Dannan is fetched from `../dannan` at the pinned release (0.4.0),
+so clone it beside this repository; building Dannan needs yaml-cpp.
 
 ```
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DLIR_BUILD_TESTING=ON
@@ -151,6 +151,35 @@ Any MQTT client can now use the node:
 mosquitto_sub -h 127.0.0.1 -p 1883 -t 'sensors/#' -V mqttv5 &
 mosquitto_pub -h 127.0.0.1 -p 1883 -t sensors/room1/temp -m 21.5 -q 1 -r
 ```
+
+### Configure
+
+Every flag is also a key in a YAML file and a `LIR_*` variable, read by the stack's one
+settings reader (Dannan's): the file (`--config PATH`, `$LIR_CONFIG`, or
+`/usr/local/etc/lir/config.yaml` when it exists), then `secrets.yaml` beside it, then the
+environment, then the flags, each overriding the one before. `--mqtt-port 1883` is
+`mqtt: {port: 1883}` and `LIR_MQTT_PORT`:
+
+```yaml
+cluster:
+  key: /etc/lir/cluster.key
+  bootstrap: [10.0.0.11:7437]
+node:
+  state: /var/lib/lir
+  advertise: 10.0.0.10
+mqtt:
+  port: 1883
+websocket:
+  port: 8080
+auth:
+  allow_anonymous: true
+  anonymous_scopes: ["lir:sub:sensors/#", "lir:pub:sensors/#"]
+limits:
+  max_connections: 20000
+```
+
+A value that cannot be used is refused at start, naming the file, variable or flag that
+gave it. `tools/lir_node.cpp`, `reader()`, lists every key.
 
 ### Run a cluster
 
@@ -254,7 +283,7 @@ Conventions, shared with the stack: [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Status
 
 In development; no release is cut yet. The first, 0.1.0, follows persistence on Dagda.
-Built and tested (234 tests): all of MQTT 3.1, 3.1.1 and 5.0 on one node, over TCP, TLS,
+Built and tested (239 tests): all of MQTT 3.1, 3.1.1 and 5.0 on one node, over TCP, TLS,
 WebSocket and WebSocket over TLS; the cluster on Dannan with sessions that move and are mirrored to standbys; system
 topics; HTTP and HTTPS publish and SSE; topic scopes, with anonymous clients
 refused by default; client certificates. The cluster is an interim one until Dagda:
