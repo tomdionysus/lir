@@ -556,3 +556,25 @@ three runs in a row.
   receives it.
 - Not done: DTLS (next), MQTT-SN 2.0 (after checking the OASIS text).
 
+## 2026-11-04: MQTT-SN over DTLS (the maintainer: DTLS beside plain UDP)
+
+Gate: `lir_tests` 291 passed, 0 failed (3 new); the TLS, DTLS and
+MQTT-SN tests passed three runs in a row.
+
+- `GatewayConfig::dtls` (an `edge::TlsConfig`): DTLS 1.2 on its own UDP
+  port. Asio has no DTLS, so the gateway drives OpenSSL itself: one
+  session per peer over datagram memory BIOs (OpenSSL 3.2's
+  `BIO_s_dgram_mem`, so records keep their boundaries), the stateless
+  cookie exchange (an HMAC of the peer's address under a secret made at
+  start, with Dannan's `hmac_sha256` and `random_bytes`), handshake
+  retransmission at each poll, a cap on peers mid-handshake, and idle
+  sessions let go. Decrypted datagrams take the plain path.
+- Client certificates as on every TLS listener; the verified subject
+  reaches the authenticator. `edge::server_context(tls, datagram)` and
+  `edge::verified_subject` are shared, not copied.
+- Found on the way: Asio's SSL context owns the `SSL_CTX` app data slot
+  and deletes what is in it; the gateway's pointer now has its own
+  ex-data index.
+- `lir-node --mqttsn-dtls-port N [--mqttsn-dtls-listen ADDR]`, with
+  `--tls-certificate`, `--tls-key` and `--tls-client-ca`.
+

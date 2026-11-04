@@ -29,6 +29,8 @@
 // strand, so the broker's confinement (broker.h) holds by construction. A
 // slow client is closed once what is queued for it passes a bound, never
 // waited for.
+struct ssl_st;
+
 namespace lir::edge {
 
 // MQTT over TLS on its own port, beside the plain one: the same broker.
@@ -49,10 +51,15 @@ struct TlsConfig {
   bool require_client_certificate = true;
 };
 
-// A server context for `tls`: TLS 1.2 and up, its certificate and key, and
-// client certificates as it asks. Throws boost::system::system_error for a
-// file that cannot be loaded. The HTTP server's too.
-std::unique_ptr<boost::asio::ssl::context> server_context(const TlsConfig& tls);
+// A server context for `tls`: TLS 1.2 and up (DTLS 1.2 and up when
+// `datagram`), its certificate and key, and client certificates as it asks.
+// Throws boost::system::system_error for a file that cannot be loaded. The
+// HTTP server's and the MQTT-SN gateway's too.
+std::unique_ptr<boost::asio::ssl::context> server_context(const TlsConfig& tls, bool datagram = false);
+
+// The subject of the verified certificate a TLS or DTLS peer presented
+// (RFC 2253); nothing without one.
+std::optional<std::string> verified_subject(ssl_st* ssl);
 
 // MQTT over WebSocket (MQTT 5.0 and 3.1.1, section 6): one MQTT byte
 // stream carried in binary frames, the "mqtt" subprotocol ("mqttv3.1" for a

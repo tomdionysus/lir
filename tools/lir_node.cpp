@@ -137,6 +137,8 @@ struct Options {
   // -1: no MQTT-SN gateway.
   int mqttsn_port = -1;
   std::string mqttsn_listen = "0.0.0.0";
+  int mqttsn_dtls_port = -1;
+  std::string mqttsn_dtls_listen = "0.0.0.0";
   uint8_t mqttsn_gateway_id = 1;
   uint32_t mqttsn_advertise_seconds = 0;
   std::string mqttsn_advertise_address = "255.255.255.255";
@@ -205,6 +207,8 @@ dannan::config::Reader reader() {
   add("http.tls_port", Kind::value, "--https-port", "a port, 0 to 65535, or -1 for none");
   add("mqttsn.listen", Kind::value, "--mqttsn-listen", "an address");
   add("mqttsn.port", Kind::value, "--mqttsn-port", "a UDP port, 0 to 65535, or -1 for none");
+  add("mqttsn.dtls_listen", Kind::value, "--mqttsn-dtls-listen", "an address");
+  add("mqttsn.dtls_port", Kind::value, "--mqttsn-dtls-port", "a UDP port, 0 to 65535, or -1 for none");
   add("mqttsn.gateway_id", Kind::value, "--mqttsn-gateway-id", "a gateway id, 0 to 255");
   add("mqttsn.advertise_seconds", Kind::value, "--mqttsn-advertise-seconds", "seconds between ADVERTISE broadcasts, 0 for none");
   add("mqttsn.advertise_address", Kind::value, "--mqttsn-advertise-address", "the broadcast address");
@@ -278,6 +282,8 @@ Options parse(int argc, char** argv) {
   out.https_port = port_or_none(settings, "http.tls_port", out.https_port);
   out.mqttsn_listen = settings.text("mqttsn.listen").value_or(out.mqttsn_listen);
   out.mqttsn_port = port_or_none(settings, "mqttsn.port", out.mqttsn_port);
+  out.mqttsn_dtls_listen = settings.text("mqttsn.dtls_listen").value_or(out.mqttsn_dtls_listen);
+  out.mqttsn_dtls_port = port_or_none(settings, "mqttsn.dtls_port", out.mqttsn_dtls_port);
   out.mqttsn_gateway_id = static_cast<uint8_t>(settings.number("mqttsn.gateway_id", 0, 255).value_or(out.mqttsn_gateway_id));
   out.mqttsn_advertise_seconds = static_cast<uint32_t>(settings.number("mqttsn.advertise_seconds", 0, 65535).value_or(0));
   out.mqttsn_advertise_address = settings.text("mqttsn.advertise_address").value_or(out.mqttsn_advertise_address);
@@ -313,8 +319,9 @@ Options parse(int argc, char** argv) {
   if (!(limits.shed_percent <= limits.refuse_publish_percent && limits.refuse_publish_percent <= limits.refuse_connect_percent))
     throw std::runtime_error("the memory thresholds must rise: shed, then refuse publishes, then refuse connections");
   if (out.key.empty() || out.state.empty()) throw std::runtime_error("--key and --state are required");
-  if ((out.mqtt_tls_port >= 0 || out.https_port >= 0 || out.wss_port >= 0) && (out.tls_certificate.empty() || out.tls_key.empty()))
-    throw std::runtime_error("--mqtt-tls-port, --wss-port and --https-port need --tls-certificate and --tls-key");
+  if ((out.mqtt_tls_port >= 0 || out.https_port >= 0 || out.wss_port >= 0 || out.mqttsn_dtls_port >= 0) && (out.tls_certificate.empty() || out.tls_key.empty()))
+    throw std::runtime_error("--mqtt-tls-port, --wss-port, --https-port and --mqttsn-dtls-port need --tls-certificate and --tls-key");
+  if (out.mqttsn_dtls_port >= 0 && out.mqttsn_port < 0) throw std::runtime_error("--mqttsn-dtls-port needs the gateway: --mqttsn-port");
   return out;
 }
 
@@ -424,6 +431,7 @@ int main(int argc, char** argv) {
       if (options.mqttsn_advertise_seconds > 0) sn.advertise_every = std::chrono::seconds(options.mqttsn_advertise_seconds);
       sn.advertise_address = options.mqttsn_advertise_address;
       sn.advertise_port = sn.port;
+      if (options.mqttsn_dtls_port >= 0) sn.dtls = tls_config(options, options.mqttsn_dtls_listen, options.mqttsn_dtls_port);
       gateway.emplace(io, edge, sn, node.context().logger("lir.mqttsn"));
       gateway->start();
     }
@@ -441,8 +449,8 @@ int main(int argc, char** argv) {
     say("{\"event\":\"listening\",\"id\":\"" + dannan::identity::to_string(node.context().identity().id()) + "\",\"port\":" + std::to_string(node.port()) +
         ",\"mqtt_port\":" + std::to_string(edge.port()) + ",\"mqtt_tls_port\":" + std::to_string(edge.tls_port()) +
         ",\"ws_port\":" + std::to_string(edge.websocket_port()) + ",\"wss_port\":" + std::to_string(edge.secure_websocket_port()) +
-        ",\"mqttsn_port\":" + std::to_string(gateway ? gateway->port() : 0) + ",\"http_port\":" + std::to_string(http ? http->port() : 0) +
-        ",\"https_port\":" + std::to_string(http ? http->tls_port() : 0) + "}");
+        ",\"mqttsn_port\":" + std::to_string(gateway ? gateway->port() : 0) + ",\"mqttsn_dtls_port\":" + std::to_string(gateway ? gateway->dtls_port() : 0) +
+        ",\"http_port\":" + std::to_string(http ? http->port() : 0) + ",\"https_port\":" + std::to_string(http ? http->tls_port() : 0) + "}");
 
     const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(options.seconds);
     auto next_status = std::chrono::steady_clock::now() + options.status;
