@@ -75,7 +75,35 @@ Gate: `lir_tests` 125 passed, 0 failed (52 new); warnings as errors.
   properties forwarded, the client's maximum packet size, reserved
   `$lir/` and `$dannan/` prefixes, payload format checks, wildcard in a
   topic name; enhanced authentication and authorisation.
-- Not done, all optional in the specification (MAY): topic aliases from
+- Not done (step 2), all optional in the specification (MAY): topic aliases from
   server to client, Response Information, queueing QoS 0 for offline
   sessions. Server Reference (redirecting a client) waits for the
   cluster, where it means something.
+
+## 2026-11-04: step 3, the edge
+
+Gate: `lir_tests` 132 passed, 0 failed (7 new); warnings as errors.
+Dannan pinned at `295ca4b` (channels, the membership feed, the
+`dannan::dannan` alias). Changing the pin in `CMakeLists.txt` does not
+reach an existing build tree, which caches it: reconfigure with
+`-U LIR_DANNAN_COMMIT`.
+
+- `lir/edge/edge.h`: the TCP listener, one connection per socket, the
+  broker and its poll timer, all on one strand. A client with more than
+  `maximum_outbound_bytes` queued is closed as an abnormal close (its
+  will goes), never waited for. `stop()` closes the listener and every
+  client; `post()` and `call()` reach the broker on its strand.
+- `tools/lir_node.cpp`: `lir-node`, a Dannan node that advertises `lir`
+  and serves MQTT; JSON lines on stdout as `dannan-node` writes them;
+  `--version`.
+- Tests over real sockets: connect and ping, publish across two sockets,
+  a protocol error closing the socket, a dropped socket's will, stop
+  closing every client, a client that does not read closed while the
+  publisher carries on.
+- Checked by hand with mosquitto 2 against `lir-node`: `mosquitto_pub`
+  over 3.1, 3.1.1 and 5.0 at QoS 1 and 2, `mosquitto_sub` on a wildcard
+  at QoS 1 (5.0) receiving both, a retained message read back over
+  3.1.1; `lir-node` stopped cleanly. The automated process test with
+  mosquitto waits for Dannan's `child_process.h` fixture (asked for;
+  the Dannan session adds it after its 0.2.0 sanitizer run).
+- Not done: TLS on the MQTT port.
