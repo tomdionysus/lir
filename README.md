@@ -197,6 +197,16 @@ them:
 mosquitto_sub -h node.example -p 8883 --cafile ca.pem -t '$lir/#'
 ```
 
+To ask clients for certificates (mutual TLS) on every TLS listener, name the CAs they
+must chain to; a client without one is refused, unless certificates are optional:
+
+```
+./build/lir-node ... --tls-client-ca clients-ca.pem [--tls-client-certificate optional]
+mosquitto_sub ... --cafile ca.pem --cert device.pem --key device.key -t 'sensors/#'
+```
+
+The verified subject is handed to the authenticator.
+
 ### Embed it
 
 The library is the same pieces `lir-node` puts together: a `dannan::Node`, then
@@ -230,12 +240,12 @@ Conventions, shared with the stack: [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Status
 
 In development; no release is cut yet. The first, 0.1.0, follows persistence on Dagda.
-Built and tested (222 tests): all of MQTT 3.1, 3.1.1 and 5.0 on one node, over TCP, TLS,
+Built and tested (227 tests): all of MQTT 3.1, 3.1.1 and 5.0 on one node, over TCP, TLS,
 WebSocket and WebSocket over TLS; the cluster on Dannan with sessions that move and are mirrored to standbys; system
 topics; HTTP and HTTPS publish and SSE; topic scopes, with anonymous clients
-refused by default. The cluster is an interim one until Dagda:
+refused by default; client certificates. The cluster is an interim one until Dagda:
 retained messages are held in memory on every node and a QoS 1 or 2 publish is
-acknowledged on acceptance, not on replication. Next: client certificates, then persistence on Dagda and the Lugh
+acknowledged on acceptance, not on replication. Next: then persistence on Dagda and the Lugh
 authenticator.
 
 ## Licence

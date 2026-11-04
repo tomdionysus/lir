@@ -7,6 +7,9 @@
 
 #include "lir/edge/edge.h"
 
+#include <openssl/ssl.h>
+#include <openssl/x509.h>
+
 #include <array>
 #include <atomic>
 #include <boost/asio/ip/tcp.hpp>
@@ -55,6 +58,35 @@ bool wrong_frame(const websocket::stream<Next>& stream) {
   return !stream.got_binary();
 }
 
+// The TLS session under a stream, if any.
+template <typename Stream>
+SSL* ssl_of(Stream&) {
+  return nullptr;
+}
+inline SSL* ssl_of(asio::ssl::stream<tcp::socket>& stream) { return stream.native_handle(); }
+template <typename Next>
+SSL* ssl_of(websocket::stream<Next>& stream) {
+  return ssl_of(stream.next_layer());
+}
+
+// The verified client certificate's subject, RFC 2253 form.
+std::optional<std::string> subject_of(SSL* ssl) {
+  if (!ssl || SSL_get_verify_result(ssl) != X509_V_OK) return std::nullopt;
+  X509* certificate = SSL_get1_peer_certificate(ssl);
+  if (!certificate) return std::nullopt;
+  std::optional<std::string> out;
+  if (BIO* bio = BIO_new(BIO_s_mem())) {
+    if (X509_NAME_print_ex(bio, X509_get_subject_name(certificate), 0, XN_FLAG_RFC2253) >= 0) {
+      char* data = nullptr;
+      const long size = BIO_get_mem_data(bio, &data);
+      if (size >= 0) out = std::string(data, static_cast<size_t>(size));
+    }
+    BIO_free(bio);
+  }
+  X509_free(certificate);
+  return out;
+}
+
 // The subprotocol to answer with, from the comma-separated list a client
 // offered: "mqtt", else "mqttv3.1" (a 3.1 client); "" when nothing was
 // offered; nothing when only others were.
@@ -97,6 +129,7 @@ class StreamConnection final : public ClientConnection, public std::enable_share
     boost::system::error_code ec;
     const auto remote = beast::get_lowest_layer(_stream).remote_endpoint(ec);
     _peer = ec ? "unknown" : remote.address().to_string() + ":" + std::to_string(remote.port());
+    _subject = subject_of(ssl_of(_stream));
   }
 
   void start(std::shared_ptr<broker::Link> link) {
@@ -126,6 +159,7 @@ class StreamConnection final : public ClientConnection, public std::enable_share
   }
 
   std::string peer() const override { return _peer; }
+  std::optional<std::string> certificate_subject() const override { return _subject; }
 
   void terminate() override {
     if (_closed) return;
@@ -170,6 +204,7 @@ class StreamConnection final : public ClientConnection, public std::enable_share
   dannan::status::ScopedLogger _logger;
   std::function<void(ClientConnection*)> _forget;
   std::string _peer;
+  std::optional<std::string> _subject;
   std::shared_ptr<broker::Link> _link;
   std::array<uint8_t, 16384> _buffer{};
   std::deque<mqtt::Bytes> _queue;
@@ -187,15 +222,6 @@ using WebSocketConnection = StreamConnection<WebSocket>;
 using SecureWebSocket = websocket::stream<TlsStream>;
 using SecureWebSocketConnection = StreamConnection<SecureWebSocket>;
 
-std::unique_ptr<asio::ssl::context> server_context(const TlsConfig& tls) {
-  auto context = std::make_unique<asio::ssl::context>(asio::ssl::context::tls_server);
-  context->set_options(asio::ssl::context::default_workarounds | asio::ssl::context::no_sslv2 | asio::ssl::context::no_sslv3 | asio::ssl::context::no_tlsv1 |
-                       asio::ssl::context::no_tlsv1_1);
-  context->use_certificate_chain_file(tls.certificate_chain.string());
-  context->use_private_key_file(tls.private_key.string(), asio::ssl::context::pem);
-  return context;
-}
-
 void listen_on(tcp::acceptor& acceptor, const std::string& host, uint16_t port) {
   const tcp::endpoint endpoint(asio::ip::make_address(host), port);
   acceptor.open(endpoint.protocol());
@@ -205,6 +231,19 @@ void listen_on(tcp::acceptor& acceptor, const std::string& host, uint16_t port) 
 }
 
 }  // namespace
+
+std::unique_ptr<asio::ssl::context> server_context(const TlsConfig& tls) {
+  auto context = std::make_unique<asio::ssl::context>(asio::ssl::context::tls_server);
+  context->set_options(asio::ssl::context::default_workarounds | asio::ssl::context::no_sslv2 | asio::ssl::context::no_sslv3 | asio::ssl::context::no_tlsv1 |
+                       asio::ssl::context::no_tlsv1_1);
+  context->use_certificate_chain_file(tls.certificate_chain.string());
+  context->use_private_key_file(tls.private_key.string(), asio::ssl::context::pem);
+  if (!tls.client_ca.empty()) {
+    context->load_verify_file(tls.client_ca.string());
+    context->set_verify_mode(asio::ssl::verify_peer | (tls.require_client_certificate ? asio::ssl::verify_fail_if_no_peer_cert : 0));
+  }
+  return context;
+}
 
 struct Edge::State : std::enable_shared_from_this<Edge::State> {
   State(asio::io_context& io, EdgeConfig edge_config, const dannan::contract::TimeSource& time, contract::Authenticator& authenticator,

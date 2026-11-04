@@ -185,7 +185,7 @@ void Link::on_connect(mqtt::Connect&& connect) {
   }
   if (v5()) _auth_method = connect.properties.authentication_method;
   _connect = std::move(connect);
-  const auto decision = _broker._authenticator.connect(*_connect);
+  const auto decision = _broker._authenticator.connect(*_connect, contract::Peer{_connection->peer(), _connection->certificate_subject()});
   switch (decision.kind) {
     case contract::AuthDecision::Kind::accept:
       return begin_connect(decision);

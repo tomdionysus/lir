@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <optional>
 #include <string>
 
 #include "lir/mqtt/wire.h"
@@ -26,6 +27,9 @@ class Connection {
   virtual void close() = 0;
   // For logs: the peer's address.
   virtual std::string peer() const = 0;
+  // The subject of the certificate the client presented, verified (RFC 2253
+  // form); nothing without one, or off TLS.
+  virtual std::optional<std::string> certificate_subject() const { return std::nullopt; }
 };
 
 }  // namespace lir::contract

@@ -474,7 +474,7 @@ struct HttpServer::State : std::enable_shared_from_this<HttpServer::State> {
   dannan::status::ScopedLogger logger;
   tcp::acceptor acceptor;
   tcp::acceptor tls_acceptor;
-  std::optional<asio::ssl::context> tls;
+  std::unique_ptr<asio::ssl::context> tls;
   std::map<ExchangeBase*, std::weak_ptr<ExchangeBase>> exchanges;
   bool started = false;
   bool stopped = false;
@@ -502,11 +502,7 @@ void HttpServer::start() {
   s.acceptor.listen();
   s.port = s.acceptor.local_endpoint().port();
   if (const auto& tls = s.config.tls) {
-    s.tls.emplace(asio::ssl::context::tls_server);
-    s.tls->set_options(asio::ssl::context::default_workarounds | asio::ssl::context::no_sslv2 | asio::ssl::context::no_sslv3 | asio::ssl::context::no_tlsv1 |
-                       asio::ssl::context::no_tlsv1_1);
-    s.tls->use_certificate_chain_file(tls->certificate_chain.string());
-    s.tls->use_private_key_file(tls->private_key.string(), asio::ssl::context::pem);
+    s.tls = edge::server_context(*tls);
     const tcp::endpoint tls_endpoint(asio::ip::make_address(tls->listen_host), tls->port);
     s.tls_acceptor.open(tls_endpoint.protocol());
     s.tls_acceptor.set_option(tcp::acceptor::reuse_address(true));
