@@ -319,8 +319,17 @@ against mosquitto.
   here from `http` (one copy).
 - `lir-node --allow-anonymous [--anonymous-scope S]...`: without a scope,
   anything but writing the system topics.
-- Open: what re-authentication does to subscriptions the new grant no
-  longer covers (Lugh's draft and Lir's reply go to Tom); `{client}` is
-  refused as unsafe (the client chooses its id) unless Tom binds client
-  ids to principals; the grammar itself is Lugh's proposal, not yet Tom's.
+- Tom decided the grammar the same day, with Lir's review taken in
+  (`../lugh/TODO/2026-11-04-oauth.md`, "Topic scopes, for Lir"):
+  `{client}` dropped, retain its own action, Lir checks scopes itself.
+
+## 2026-11-04: narrower grants drop subscriptions
+
+Gate: `lir_tests` 202 passed, 0 failed (3 new).
+
+- Tom, 2026-11-04 (via Lugh): a re-authentication whose grant no longer
+  covers some subscriptions removes them from the session and sends
+  DISCONNECT 0x87; the client resubscribes and sees SUBACK 0x87. A
+  resumed session (any version, any node) keeps only what the new
+  connection's grant allows. `Broker::prune`.
 
