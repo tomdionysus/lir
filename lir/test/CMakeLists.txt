@@ -20,6 +20,7 @@ add_executable(lir_tests
   shard_test.cpp
   subs_trie_test.cpp
   version_test.cpp
+  websocket_test.cpp
 )
 target_link_libraries(lir_tests PRIVATE lir GTest::gtest_main lir_warnings)
 # Dannan's fixtures (temp_dir.h) write only inside Lir's build tree.
