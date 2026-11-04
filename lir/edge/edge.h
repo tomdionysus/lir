@@ -57,9 +57,9 @@ struct TlsConfig {
 // HTTP server's and the MQTT-SN gateway's too.
 std::unique_ptr<boost::asio::ssl::context> server_context(const TlsConfig& tls, bool datagram = false);
 
-// The subject of the verified certificate a TLS or DTLS peer presented
-// (RFC 2253); nothing without one.
-std::optional<std::string> verified_subject(ssl_st* ssl);
+// The verified certificate a TLS or DTLS peer presented; nothing without
+// one.
+std::optional<contract::ClientCertificate> verified_certificate(ssl_st* ssl);
 
 // MQTT over WebSocket (MQTT 5.0 and 3.1.1, section 6): one MQTT byte
 // stream carried in binary frames, the "mqtt" subprotocol ("mqttv3.1" for a

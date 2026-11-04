@@ -35,8 +35,9 @@ namespace reason = mqtt::reason;
 // gateway decoded.
 class SnConnection final : public contract::Connection {
  public:
-  explicit SnConnection(std::string peer, std::optional<std::string> subject = std::nullopt) : _peer(std::move(peer)), _subject(std::move(subject)) {}
-  std::optional<std::string> certificate_subject() const override { return _subject; }
+  explicit SnConnection(std::string peer, std::optional<contract::ClientCertificate> certificate = std::nullopt)
+      : _peer(std::move(peer)), _certificate(std::move(certificate)) {}
+  std::optional<contract::ClientCertificate> certificate() const override { return _certificate; }
   void send(Bytes bytes) override {
     if (_closed || !on_packet) return;
     try {
@@ -59,7 +60,7 @@ class SnConnection final : public contract::Connection {
 
  private:
   std::string _peer;
-  std::optional<std::string> _subject;
+  std::optional<contract::ClientCertificate> _certificate;
   bool _closed = false;
 };
 
@@ -151,7 +152,7 @@ struct Gateway::State : std::enable_shared_from_this<Gateway::State> {
     Clock::time_point opened;
     Clock::time_point last;
     bool established = false;
-    std::optional<std::string> subject;
+    std::optional<contract::ClientCertificate> certificate;
     ~Dtls() {
       if (ssl) SSL_free(ssl);
     }
@@ -257,7 +258,7 @@ struct Gateway::State : std::enable_shared_from_this<Gateway::State> {
       const int r = SSL_do_handshake(session.ssl);
       if (r == 1) {
         session.established = true;
-        session.subject = edge::verified_subject(session.ssl);
+        session.certificate = edge::verified_certificate(session.ssl);
         ++stats.dtls_sessions;
       } else {
         const int error = SSL_get_error(session.ssl, r);
@@ -435,11 +436,11 @@ struct Gateway::State : std::enable_shared_from_this<Gateway::State> {
   void link(const std::shared_ptr<Client>& client) {
     auto& c = *client;
     c.phase = Client::Phase::connecting;
-    std::optional<std::string> subject;
+    std::optional<contract::ClientCertificate> certificate;
     if (c.address.secure) {
-      if (const auto session = sessions.find(c.address.peer()); session != sessions.end()) subject = session->second->subject;
+      if (const auto session = sessions.find(c.address.peer()); session != sessions.end()) certificate = session->second->certificate;
     }
-    c.connection = std::make_shared<SnConnection>(c.address.key(), subject);
+    c.connection = std::make_shared<SnConnection>(c.address.key(), certificate);
     std::weak_ptr<State> weak_state = shared_from_this();
     std::weak_ptr<Client> weak_client = client;
     const auto connection = c.connection.get();

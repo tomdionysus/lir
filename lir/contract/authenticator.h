@@ -13,6 +13,7 @@
 #include <string_view>
 
 #include "dannan/contract/time_source.h"
+#include "lir/contract/connection.h"
 #include "lir/mqtt/packet.h"
 
 // Who may connect, and what a connection may then do. An accepted
@@ -74,6 +75,9 @@ struct Peer {
   // The verified client certificate's subject (RFC 2253 form), when the
   // listener asks for client certificates and one was presented.
   std::optional<std::string> certificate_subject;
+  // Its SHA-256 thumbprint, for a token bound to it (RFC 8705, cnf
+  // x5t#S256).
+  std::optional<std::array<uint8_t, 32>> certificate_thumbprint;
 };
 
 // Called only from the broker's strand. Every call answers from what it
@@ -86,9 +90,9 @@ class Authenticator {
   // an authentication method (5.0).
   virtual AuthDecision connect(const mqtt::Connect& connect, const Peer& peer) = 0;
   // A 5.0 AUTH continuing an exchange or reauthenticating: the method the
-  // exchange began with, and the client's data. An accept on
-  // re-authentication replaces the connection's grant.
-  virtual AuthDecision auth(const std::string& client_id, const std::string& method, const mqtt::Bytes& data) = 0;
+  // exchange began with, the client's data, and the peer as at connect. An
+  // accept on re-authentication replaces the connection's grant.
+  virtual AuthDecision auth(const std::string& client_id, const std::string& method, const mqtt::Bytes& data, const Peer& peer) = 0;
 };
 
 // Accepts everyone with an Unrestricted grant; refuses any enhanced
@@ -99,7 +103,7 @@ class AllowAll final : public Authenticator {
     return connect.properties.authentication_method ? AuthDecision::refuse(mqtt::reason::bad_authentication_method)
                                                     : AuthDecision::accept(std::make_shared<Unrestricted>());
   }
-  AuthDecision auth(const std::string&, const std::string&, const mqtt::Bytes&) override {
+  AuthDecision auth(const std::string&, const std::string&, const mqtt::Bytes&, const Peer&) override {
     return AuthDecision::refuse(mqtt::reason::bad_authentication_method);
   }
 };

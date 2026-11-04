@@ -199,7 +199,7 @@ class TokenOnly final : public contract::Authenticator {
     return c.password == mqtt::Bytes{'g', 'o', 'o', 'd'} ? contract::AuthDecision::accept(std::make_shared<contract::Unrestricted>())
                                                          : contract::AuthDecision::refuse(mqtt::reason::bad_user_name_or_password);
   }
-  contract::AuthDecision auth(const std::string&, const std::string&, const mqtt::Bytes&) override {
+  contract::AuthDecision auth(const std::string&, const std::string&, const mqtt::Bytes&, const contract::Peer&) override {
     return contract::AuthDecision::refuse(mqtt::reason::bad_authentication_method);
   }
 };
@@ -291,7 +291,7 @@ class HttpsTest : public ::testing::Test {
       _seen = peer.certificate_subject;
       return contract::AuthDecision::accept(std::make_shared<contract::Unrestricted>());
     }
-    contract::AuthDecision auth(const std::string&, const std::string&, const mqtt::Bytes&) override {
+    contract::AuthDecision auth(const std::string&, const std::string&, const mqtt::Bytes&, const contract::Peer&) override {
       return contract::AuthDecision::refuse(mqtt::reason::bad_authentication_method);
     }
     std::pair<bool, std::optional<std::string>> seen() {

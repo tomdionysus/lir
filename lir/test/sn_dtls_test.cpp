@@ -102,7 +102,7 @@ class Recording final : public contract::Authenticator {
     subject = peer.certificate_subject;
     return contract::AuthDecision::accept(std::make_shared<contract::Unrestricted>());
   }
-  contract::AuthDecision auth(const std::string&, const std::string&, const mqtt::Bytes&) override {
+  contract::AuthDecision auth(const std::string&, const std::string&, const mqtt::Bytes&, const contract::Peer&) override {
     return contract::AuthDecision::refuse(mqtt::reason::bad_authentication_method);
   }
   std::mutex mutex;

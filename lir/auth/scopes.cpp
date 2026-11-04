@@ -103,7 +103,7 @@ contract::AuthDecision AnonymousAuthenticator::connect(const mqtt::Connect& conn
   return contract::AuthDecision::accept(_anonymous);
 }
 
-contract::AuthDecision AnonymousAuthenticator::auth(const std::string&, const std::string&, const mqtt::Bytes&) {
+contract::AuthDecision AnonymousAuthenticator::auth(const std::string&, const std::string&, const mqtt::Bytes&, const contract::Peer&) {
   return contract::AuthDecision::refuse(mqtt::reason::bad_authentication_method);
 }
 

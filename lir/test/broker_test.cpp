@@ -1062,7 +1062,7 @@ TEST_F(BrokerTest, ALoopOfRulesStopsAtEightHops) {
 class ChallengeOnce final : public contract::Authenticator {
  public:
   contract::AuthDecision connect(const mqtt::Connect&, const contract::Peer&) override { return contract::AuthDecision::challenge(Bytes{'?'}); }
-  contract::AuthDecision auth(const std::string&, const std::string&, const Bytes& data) override {
+  contract::AuthDecision auth(const std::string&, const std::string&, const Bytes& data, const contract::Peer&) override {
     return data == Bytes{'!'} ? contract::AuthDecision::accept(std::make_shared<NotSecret>()) : contract::AuthDecision::refuse(reason::not_authorized);
   }
 
@@ -1120,7 +1120,7 @@ class Scoped final : public contract::Authenticator {
   Scoped(const dannan::test::SteppedTime& time, auth::TopicScopes scopes, std::chrono::seconds lifetime)
       : _time(time), _scopes(std::move(scopes)), _lifetime(lifetime) {}
   contract::AuthDecision connect(const mqtt::Connect&, const contract::Peer&) override { return grant(_scopes); }
-  contract::AuthDecision auth(const std::string&, const std::string&, const Bytes& data) override {
+  contract::AuthDecision auth(const std::string&, const std::string&, const Bytes& data, const contract::Peer&) override {
     return data == Bytes{'m', 'o', 'r', 'e'} ? grant(renewed) : contract::AuthDecision::refuse(reason::not_authorized);
   }
   auth::TopicScopes renewed;
@@ -1318,7 +1318,7 @@ class BrokerScopesAtReconnect : public ::testing::Test {
     contract::AuthDecision connect(const mqtt::Connect&, const contract::Peer&) override {
       return contract::AuthDecision::accept(std::make_shared<auth::ScopeGrant>(scopes));
     }
-    contract::AuthDecision auth(const std::string&, const std::string&, const Bytes&) override {
+    contract::AuthDecision auth(const std::string&, const std::string&, const Bytes&, const contract::Peer&) override {
       return contract::AuthDecision::refuse(reason::bad_authentication_method);
     }
     auth::TopicScopes scopes;
