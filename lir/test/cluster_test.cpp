@@ -515,9 +515,8 @@ TEST_F(ClusterTest, ASharedGroupAcrossNodesGetsEachMessageOnce) {
   wb.connect("worker-b");
   wa.subscribe("$share/workers/jobs/+", QoS::at_least_once);
   wb.subscribe("$share/workers/jobs/+", QoS::at_least_once);
-  // Give the groups' gossip a moment to reach the publishing node.
-  ASSERT_TRUE(eventually([&] { return c->sees(*a, "lir.groups", "") && c->sees(*b, "lir.groups", ""); }));
-  std::this_thread::sleep_for(500ms);
+  // The publishing node knows both members' nodes before anything is sent.
+  ASSERT_TRUE(eventually([&] { return c->cluster->shared_members("workers", "jobs/+") == 2; }));
   MqttClient pub(c->port());
   pub.connect("pub");
   constexpr int sent = 10;
