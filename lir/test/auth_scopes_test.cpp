@@ -162,7 +162,7 @@ TEST(AuthScopes, AnonymousAuthenticatorRefusesCredentials) {
   mqtt::Connect method;
   method.properties.authentication_method = "lugh";
   EXPECT_EQ(allow.connect(method, {}).reason, mqtt::reason::bad_authentication_method);
-  EXPECT_EQ(allow.auth("c", "lugh", {}).reason, mqtt::reason::bad_authentication_method);
+  EXPECT_EQ(allow.auth("c", "lugh", {}, {}).reason, mqtt::reason::bad_authentication_method);
 }
 
 TEST(AuthScopes, DefaultAnonymousScopesReadTheSystemTopics) {

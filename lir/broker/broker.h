@@ -274,6 +274,8 @@ class Link : public std::enable_shared_from_this<Link> {
   void on_unsubscribe(const mqtt::Unsubscribe& unsubscribe);
   void on_disconnect(const mqtt::Disconnect& disconnect);
   void on_auth(const mqtt::Auth& auth);
+  // Who the client is, as the transport knows it.
+  contract::Peer peer() const;
   void refuse_connect(uint8_t reason);
   // Ends the connection: a 5.0 DISCONNECT with `reason` when connected,
   // then the close; the will as `publish_will` says.

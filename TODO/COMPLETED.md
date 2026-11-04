@@ -596,3 +596,29 @@ client certificate, HTTP and process tests passed three runs in a row.
 - MQTT-SN 2.0: OASIS has only working drafts (the newest 2025-10-19; CSD01
   of 2023-12 is superseded). Recommended to Tom to wait for an approved
   Committee Specification; recorded as waiting on OASIS.
+
+## 2026-11-04: Dannan 0.4.1, a cluster flake, and the Lugh token authenticator
+
+Gate: `lir_tests` 307 passed, 0 failed (12 new); the certificate,
+TLS, WebSocket, HTTPS, MQTT-SN and token tests passed three runs in a
+row, the cluster tests five.
+
+- Dannan 0.4.1 (additive: readiness planes; Lir declares none).
+- `ClusterTest.ASharedGroupAcrossNodesGetsEachMessageOnce` failed once
+  under load: it waited on an empty groups advert and then slept 500 ms.
+  It now waits on `Cluster::shared_members(group, filter)`, the nodes the
+  publishing node knows to hold a member.
+- `auth::TokenAuthenticator` (`lir/auth/tokens.h`): the token as the
+  CONNECT password or the data of the MQTT 5 method "lugh" (which also
+  re-authenticates); "lir" among the audiences or 0x87; a token that does
+  not verify or has expired 0x86; a DPoP-bound token refused (MQTT cannot
+  carry a proof); a certificate-bound token only from that certificate
+  (RFC 8705 x5t#S256); the topic scopes with `{sub}` as the grant until
+  exp; anonymous clients as before. Whether a token is genuine is
+  `TokenVerifier`'s, which is Lugh's code: nothing in Lir parses JOSE.
+- `contract::ClientCertificate` (subject and SHA-256 thumbprint) now
+  travels from every TLS, HTTPS and DTLS listener to `Peer`, and
+  `Authenticator::auth` is given the peer, so a re-authentication with a
+  bound token is checked too.
+- Not wired into `lir-node`: there is no verifier to run until the
+  linking question is answered.

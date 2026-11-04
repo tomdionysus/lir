@@ -10,6 +10,7 @@
 # "lir/<subsystem>/x.h".
 add_library(lir SHARED
   auth/scopes.cpp
+  auth/tokens.cpp
   broker/broker.cpp
   cluster/balance.cpp
   cluster/cluster.cpp

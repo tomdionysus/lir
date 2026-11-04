@@ -7,12 +7,21 @@
 
 #pragma once
 
+#include <array>
+#include <cstdint>
 #include <optional>
 #include <string>
 
 #include "lir/mqtt/wire.h"
 
 namespace lir::contract {
+
+// A client certificate the listener verified: its subject (RFC 2253 form)
+// and its SHA-256 thumbprint, over the DER (RFC 8705's x5t#S256).
+struct ClientCertificate {
+  std::string subject;
+  std::array<uint8_t, 32> thumbprint{};
+};
 
 // The transport under one MQTT client: a TCP or TLS socket at the edge, a
 // buffer in a test. The broker calls it only from its own strand.
@@ -27,9 +36,9 @@ class Connection {
   virtual void close() = 0;
   // For logs: the peer's address.
   virtual std::string peer() const = 0;
-  // The subject of the certificate the client presented, verified (RFC 2253
-  // form); nothing without one, or off TLS.
-  virtual std::optional<std::string> certificate_subject() const { return std::nullopt; }
+  // The certificate the client presented, verified; nothing without one, or
+  // off TLS.
+  virtual std::optional<ClientCertificate> certificate() const { return std::nullopt; }
   // How the client reached this node: "tcp", "tls", "ws", "wss", or
   // another word for a transport no client can be redirected to.
   virtual std::string transport() const { return "tcp"; }
