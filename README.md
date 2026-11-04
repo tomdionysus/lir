@@ -166,6 +166,16 @@ A subscriber on one node receives what is published on the other, retained messa
 on both, and a client with a persistent session can reconnect to either.
 `--session-standbys N` sets how many other nodes mirror each session.
 
+### Limits
+
+Each node enforces its own limits, sized by default for about 10,000 messages a second
+across a cluster: 1 MiB packets (`--max-packet-size`), a receive maximum of 1024
+(`--receive-maximum`), 10,000 messages queued per offline session (`--max-queued`),
+session expiry capped at 7 days (`--max-session-expiry`), 4 MiB queued for a slow client
+before it is closed (`--max-outbound-bytes`), and 10,000 clients, past which a new one is
+told the server is busy (`--max-connections`). `$lir/cluster` says whether every node
+runs the same limits.
+
 ### MQTT over WebSocket
 
 ```
@@ -240,7 +250,7 @@ Conventions, shared with the stack: [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Status
 
 In development; no release is cut yet. The first, 0.1.0, follows persistence on Dagda.
-Built and tested (227 tests): all of MQTT 3.1, 3.1.1 and 5.0 on one node, over TCP, TLS,
+Built and tested (230 tests): all of MQTT 3.1, 3.1.1 and 5.0 on one node, over TCP, TLS,
 WebSocket and WebSocket over TLS; the cluster on Dannan with sessions that move and are mirrored to standbys; system
 topics; HTTP and HTTPS publish and SSE; topic scopes, with anonymous clients
 refused by default; client certificates. The cluster is an interim one until Dagda:

@@ -28,6 +28,13 @@
 //            [--ws-port N] [--ws-listen ADDR] [--wss-port N] [--wss-listen ADDR]
 //            [--allow-anonymous [--anonymous-scope SCOPE]...]
 //            [--no-system-topics nodes|cluster|clients|roster]...
+//            [--max-packet-size BYTES] [--receive-maximum N] [--max-queued N]
+//            [--max-session-expiry SECONDS] [--max-outbound-bytes BYTES]
+//            [--max-connections N]
+//
+// The limits default to the design's moderate set (section 4): 1 MiB
+// packets, receive maximum 1024, 10,000 queued per offline session, session
+// expiry capped at 7 days, 4 MiB queued for a slow client, 10,000 clients.
 //   lir-node --version
 //
 // Clients are refused unless --allow-anonymous is given (design, section
@@ -111,6 +118,8 @@ struct Options {
   int wss_port = -1;
   std::string wss_listen = "0.0.0.0";
   lir::system::SystemConfig system;
+  lir::broker::Config limits;
+  size_t maximum_outbound_bytes = lir::edge::EdgeConfig{}.maximum_outbound_bytes;
   bool allow_anonymous = false;
   std::vector<std::string> anonymous_scopes;
 };
@@ -182,6 +191,18 @@ Options parse(int argc, char** argv) {
       out.wss_port = std::stoi(value());
     else if (option == "--wss-listen")
       out.wss_listen = value();
+    else if (option == "--max-packet-size")
+      out.limits.maximum_packet_size = static_cast<uint32_t>(std::stoul(value()));
+    else if (option == "--receive-maximum")
+      out.limits.receive_maximum = static_cast<uint16_t>(std::stoul(value()));
+    else if (option == "--max-queued")
+      out.limits.maximum_queued = std::stoul(value());
+    else if (option == "--max-session-expiry")
+      out.limits.maximum_session_expiry = static_cast<uint32_t>(std::stoul(value()));
+    else if (option == "--max-outbound-bytes")
+      out.maximum_outbound_bytes = std::stoul(value());
+    else if (option == "--max-connections")
+      out.limits.maximum_connections = std::stoul(value());
     else if (option == "--no-system-topics") {
       const auto which = value();
       if (which == "nodes")
@@ -289,6 +310,8 @@ int main(int argc, char** argv) {
     lir::edge::EdgeConfig edge_config;
     edge_config.listen_host = options.mqtt_listen;
     edge_config.port = options.mqtt_port;
+    edge_config.broker = options.limits;
+    edge_config.maximum_outbound_bytes = options.maximum_outbound_bytes;
     if (options.mqtt_tls_port >= 0) {
       edge_config.tls = tls_config(options, options.mqtt_tls_listen, options.mqtt_tls_port);
     }
