@@ -19,7 +19,8 @@ Lugh's verification code: Lugh's O7 tokens have landed (RFC 9068
 JWTs, ES256, JWKS at `<issuer>/oauth2/jwks`), and the stack decision is
 that verification stays Lugh's and the plugin links Lugh. Lugh exports no
 small library for it yet (its `lugh_client` is P10); how the plugin links
-it is with Tom (asked 2026-11-04).
+it waits for Lugh's `lugh_client` (P10), which carries offline token
+verification (Tom, 2026-11-04: "Wait for lugh_client (P10)").
 
 The design is Tom's, 2026-11-03:
 [`2026-11-03-lir-plan.md`](2026-11-03-lir-plan.md), with the seven
@@ -125,8 +126,8 @@ written new; Macha has no event system to extract (`COMPLETED.md`,
 
 - Dagda: head spaces with owner merges, Replicated writes, leases,
   objects and claims, a node-local space (step 5).
-- Lugh: a linkable token verifier (its `jose.h` and the claim checks), for
-  the plugin's `TokenVerifier`; the tokens themselves have landed (O7).
+- Lugh: `lugh_client` (its P10), whose offline token verification fills
+  the plugin's `TokenVerifier` (Tom, 2026-11-04); the tokens have landed (O7).
 - Dannan: nothing. Lir is on `0.4.0`.
 - Lugh: the grammar of scopes in its tokens.
 - OASIS: an approved MQTT-SN 2.0 Committee Specification.
