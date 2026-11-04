@@ -333,3 +333,29 @@ Gate: `lir_tests` 202 passed, 0 failed (3 new).
   resumed session (any version, any node) keeps only what the new
   connection's grant allows. `Broker::prune`.
 
+## 2026-11-04: MQTT over WebSocket
+
+Gate: `lir_tests` 214 passed, 0 failed (12 new); the WebSocket and TLS
+tests passed five runs in a row.
+
+- In scope by Tom's answer to design section 5 (the specification's own
+  transport, section 6). `EdgeConfig::websocket` (ws) and
+  `EdgeConfig::secure_websocket` (wss, its own certificate and key), each
+  on its own port beside TCP and TLS, the same broker.
+- The upgrade (Boost.Beast, already linked for HTTP): any path; the
+  server answers "mqtt" when offered, else "mqttv3.1" for a 3.1 client,
+  serves a client that offers none, and refuses with 400 one that offers
+  only others, or a request that is not an upgrade. MQTT goes in binary
+  frames, one byte stream however the frames split it; a text frame
+  closes the connection (section 6 MUST). One deadline covers the TLS
+  handshake and the upgrade.
+- The edge's connection is still one template, now over a socket, TLS,
+  or a WebSocket over either.
+- Fixed on the way: a handshake deadline that was already due when its
+  handshake finished could close a stream that had moved into its
+  connection (TLS too); the deadline now checks a settled flag.
+- `lir-node --ws-port N [--ws-listen ADDR] --wss-port N [--wss-listen
+  ADDR]`; the listening line reports `ws_port` and `wss_port`. Checked by
+  hand: a raw upgrade to `lir-node` gets 101 with
+  `Sec-WebSocket-Protocol: mqtt` and a CONNACK in a binary frame.
+

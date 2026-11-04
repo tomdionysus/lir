@@ -3,8 +3,8 @@
 Lir is the event system for a cluster of trusted machines. It is a C++20 library and a
 node binary that turn a set of nodes into one MQTT broker: connect to any node, publish
 or subscribe on any node, drop the connection and resume the session on another, and the
-cluster behaves as a single broker. It speaks MQTT 3.1, 3.1.1 and 5.0 in full, over TCP
-and TLS, with an HTTP publish and Server-Sent Events endpoint beside it for browsers and
+cluster behaves as a single broker. It speaks MQTT 3.1, 3.1.1 and 5.0 in full, over TCP,
+TLS and WebSocket, with an HTTP publish and Server-Sent Events endpoint beside it for browsers and
 curl. It runs on [Dannan](https://github.com/tomdionysus/dannan), the network, and
 persists in [Dagda](https://github.com/tomdionysus/dagda), the store.
 
@@ -38,7 +38,9 @@ Lir is the broker written once for this stack:
 
 - **MQTT front end.** A codec for every packet and property of MQTT 3.1, 3.1.1 and 5.0,
   written here, refusing every malformed packet the specification says must be refused.
-  Listeners on plain TCP and on TLS, each on its own port.
+  Listeners on plain TCP, TLS, WebSocket and WebSocket over TLS, each on its own port;
+  over WebSocket, MQTT travels in binary frames with the `mqtt` subprotocol, as the
+  specification's section 6 says, so browser MQTT libraries connect directly.
 - **The broker.** Sessions, QoS 0, 1 and 2 with the full PUBREC, PUBREL and PUBCOMP
   exchange, retained messages, wills with delay, `$share` groups, No Local, Retain As
   Published, subscription identifiers, topic aliases in both directions, Receive Maximum,
@@ -156,6 +158,16 @@ A subscriber on one node receives what is published on the other, retained messa
 on both, and a client with a persistent session can reconnect to either.
 `--session-standbys N` sets how many other nodes mirror each session.
 
+### MQTT over WebSocket
+
+```
+./build/lir-node ... --ws-port 8080
+./build/lir-node ... --tls-certificate node.pem --tls-key node.key --wss-port 8081
+```
+
+A browser MQTT library (MQTT.js, Paho) connects to `ws://host:8080/mqtt` or
+`wss://host:8081/mqtt`; any path is served.
+
 ### Publish and subscribe over HTTP
 
 ```
@@ -210,13 +222,13 @@ Conventions, shared with the stack: [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Status
 
 In development; no release is cut yet. The first, 0.1.0, follows persistence on Dagda.
-Built and tested (199 tests): all of MQTT 3.1, 3.1.1 and 5.0 on one node, over TCP and
-TLS; the cluster on Dannan with sessions that move and are mirrored to standbys; system
+Built and tested (214 tests): all of MQTT 3.1, 3.1.1 and 5.0 on one node, over TCP, TLS,
+WebSocket and WebSocket over TLS; the cluster on Dannan with sessions that move and are mirrored to standbys; system
 topics; HTTP and HTTPS publish and SSE; topic scopes, with anonymous clients
 refused by default. The cluster is an interim one until Dagda:
 retained messages are held in memory on every node and a QoS 1 or 2 publish is
-acknowledged on acceptance, not on replication. Next: MQTT over WebSockets, the remaining
-system topics, client certificates, then persistence on Dagda and the Lugh
+acknowledged on acceptance, not on replication. Next: the remaining system topics, client
+certificates, then persistence on Dagda and the Lugh
 authenticator.
 
 ## Licence
