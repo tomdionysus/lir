@@ -13,6 +13,7 @@ add_library(lir SHARED
   cluster/cluster.cpp
   cluster/codec.cpp
   edge/edge.cpp
+  http/http.cpp
   mqtt/packet.cpp
   mqtt/properties.cpp
   mqtt/topic.cpp

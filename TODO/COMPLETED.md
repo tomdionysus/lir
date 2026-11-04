@@ -201,3 +201,34 @@ repeats clean.
 - Tests: every node's topics retained on every node and readable by a
   client; a forged publish refused; a node's topics cleared when it
   leaves.
+
+## 2026-11-04: step 6, HTTP publish and Server-Sent Events
+
+Gate: `lir_tests` 163 passed, 0 failed; HTTP, cluster and process tests
+three repeats clean.
+
+- `lir/http/http.h` (`lir::http`): `POST /publish?topic=T[&qos][&retain]`
+  and `GET /subscribe?filter=F[&filter=G]` as `text/event-stream`. Each
+  request is an MQTT 5.0 client of the broker for its length, fed
+  packets in process, so the authenticator, retained messages and the
+  cluster apply as to any client. `Authorization: Bearer <token>` is the
+  CONNECT password, for the authenticator (a Lugh plugin) to check.
+  Only %XX is decoded in the query: '+' is the MQTT wildcard. Events
+  carry the payload as text when it is UTF-8, else as hex (Dannan's
+  `identity::hex`); retained first; a comment every 15 s; a stream not
+  being read is closed past 4 MiB queued. Boost.Beast parses requests:
+  it is part of Boost, already a dependency.
+- MQTT refusals map to HTTP: 0x86 and 0x8C to 401, 0x87 and 0x8A to 403,
+  busy and quota to 503, the rest to 400; 404, 405 and 413 for the
+  request itself.
+- `lir-node --http-port N|-1 --http-listen ADDR` (default 8083; -1 for
+  none); the listening line reports `http_port`.
+- Tests: publish reaching an MQTT subscriber with its content type;
+  "matched" false with no subscriber; a retained HTTP publish read over
+  MQTT; every refusal's status; an event stream getting a retained then
+  a live message and its keep-alive; a closed stream leaving the broker;
+  a bearer token as the CONNECT password. Checked by hand with curl
+  against `lir-node`.
+- A bug found on the way: an event stream's exchange was held only by
+  weak references and went as soon as its headers were written; its
+  pending read now holds it.
