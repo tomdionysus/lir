@@ -825,6 +825,112 @@ TEST_F(BrokerOptionsTest, QoS0CanBeQueuedForAnOfflineSession) {
   EXPECT_EQ(back.take_all<mqtt::Publish>().size(), 1u);
 }
 
+// ---- memory pressure (design, section 4)
+
+class BrokerPressureTest : public BrokerTest {
+ protected:
+  BrokerPressureTest() : BrokerTest(budgeted()) {}
+  static Config budgeted() {
+    Config c;
+    c.memory_budget = 20000;
+    c.queue_qos0_offline = true;
+    return c;
+  }
+  // An offline persistent session subscribed to "t".
+  void sleeper(const std::string& id) {
+    auto s = connect(id, Version::v3_1_1, false);
+    subscribe(s, "t", QoS::exactly_once);
+    s.link->closed();
+  }
+  void fill_until(Pressure wanted, QoS qos) {
+    while (broker.pressure() < wanted) broker.publish(msg("t", Bytes(1000, 'x'), qos));
+  }
+  bool counted() { return broker.held_bytes() == broker.recount_held_bytes(); }
+};
+
+TEST_F(BrokerPressureTest, HeldBytesAreCountedExactlyThroughEveryFlow) {
+  sleeper("s");
+  EXPECT_TRUE(counted());
+  broker.publish(msg("t", Bytes(500, 'a'), QoS::at_least_once));
+  broker.publish(msg("t", Bytes(10, 'b'), QoS::exactly_once));
+  broker.publish(msg("t", Bytes(10, 'c'), QoS::at_most_once));
+  broker.publish(msg("r", Bytes(300, 'r'), QoS::at_most_once, true));
+  EXPECT_GT(broker.held_bytes(), 800u);
+  EXPECT_TRUE(counted());
+  // Back online: the queue moves in flight, then the acks release it.
+  auto back = connect("s", Version::v3_1_1, false);
+  EXPECT_TRUE(counted());
+  for (const auto& p : back.take_all<mqtt::Publish>()) {
+    if (p.qos == QoS::at_least_once) back.send(mqtt::Ack{PacketType::puback, p.packet_id, reason::success, {}});
+    if (p.qos == QoS::exactly_once) {
+      back.send(mqtt::Ack{PacketType::pubrec, p.packet_id, reason::success, {}});
+      back.send(mqtt::Ack{PacketType::pubcomp, p.packet_id, reason::success, {}});
+    }
+  }
+  EXPECT_TRUE(counted());
+  // A replaced retained value, a cleared one, and a session that ends.
+  broker.publish(msg("r", Bytes(30, 'r'), QoS::at_most_once, true));
+  EXPECT_TRUE(counted());
+  broker.publish(msg("r", Bytes{}, QoS::at_most_once, true));
+  back.send(mqtt::Disconnect{});
+  auto clean = connect("s", Version::v3_1_1, true);
+  EXPECT_TRUE(counted());
+  EXPECT_EQ(broker.held_bytes(), 0u);
+}
+
+TEST_F(BrokerPressureTest, AtEightyPercentQoS0IsDroppedOldestFirst) {
+  sleeper("s");
+  fill_until(Pressure::shed_qos0, QoS::at_most_once);
+  const auto dropped = broker.stats().dropped_pressure;
+  broker.publish(msg("t", Bytes(1000, 'x'), QoS::at_most_once));
+  EXPECT_EQ(broker.stats().dropped_pressure, dropped + 1);
+  // QoS 1 is still queued at this level.
+  const auto held = broker.held_bytes();
+  broker.publish(msg("t", Bytes(10, 'q'), QoS::at_least_once));
+  EXPECT_GT(broker.held_bytes(), held);
+  // The poll sheds queued QoS 0 until the pressure eases; QoS 1 stays.
+  advance(1s);
+  EXPECT_LT(broker.pressure(), Pressure::shed_qos0);
+  EXPECT_TRUE(counted());
+  auto back = connect("s", Version::v3_1_1, false);
+  const auto got = back.take_all<mqtt::Publish>();
+  ASSERT_FALSE(got.empty());
+  EXPECT_EQ(text(got.back()), std::string(10, 'q'));
+}
+
+TEST_F(BrokerPressureTest, AtNinetyPercentQoS1PublishesAreRefused) {
+  sleeper("s");
+  fill_until(Pressure::refuse_publish, QoS::at_least_once);
+  auto pub = connect("pub");
+  pub.send(message("t", "x", QoS::at_least_once, false, 9));
+  EXPECT_EQ(pub.take_one<mqtt::Ack>().reason, reason::quota_exceeded);
+  pub.send(message("t", "x", QoS::exactly_once, false, 10));
+  EXPECT_EQ(pub.take_one<mqtt::Ack>().reason, reason::quota_exceeded);
+  // QoS 0 still flows to live subscribers.
+  auto live = connect("live");
+  subscribe(live, "u", QoS::at_most_once);
+  pub.send(message("u", "fine"));
+  EXPECT_EQ(live.take_all<mqtt::Publish>().size(), 1u);
+  // A 3.x publisher cannot be told: it is closed.
+  auto old = connect("old", Version::v3_1_1);
+  old.send(message("t", "x", QoS::at_least_once, false, 11));
+  EXPECT_TRUE(old.closed());
+  EXPECT_EQ(broker.stats().refused_pressure_publishes, 3u);
+}
+
+TEST_F(BrokerPressureTest, AtTheBudgetNewClientsAreRefusedAndOthersKept) {
+  sleeper("s");
+  auto existing = connect("existing");
+  fill_until(Pressure::refuse_connect, QoS::at_least_once);
+  auto late = open();
+  late.send(mqtt::Connect{Version::v5, true, 0, "late", {}, {}, {}, {}});
+  EXPECT_EQ(late.take_one<mqtt::Connack>().reason, reason::server_busy);
+  EXPECT_FALSE(existing.closed());
+  existing.send(mqtt::Pingreq{});
+  existing.take_one<mqtt::Pingresp>();
+  EXPECT_EQ(broker.sessions(), 2u);
+}
+
 // ---- authentication
 
 class ChallengeOnce final : public contract::Authenticator {

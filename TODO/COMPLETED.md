@@ -422,3 +422,26 @@ Gate: `lir_tests` 230 passed, 0 failed (3 new).
   memory budget, Dannan's `budget()`, which Lir has not declared yet;
   the config file waits on Dannan's reader.
 
+## 2026-11-04: memory pressure (design, section 4)
+
+Gate: `lir_tests` 234 passed, 0 failed (4 new).
+
+- The broker counts the bytes of every message it holds (queued, in
+  flight, retained) as they come and go; `recount_held_bytes()` walks
+  them all, and a test checks the two agree through every flow.
+- `Config::memory_budget` (512 MiB; `lir-node --memory-budget`). The
+  design's order: at 80% QoS 0 is no longer queued and queued QoS 0 is
+  shed oldest first at each poll; at 90% QoS 1/2 publishes are refused,
+  PUBACK or PUBREC 0x97 (a 3.x client, which has no code for it, is
+  closed and resends on return); at 100% new clients get CONNACK 0x89.
+  Existing sessions are never evicted. Counted in `$lir/nodes/<id>`
+  (`memory`: held, budget, pressure, refusals), and the budget is one of
+  the limits `$lir/cluster` compares.
+- `lir-node` declares Lir's unit of work (one maximum-size packet,
+  foreground) to Dannan's `budget()`, which refuses to start Lir on a
+  node that cannot hold one (the design's "Budget" row).
+- Open for Tom: the 512 MiB default and the 80/90/100 thresholds are
+  mine, not decided; and the held bytes are Lir's own count, not leases
+  in Dannan's retained-memory ledger (that would make other systems'
+  memory press on Lir too).
+
