@@ -19,6 +19,7 @@ add_executable(lir_tests
   mqtt_topic_test.cpp
   mqtt_wire_test.cpp
   process_test.cpp
+  rules_test.cpp
   shard_test.cpp
   subs_trie_test.cpp
   system_test.cpp
