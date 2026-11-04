@@ -68,6 +68,9 @@ class Edge {
   broker::Stats stats();
 
   Strand& strand() noexcept;
+  // The broker itself, for code already running on strand(); anywhere else
+  // it is a data race.
+  broker::Broker& broker() noexcept;
 
  private:
   struct State;
