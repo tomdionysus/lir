@@ -56,6 +56,14 @@ second is the lease records kept in the session space.
    Replicated. The entry holds the message, its expiry, the target nodes
    known now, and the publishing client and packet id. For QoS 2, the
    client's packet id is recorded against the dot in the same append.
+   Lir hands each message to `Logs::append` as it arrives and does not
+   batch appends itself: Dagda groups a tick's appends per destination
+   node, across every log that node holds, into one call and one sync on
+   one shared segment stream (Dagda's 256-log runs, 2026-11-13: one call per
+   log, or a file per log, fails at 8,000 a second; per-node grouping into
+   one segment passes at p99 21 to 24 ms on the Mac). Lir's own batching
+   stays on fan-out, per edge. Lir's review item R7 (a tick of zero) no
+   longer applies to the inflight log.
 2. **PUBACK or PUBREC** when the append's evidence names k replicas. Target:
    p99 under 50 ms over the whole path (Tom, 2026-11-13).
 3. **Fan out** on `lir.seq` to the target nodes, as today, in parallel with
