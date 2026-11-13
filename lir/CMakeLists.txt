@@ -15,6 +15,7 @@ add_library(lir SHARED
   cluster/balance.cpp
   cluster/cluster.cpp
   cluster/codec.cpp
+  cluster/sequence.cpp
   edge/edge.cpp
   http/http.cpp
   mqtt/packet.cpp

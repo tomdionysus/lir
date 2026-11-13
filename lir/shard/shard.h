@@ -39,6 +39,12 @@ ShardId shard_of(std::string_view topic, uint32_t prefix_levels, uint32_t count)
 // prefix_levels 0 only a filter with no wildcard is shard-local.
 std::optional<ShardId> shard_of_filter(std::string_view filter, uint32_t prefix_levels, uint32_t count);
 
+// The shard a client's session lives in (step 5): SHA-256("lir-sess:" ||
+// client id) mod count, under a salt of its own so sessions and topics
+// spread independently. Throws std::invalid_argument for a count of 0 or
+// over max_count.
+ShardId session_shard_of(std::string_view client_id, uint32_t count);
+
 // The placement key for a shard: what Dannan's rendezvous hashes with each
 // node id.
 dannan::identity::Bytes placement_key(ShardId shard);
