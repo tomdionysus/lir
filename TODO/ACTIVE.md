@@ -27,6 +27,19 @@ Lir's work while they build, all of it chosen by the maintainer on 2026-11-13:
    0.5.4 had already changed 0.5's ABI, and Dagda 0.1.5 will be on 0.6.0.
    So Lir repins once more, to 0.6.0, when it is tagged. The interface work
    (deferred reply, partition reading, the listener) is Dannan 0.7.0.
+   ~~Repin to 0.6.0~~ Done 2026-11-13: `feature/dannan-0.6`, gate 323.
+2a. ~~Step 5's groundwork that needs no Dagda~~ Done 2026-11-13
+   (`feature/step5-groundwork`, 16 new tests): `session_shard_of`, the
+   sequence blocks behind `SequenceStore` (a node-local space fills it), and
+   the stored forms of inflight and queue entries, whose expiry is
+   wall-clock time because a log entry outlives the steady clock.
+2c. Linux arm64 on the shared test cluster (the maintainer, 2026-11-13: node-a
+   .169, node-b .170, node-c .202; ask the session using a
+   machine first, modest -j, nice 19, files under /srv/lir-work). Lir's
+   first GCC build is on `feature/linux-arm64` (Boost floor 1.83, as Dannan
+   and Dagda), unmerged until it passes there; then a two-node lir-node
+   cluster across two build nodes, driven over HTTP and SSE. A slot is asked of the
+   Macha session.
 2b. When Dannan lands its partition reading (the maintainer, 2026-11-13): wire it
    into the interim, so a node on a minority side (an even split is one)
    degrades or refuses QoS 1/2 per its setting, ahead of Dagda.
