@@ -649,3 +649,26 @@ Gate: `lir_tests` 307, unchanged (no code changed; not rerun).
   and keeps HTTPS JWKS for a node outside Lugh's cluster.
 - The Macha session confirmed that measuring the head commit rate early
   costs its port nothing (stage one does not touch heads).
+
+## 2026-11-13: Dannan 0.5.6, and step 5 designed
+
+Gate: `lir_tests` 307 passed, 0 failed, on Dannan 0.5.6 (Release, macOS,
+warnings as errors, no warnings); the 44 cluster, process and shared-group
+tests passed three runs in a row.
+
+- Repinned from Dannan 0.4.1 to 0.5.6 (`feature/dannan-0.5`), ahead of
+  Dagda 0.1.5 at Tom's word: 0.5 is the minor Dagda 0.1.5 builds on, and
+  Lir links no Dagda yet. No source changed. Since 0.4.1 Dannan's Context
+  changes are additive; a call is watched for progress only when it asks,
+  and deadlines follow injected time. Neither moved a test.
+- Step 5's design, `TODO/2026-11-13-step5-design.md`: direct fan-out kept,
+  an inflight log per shard appended before PUBACK, session queues only for
+  offline or saturated sessions, session state and retained in replicated
+  spaces, the sequence reserved in blocks of 65,536, minority behaviour, and
+  19 tests to write first, each when its Dagda slice lands. Tom answered its
+  three questions; Dagda answered its four (any node appends directly to a
+  log's replicas; a dot is the owner's, and an append's origin must be the
+  appender, so a queue entry takes the subscriber node's own dot; acks and
+  retires may name any origin's dots, and Lir restricts retiring itself).
+- README status brought up to date, with the QoS 2 split limit stated.
+- `develop` pushed to `origin` at Tom's word (its first push there).

@@ -20,8 +20,12 @@ Dagda `a058df9`); Dannan's is `../dannan/TODO/2026-11-13-stack-needs.md`.
 Lir's work while they build, all of it chosen by Tom on 2026-11-13:
 1. Step 5's design rewritten onto the ruled nouns, with its tests written
    first. No code against an unfrozen tag until (3).
-2. Repin to Dannan 0.5.6 on a feature branch once Dagda 0.1.5 lands on it
-   (first in Dagda's slice 0), so Lir takes its Dagda's Dannan minor.
+2. ~~Repin to Dannan 0.5.6~~ Done 2026-11-13, ahead of Dagda 0.1.5 at
+   Tom's word (Lir links no Dagda yet; 0.5 is Dagda 0.1.5's minor):
+   `feature/dannan-0.5`, gate 307 (`COMPLETED.md`).
+2b. When Dannan lands its partition reading (Tom, 2026-11-13): wire it
+   into the interim, so a node on a minority side (an even split is one)
+   degrades or refuses QoS 1/2 per its setting, ahead of Dagda.
 3. Step 5 code against each Dagda slice tag as it lands, at Lir's own risk;
    nothing ships before contract v2 freezes at slice 4.
 4. The stale plan text: the plan file's session and wildcard heads (the
@@ -175,6 +179,6 @@ written new; Macha has no event system to extract (`COMPLETED.md`,
   the plugin's `TokenVerifier` (Tom, 2026-11-04); the tokens have landed (O7).
 - Dannan: the partition reading (Lir's minority behaviour), the shared
   listener (optional for Lir until reviewed), the small-message bench.
-  Lir is on `0.4.1` and moves to Dagda 0.1.5's minor, 0.5.
+  Lir is on `0.5.6`, Dagda 0.1.5's minor.
 - Lugh: the grammar of scopes in its tokens.
 - OASIS: an approved MQTT-SN 2.0 Committee Specification.
