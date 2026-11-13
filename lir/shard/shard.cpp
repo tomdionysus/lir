@@ -16,9 +16,20 @@ namespace lir::shard {
 namespace {
 
 constexpr std::string_view salt = "lir:";
+constexpr std::string_view session_salt = "lir-sess:";
 
 void check(uint32_t count) {
   if (count == 0 || count > max_count) throw std::invalid_argument("shard count out of range");
+}
+
+ShardId hashed(std::string_view salt_of, std::string_view key, uint32_t count) {
+  dannan::identity::Sha256Hasher hasher;
+  hasher.update({reinterpret_cast<const uint8_t*>(salt_of.data()), salt_of.size()});
+  hasher.update({reinterpret_cast<const uint8_t*>(key.data()), key.size()});
+  const auto digest = hasher.finish();
+  uint64_t value = 0;
+  for (size_t i = 0; i < 8; ++i) value = (value << 8) | digest.bytes[i];
+  return static_cast<ShardId>(value % count);
 }
 
 }  // namespace
@@ -37,14 +48,12 @@ std::string_view ownership_prefix(std::string_view topic, uint32_t prefix_levels
 
 ShardId shard_of(std::string_view topic, uint32_t prefix_levels, uint32_t count) {
   check(count);
-  const auto prefix = ownership_prefix(topic, prefix_levels);
-  dannan::identity::Sha256Hasher hasher;
-  hasher.update({reinterpret_cast<const uint8_t*>(salt.data()), salt.size()});
-  hasher.update({reinterpret_cast<const uint8_t*>(prefix.data()), prefix.size()});
-  const auto digest = hasher.finish();
-  uint64_t value = 0;
-  for (size_t i = 0; i < 8; ++i) value = (value << 8) | digest.bytes[i];
-  return static_cast<ShardId>(value % count);
+  return hashed(salt, ownership_prefix(topic, prefix_levels), count);
+}
+
+ShardId session_shard_of(std::string_view client_id, uint32_t count) {
+  check(count);
+  return hashed(session_salt, client_id, count);
 }
 
 std::optional<ShardId> shard_of_filter(std::string_view filter, uint32_t prefix_levels, uint32_t count) {

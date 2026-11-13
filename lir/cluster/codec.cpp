@@ -50,15 +50,17 @@ mqtt::QoS qos(Reader& r) {
   return static_cast<mqtt::QoS>(value);
 }
 
-void write_message(Writer& w, const broker::Message& m, TimePoint now) {
+// An expiry is written as what is left of it on the wire, and as wall-clock
+// time when `stored` is given: a stored form outlives the steady clock.
+void write_message(Writer& w, const broker::Message& m, TimePoint now, const Clocks* stored = nullptr) {
   w.string(m.topic);
   w.bytes(m.payload);
   w.u8(static_cast<uint8_t>(m.qos));
   w.u8(m.retain ? 1 : 0);
   optional(w, m.payload_format_indicator, [&w](uint8_t v) { w.u8(v); });
-  optional(w, m.expires_at, [&w, now](TimePoint at) {
-    const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(at - now).count();
-    w.u64(static_cast<uint64_t>(std::max<int64_t>(left, 0)));
+  optional(w, m.expires_at, [&w, now, stored](TimePoint at) {
+    const auto left = static_cast<uint64_t>(std::max<int64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(at - now).count(), 0));
+    w.u64(stored ? stored->wall_ms + left : left);
   });
   optional(w, m.content_type, [&w](const std::string& v) { w.string(v); });
   optional(w, m.response_topic, [&w](const std::string& v) { w.string(v); });
@@ -75,14 +77,19 @@ void write_message(Writer& w, const broker::Message& m, TimePoint now) {
   });
 }
 
-broker::Message read_message(Reader& r, TimePoint now) {
+broker::Message read_message(Reader& r, TimePoint now, const Clocks* stored = nullptr) {
   broker::Message m;
   m.topic = r.string();
   m.payload = r.bytes();
   m.qos = qos(r);
   m.retain = present(r);
   if (present(r)) m.payload_format_indicator = r.u8();
-  if (present(r)) m.expires_at = now + std::chrono::milliseconds(r.u64());
+  if (present(r)) {
+    const uint64_t value = r.u64();
+    // A stored expiry already passed is due at once.
+    const uint64_t left = !stored ? value : value > stored->wall_ms ? value - stored->wall_ms : 0;
+    m.expires_at = now + std::chrono::milliseconds(left);
+  }
   if (present(r)) m.content_type = r.string();
   if (present(r)) m.response_topic = r.string();
   if (present(r)) m.correlation_data = r.bytes();
@@ -121,17 +128,17 @@ broker::Options read_options(Reader& r) {
   return o;
 }
 
-void write_delivery(Writer& w, const broker::Delivery& d, TimePoint now) {
-  write_message(w, d.message, now);
+void write_delivery(Writer& w, const broker::Delivery& d, TimePoint now, const Clocks* stored = nullptr) {
+  write_message(w, d.message, now, stored);
   w.u8(static_cast<uint8_t>(d.qos));
   w.u8(d.retain ? 1 : 0);
   w.u32(static_cast<uint32_t>(d.identifiers.size()));
   for (const uint32_t id : d.identifiers) w.u32(id);
 }
 
-broker::Delivery read_delivery(Reader& r, TimePoint now) {
+broker::Delivery read_delivery(Reader& r, TimePoint now, const Clocks* stored = nullptr) {
   broker::Delivery d;
-  d.message = read_message(r, now);
+  d.message = read_message(r, now, stored);
   d.qos = qos(r);
   d.retain = present(r);
   const uint32_t n = count(r);
@@ -341,6 +348,60 @@ SharedDelivery decode_shared(std::span<const uint8_t> bytes, TimePoint now) {
   delivery.message = read_message(r, now);
   r.finish();
   return delivery;
+}
+
+namespace {
+
+enum class StoredKind : uint8_t { inflight = 1, queued = 2 };
+
+void stored_header(Writer& w, StoredKind kind) {
+  w.u8(stored_format);
+  w.u8(static_cast<uint8_t>(kind));
+}
+
+void stored_header(Reader& r, StoredKind kind) {
+  if (r.u8() != stored_format) throw DecodeError("unknown Lir stored format");
+  if (r.u8() != static_cast<uint8_t>(kind)) throw DecodeError("a stored entry of another kind");
+}
+
+}  // namespace
+
+Bytes encode_inflight(const InflightEntry& entry, Clocks clocks) {
+  Writer w;
+  stored_header(w, StoredKind::inflight);
+  write_message(w, entry.message, clocks.now, &clocks);
+  optional(w, entry.packet_id, [&w](uint16_t id) { w.u16(id); });
+  return w.take();
+}
+
+InflightEntry decode_inflight(std::span<const uint8_t> bytes, Clocks clocks) {
+  Reader r(bytes);
+  stored_header(r, StoredKind::inflight);
+  InflightEntry entry;
+  entry.message = read_message(r, clocks.now, &clocks);
+  if (present(r)) entry.packet_id = r.u16();
+  r.finish();
+  return entry;
+}
+
+Bytes encode_queued(const QueueEntry& entry, Clocks clocks) {
+  Writer w;
+  stored_header(w, StoredKind::queued);
+  w.string(entry.publisher.origin);
+  w.u64(entry.publisher.seq);
+  write_delivery(w, entry.delivery, clocks.now, &clocks);
+  return w.take();
+}
+
+QueueEntry decode_queued(std::span<const uint8_t> bytes, Clocks clocks) {
+  Reader r(bytes);
+  stored_header(r, StoredKind::queued);
+  QueueEntry entry;
+  entry.publisher.origin = r.string();
+  entry.publisher.seq = r.u64();
+  entry.delivery = read_delivery(r, clocks.now, &clocks);
+  r.finish();
+  return entry;
 }
 
 }  // namespace lir::cluster
