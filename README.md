@@ -127,7 +127,7 @@ would.
 ### Build
 
 A C++20 compiler, CMake 3.24 or later, Boost 1.88 (Asio and Beast), OpenSSL 3, and
-GoogleTest for the tests. Dannan is fetched from `../dannan` at the pinned release (0.4.0),
+GoogleTest for the tests. Dannan is fetched from `../dannan` at the pinned release (0.5.6),
 so clone it beside this repository; building Dannan needs yaml-cpp.
 
 ```
