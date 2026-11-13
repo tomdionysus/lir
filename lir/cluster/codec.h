@@ -77,4 +77,45 @@ struct SharedDelivery {
 Bytes encode_shared(const SharedDelivery& delivery, TimePoint now);
 SharedDelivery decode_shared(std::span<const uint8_t> bytes, TimePoint now);
 
+// What Lir keeps in Dagda's logs (step 5 design, "The mapping"), under a
+// format number and kind of their own. These outlive the node and process
+// that wrote them, and a steady clock does not survive a restart, so an
+// expiry is kept as wall-clock time: `Clocks` pairs the steady time a
+// message is decided by with the wall clock, read at the same moment.
+inline constexpr uint8_t stored_format = 1;
+
+struct Clocks {
+  TimePoint now;
+  uint64_t wall_ms = 0;
+};
+
+// A message's identity: the publishing node and its sequence (sequence.h).
+struct Dot {
+  std::string origin;
+  uint64_t seq = 0;
+  auto operator<=>(const Dot&) const = default;
+};
+
+// A QoS 1 or 2 message in its topic shard's inflight log, appended under the
+// publishing node's dot before PUBACK. For QoS 2 the publishing client's
+// packet id is recorded with it, so a resend after that node's death is
+// known for what it is.
+struct InflightEntry {
+  broker::Message message;
+  std::optional<uint16_t> packet_id;
+};
+Bytes encode_inflight(const InflightEntry& entry, Clocks clocks);
+InflightEntry decode_inflight(std::span<const uint8_t> bytes, Clocks clocks);
+
+// A delivery held for an offline session in its session shard's queue log.
+// It is appended under the holding node's own dot, since a log refuses a dot
+// whose origin is not the appender; the publisher's dot rides here, for the
+// session's dedup.
+struct QueueEntry {
+  Dot publisher;
+  broker::Delivery delivery;
+};
+Bytes encode_queued(const QueueEntry& entry, Clocks clocks);
+QueueEntry decode_queued(std::span<const uint8_t> bytes, Clocks clocks);
+
 }  // namespace lir::cluster

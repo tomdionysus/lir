@@ -70,6 +70,32 @@ TEST(Shard, CountChecked) {
   EXPECT_THROW(shard_of("a", 0, 65537), std::invalid_argument);
 }
 
+// A session's shard (plan 103): SHA-256("lir-sess:" || client id) mod S,
+// the first eight bytes of the digest big-endian, as a topic's is under its
+// own salt.
+TEST(Shard, ASessionsShardIsItsClientIdHashedUnderItsOwnSalt) {
+  for (const std::string id : {"client-1", "", "lir-0f3a", "a much longer client identifier than most"}) {
+    dannan::identity::Sha256Hasher hasher;
+    const std::string salted = "lir-sess:" + id;
+    hasher.update({reinterpret_cast<const uint8_t*>(salted.data()), salted.size()});
+    const auto digest = hasher.finish();
+    uint64_t value = 0;
+    for (size_t i = 0; i < 8; ++i) value = (value << 8) | digest.bytes[i];
+    EXPECT_EQ(session_shard_of(id, 256), static_cast<ShardId>(value % 256)) << id;
+  }
+}
+
+TEST(Shard, SessionShardsSpreadAndStayInRange) {
+  std::set<ShardId> seen;
+  for (int i = 0; i < 2000; ++i) {
+    const auto s = session_shard_of("client-" + std::to_string(i), 256);
+    EXPECT_LT(s, 256);
+    seen.insert(s);
+  }
+  EXPECT_EQ(seen.size(), 256u);
+  EXPECT_THROW(session_shard_of("a", 0), std::invalid_argument);
+}
+
 TEST(Shard, PlacementKeyNamesTheShard) {
   EXPECT_NE(placement_key(1), placement_key(2));
   EXPECT_EQ(placement_key(258).back(), 2);
