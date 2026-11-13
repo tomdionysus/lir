@@ -65,7 +65,11 @@ second is the lease records kept in the session space.
    session under its receive maximum, S delivers and acks E only when the
    client has acknowledged (PUBACK, or PUBCOMP for QoS 2). For an offline
    session, or one at its receive maximum, S appends the delivery to the
-   session-queue log at Replicated and acks E once it is durable. Shared
+   session-queue log at Replicated and acks E once it is durable. The queue
+   entry is under S's own dot `(S, seq)`, since a log refuses an entry whose
+   dot is not the appender's (Dagda, 2026-11-13); the publisher's dot rides
+   in its bytes for the per-session dedup. S appends in the order it
+   receives, which `lir.seq` keeps per origin, so per-origin order holds. Shared
    groups take one member, as today.
 5. **Ack and retire.** E records each node's ack as `Logs::ack` with S's
    node id as the stage bytes. When every target node has acked, E retires
@@ -176,18 +180,22 @@ kept.
 
 ## Questions
 
-For Dagda:
-1. Can a node outside a log's replica set append to it, forwarded to the
-   replicas and group-committed there with the replicas' other appends? The
-   publishing node is rarely a holder of the topic's shard. The draft forwards
-   reads but says nothing of appends.
-2. Is `Logs::scan` cheap enough to run on every lease change? A node leaving
-   moves about 3/N of the shards' leases at once.
-3. Can a `watch_keys` subscription cover all of a family of spaces (every
-   `lir/retained/<n>`) in one call, rather than 256?
-4. Is the dot's origin Dagda's or the owner's? Lir's origin is the Dannan
-   node id and seq its own counter. The log must order by them (R4) without
-   assigning them.
+Answered by Dagda, 2026-11-13 (its design's log section and measurement):
+1. Any node may append to a log. The appender sends straight to the log's k
+   replicas, which group-commit with their tick's other appends; the
+   evidence names each replica that synced. The PUBACK path is one round
+   plus the replicas' sync.
+2. `Logs::scan` reads only live entries, from an in-memory index on each
+   replica. A lease change moving a third of the shards, with each scan
+   timed, is in the measurement.
+3. One `watch_keys` subscription covers a family by name prefix
+   (`lir/retained/`), on Dannan's prefix-subscribed channels.
+4. The dot is the owner's, taken as given and ordered by (R4); a repeated dot
+   is the same entry. A replica refuses an entry whose dot origin is not the
+   appending node, hence the queue entry's own dot (QoS path, point 4).
+   Open: that acks and retires on another origin's entries pass (the lease
+   holder's on a dead node's entries, and every target node's acks), asked
+   of Dagda the same day.
 
 Answered by Tom, 2026-11-13:
 5. Point 4 of the QoS path: an online session acks from memory, and an
