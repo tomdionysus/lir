@@ -672,3 +672,27 @@ tests passed three runs in a row.
   retires may name any origin's dots, and Lir restricts retiring itself).
 - README status brought up to date, with the QoS 2 split limit stated.
 - `develop` pushed to `origin` at Tom's word (its first push there).
+
+## 2026-11-13: Dannan 0.6.0, and step 5's groundwork
+
+Gate: `lir_tests` 323 passed, 0 failed, on Dannan 0.6.0 (Release, macOS,
+warnings as errors, no warnings); the cluster, process and shared-group
+tests passed three runs in a row. 16 new: 2 shard, 6 stored entries, 8
+sequence blocks.
+
+- Repinned to Dannan 0.6.0, the first with the ABI promise and the minor
+  Dagda 0.1.5 builds on; no source changed.
+- `shard::session_shard_of`: SHA-256("lir-sess:" || client id) mod S.
+- `cluster::SequenceBlocks` over a `SequenceStore` seam: seq handed out from
+  blocks whose upper bound is durable first, the next block reserved at half,
+  one reservation in flight, nothing handed out past the durable bound, a
+  restart starting at the bound, completions posted.
+- `encode_inflight`/`encode_queued` and their decoders: Lir's log entries
+  under their own format and kind. Found while writing them: the wire codec
+  sends an expiry as what is left, which is wrong for anything that outlives
+  the process, so a stored expiry is wall-clock time (`Clocks`).
+- Two test cases first failed because a drained `io_context` stops itself;
+  the tests restart it (`drain`). Test code only.
+- A first GCC build on corvus-jupiter was started before the Macha session's
+  note that the machine was Dagda's, and stopped within minutes; both
+  sessions were told.
