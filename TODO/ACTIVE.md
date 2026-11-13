@@ -21,8 +21,12 @@ Lir's work while they build, all of it chosen by the maintainer on 2026-11-13:
 1. Step 5's design rewritten onto the ruled nouns, with its tests written
    first. No code against an unfrozen tag until (3).
 2. ~~Repin to Dannan 0.5.6~~ Done 2026-11-13, ahead of Dagda 0.1.5 at
-   The maintainer's word (Lir links no Dagda yet; 0.5 is Dagda 0.1.5's minor):
-   `feature/dannan-0.5`, gate 307 (`COMPLETED.md`).
+   The maintainer's word (Lir links no Dagda yet): `feature/dannan-0.5`, gate 307
+   (`COMPLETED.md`). Then, by the maintainer's ruling relayed by Dannan the same
+   day, the ABI promise ships as Dannan 0.6.0 (`libdannan.so.0.6`), since
+   0.5.4 had already changed 0.5's ABI, and Dagda 0.1.5 will be on 0.6.0.
+   So Lir repins once more, to 0.6.0, when it is tagged. The interface work
+   (deferred reply, partition reading, the listener) is Dannan 0.7.0.
 2b. When Dannan lands its partition reading (the maintainer, 2026-11-13): wire it
    into the interim, so a node on a minority side (an even split is one)
    degrades or refuses QoS 1/2 per its setting, ahead of Dagda.
@@ -179,6 +183,8 @@ written new; Macha has no event system to extract (`COMPLETED.md`,
   the plugin's `TokenVerifier` (the maintainer, 2026-11-04); the tokens have landed (O7).
 - Dannan: the partition reading (Lir's minority behaviour), the shared
   listener (optional for Lir until reviewed), the small-message bench.
-  Lir is on `0.5.6`, Dagda 0.1.5's minor.
+  Lir is on `0.5.6`; Dagda 0.1.5 will be on `0.6.0`, the first minor
+  with the ABI promise, and Lir follows it. The partition reading comes in
+  Dannan `0.7.0`.
 - Lugh: the grammar of scopes in its tokens.
 - OASIS: an approved MQTT-SN 2.0 Committee Specification.
