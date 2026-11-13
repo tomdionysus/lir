@@ -622,3 +622,30 @@ row, the cluster tests five.
   bound token is checked too.
 - Not wired into `lir-node`: there is no verifier to run until the
   linking question is answered.
+
+## 2026-11-13: Dannan and Dagda for all three systems
+
+Gate: `lir_tests` 307, unchanged (no code changed; not rerun).
+
+- The maintainer ruled that Dannan and Dagda serve Macha, Lugh and Lir as first-class
+  users. Lir wrote its needs of both as behaviour and numbers
+  (`TODO/2026-11-13-lir-needs.md`: Dannan N1 to N6, Dagda G1 to G9),
+  answered Dagda's five questions from Lir's plan files (sizes there are
+  the Lir session's estimates), and reviewed Dagda's design (R1 to R11).
+  Every point landed in `../dagda/TODO/2026-11-13-three-systems-design.md`
+  before the maintainer ruled; Lugh's review went in beside it.
+- Found while answering: a second hot path beside the inflight log
+  (each QoS 1/2 delivery changes a session's state, and offline sessions
+  queue up to 10,000 messages); the stack document's "2-4 commits a shard"
+  assumes a 250-500 ms batch, where a 10-20 ms batch gives about 27-32;
+  Dagda's per-space adverts against Dannan's 64-advert cap; and a union
+  merge that would bring back a removed QoS 2 message after a split
+  (closed by tombstones for 10 minutes, a stated limit).
+- The rulings are under Decisions, 2026-11-13: the log noun, the
+  register map, per-space placement and k, contract v2 at slice 4, the
+  10-minute QoS 2 limit, PUBACK p99 under 50 ms, Dannan's ABI promise, the
+  partition reading (even is a minority), and a shared listener later.
+- Lugh agreed that `lugh_client` hides where its signing keys come from
+  and keeps HTTPS JWKS for a node outside Lugh's cluster.
+- The Macha session confirmed that measuring the head commit rate early
+  costs its port nothing (stage one does not touch heads).
