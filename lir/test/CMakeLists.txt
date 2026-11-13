@@ -13,6 +13,8 @@ add_executable(lir_tests
   cluster_balance_test.cpp
   cluster_test.cpp
   cluster_codec_test.cpp
+  cluster_sequence_test.cpp
+  cluster_stored_test.cpp
   edge_test.cpp
   http_test.cpp
   mqtt_packet_test.cpp
