@@ -193,9 +193,11 @@ Answered by Dagda, 2026-11-13 (its design's log section and measurement):
 4. The dot is the owner's, taken as given and ordered by (R4); a repeated dot
    is the same entry. A replica refuses an entry whose dot origin is not the
    appending node, hence the queue entry's own dot (QoS path, point 4).
-   Open: that acks and retires on another origin's entries pass (the lease
-   holder's on a dead node's entries, and every target node's acks), asked
-   of Dagda the same day.
+   Acks and retires pass from any node, subject only to the scope check;
+   an ack is identified by its writer, the dot it names and its stage
+   (Dagda, 2026-11-13). Who may retire is Lir's rule, kept on Lir's side:
+   only the entry's origin, or the shard's lease holder when the origin has
+   left the roster.
 
 Answered by Tom, 2026-11-13:
 5. Point 4 of the QoS path: an online session acks from memory, and an
