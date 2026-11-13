@@ -338,14 +338,28 @@ Conventions, shared with the stack: [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Status
 
 In development; no release is cut yet. The first, 0.1.0, follows persistence on Dagda.
-Built and tested (295 tests): all of MQTT 3.1, 3.1.1 and 5.0 on one node, over TCP, TLS,
+Built and tested (307 tests): all of MQTT 3.1, 3.1.1 and 5.0 on one node, over TCP, TLS,
 WebSocket and WebSocket over TLS; the cluster on Dannan with sessions that move and are mirrored to standbys,
 and Server Reference to balance new clients; system topics; HTTP and HTTPS publish and SSE; topic scopes, with
 anonymous clients refused by default; client certificates; limits and a memory budget shared with Dannan's
-ledger; the rules engine; MQTT-SN 1.2 over UDP and DTLS. The cluster is an interim one until Dagda:
-retained messages are held in memory on every node and a QoS 1 or 2 publish is
-acknowledged on acceptance, not on replication. Next: persistence on Dagda and the Lugh
-authenticator. MQTT-SN 2.0 follows an approved OASIS specification.
+ledger; the rules engine; MQTT-SN 1.2 over UDP and DTLS; the Lugh token authenticator's own checks
+(audience, binding, expiry and topic scopes), waiting for Lugh's verifier to be wired in.
+
+The cluster is an interim one until Dagda: retained messages are held in memory on every
+node, sessions are mirrored in memory, and a QoS 1 or 2 publish is acknowledged on
+acceptance, not on replication.
+
+Next, persistence on Dagda (`TODO/2026-11-13-step5-design.md`). A QoS 1 or 2 publish is
+written to its shard's replicated log and acknowledged once two replicas hold it, with
+p99 under 50 ms as the target. Sessions and retained messages move to replicated spaces.
+Fan-out stays direct between nodes. On the minority side of a partition a node degrades
+to one durable copy by default, or refuses, as configured.
+
+One limit will be stated, not hidden: a log keeps the ids of finished messages for 10
+minutes, Lir's QoS 2 deduplication window, so a partition longer than that can deliver a
+QoS 2 message twice. QoS 1 is at least once, as MQTT defines it.
+
+MQTT-SN 2.0 follows an approved OASIS specification.
 
 ## Licence
 
