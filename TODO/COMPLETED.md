@@ -1046,3 +1046,40 @@ release` run on node-c (warnings as errors, no warnings,
   `0bb6be7`). Test: `TokenAuthenticatorTest.TheExpiryIsReadOnTheWallClockAndKeptOnTheSteadyOne`.
 - Reviewed Dannan's shared listener design (P3); Lir's requests all taken
   in (`ACTIVE.md`, item 3).
+
+## 2026-11-14, afternoon: the shutdown DISCONNECT and the Lugh plugin
+
+Gate, one tree with both, on node-c (warnings as errors, no
+warnings, `throttled=0x0`): `tools/ci.sh release` 337 passed, 0 failed;
+`tools/ci.sh lugh` (the plugin on) 343 passed, 0 failed. A first run failed
+one test, `WebSocketTest.StopClosesWebSocketClients`, written before a
+stopping node told 5.0 clients why: it read the new DISCONNECT as the
+connection still open. Its expectation now follows the design
+(`867de45`); the run was repeated for that fix and nothing else. Merged to
+`develop` as `6fc0cc5` and `9452fd0`. `develop` pushed to `b5c9a65` at
+The maintainer's word (the maintainer, 2026-11-14), the hosted CI's first run.
+
+- The shutdown DISCONNECT (`039ac36`, `867de45`): `Broker::shutting_down()`
+  ends every link, a 5.0 client told 0x8B (Server shutting down) first;
+  `Edge::stop` calls it, waits for each connection's clean end within the
+  2 s bound, then closes what is left at once. Wills and sessions go as
+  before. Tests: `BrokerTest.ShuttingDownEndsEveryConnectionAndTellsA5ClientWhy`,
+  `EdgeTest.StoppingTellsA5ClientTheServerIsShuttingDown`. A stop can now
+  take up to the clean-end bound.
+- The Lugh plugin (`42db13f`): `LughVerifier`, Lir's `TokenVerifier` over
+  `lugh::client::Verifier`, `x5t` decoded with Lugh's base64url and refused
+  unless a SHA-256 thumbprint; `LughPlugin` owning the HTTPS client, the
+  Verifier and the key source; `LIR_BUILD_LUGH` fetching `lugh_client` at
+  `2b60b52` on Lir's Dannan, linked into `liblir` whole with Lir's own
+  Boost.JSON definitions left out; `lir-node --lugh-issuer --lugh-ca`;
+  `tools/ci.sh lugh`. Tests (real tokens, signed by Lugh's `jws_sign`):
+  `LughVerifierTest.AGenuineTokenGivesWhatLirReads`,
+  `.ACertificateBoundTokenCarriesItsThumbprint`,
+  `.AThumbprintThatIsNotSHA256IsRefused`, `.AKeyBoundTokenIsMarkedBound`,
+  `.AForgedTokenSaysWhy`, `.AClientSignsInWithALughToken`.
+- Reviewed Dannan's P3 code (`68c3cc5`): five findings, all fixed in
+  `0940e73` (`ACTIVE.md`, item 3).
+- Recorded: The maintainer's answers (push develop, tag Dagda 0.2.0, yes to P3's name
+  and phasing, fuzzing at the release); Dagda's pause for Macha's port;
+  node-d a claim host only; the board the only channel for the
+  build nodes.

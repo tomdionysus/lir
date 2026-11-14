@@ -5,12 +5,13 @@ file carried until today is there, "Archived from ACTIVE.md, 2026-11-14".
 
 ## Resume here
 
-**State.** `develop` at `8d78c95` (the token's wall-clock expiry merged),
-not pushed (push only at the maintainer's word). Gate `lir_tests` 335, 0 failed, by
-one `tools/ci.sh release` run on node-c (arm64, Debian 13, GCC 14,
-Boost 1.83, Ninja, Release, warnings as errors, no warnings, never
-throttled). Dannan pinned at
-`0.7.0`. Unmerged: `feature/fuzz-targets`, for the release gate.
+**State.** `develop` at `9452fd0` (the shutdown DISCONNECT and the Lugh
+plugin merged); pushed to `b5c9a65` at the maintainer's word, the rest local. Gate on
+node-c (arm64, Debian 13, GCC 14, Boost 1.83, Ninja, Release,
+warnings as errors, no warnings, never throttled): `tools/ci.sh release`
+337 passed, `tools/ci.sh lugh` (the plugin on) 343 passed. Dannan pinned at
+`0.7.0`, Lugh at `2b60b52` (plugin only). Unmerged: `feature/fuzz-targets`,
+for the release gate.
 
 **How work is done now (the maintainer, 2026-11-14):**
 - **No builds or test runs on the workstation.** Every build is on the shared arm64
@@ -59,8 +60,10 @@ throttled). Dannan pinned at
    first) are written when the tag lands. The notify channel per space and
    `watch_keys` are slices 2 and 3. Dagda's develop is on Dannan 0.7.0
    since `f31c52e` (proven on node-a, 1062 passed, 3 opt-in
-   skipped), so slice 1's tag (0.2.0 recommended, the maintainer's to cut) will be
-   linkable.
+   skipped), so slice 1's tag will be linkable. The maintainer said tag 0.2.0, then
+   ruled (2026-11-14 evening) that Macha's port to Dagda comes first: all
+   slice work is paused until Macha runs on Dagda as well as on its own
+   store, and 0.2.0 stays local and unpushed until the maintainer says. Step 5 waits.
 3. **Dannan's shared listener** (P3, `dannan::listen`): the design
    (`../dannan/TODO/2026-11-14-p3-public-listener.md`) is reviewed
    (2026-11-14): the stream side in Dannan 0.8.0, DTLS in 0.9.0, Lir's
@@ -73,15 +76,25 @@ throttled). Dannan pinned at
    in two steps, so Lir can end its clients first; plain UDP, DTLS,
    cookies, client certificates and a broadcast send on the datagram
    side. Dannan took all of them into the design (`e6bed42`; the stop is
-   `stop_accepting()` then `close_all()`); nothing is built until the maintainer
-   answers its two questions (the name `dannan::listen`, the phasing;
-   Lir's view: yes to both). When 0.8.0 lands: move the TCP, TLS, WebSocket and HTTP
-   listeners onto it and delete Lir's own. Lir's own finding from the
-   review: a stopping node never sends MQTT 5 DISCONNECT 0x8B (server
-   shutting down); add it with the two-step stop.
-4. **The Lugh plugin** when Lugh's `lugh_client` (P10) lands whole (Lugh
-   started it 2026-11-14 and names the commit to pin;
-   `../lugh/TODO/2026-11-14-p10-plan.md`). The maintainer's rulings (2026-11-14): the
+   `stop_accepting()` then `close_all()`). The maintainer answered yes to the name and
+   the phasing. Lir reviewed the code (`68c3cc5`); all five findings fixed
+   in `0940e73` and merged to Dannan's develop (`9973686`): `close()`
+   drains `send()`'s queue first; `dannan/listen/beast.h` has Beast's
+   teardown and `beast_close_socket`; `strand_per_stream = false` hands
+   streams up on Lir's strand; `close_all(executor, done)`; the read keeps
+   the handler's associators. Over TLS, `close()` cancels a pending read
+   (it ends `operation_aborted`, a normal end for Lir's read loop) before
+   close_notify. Ships in 0.8.0, which the maintainer holds until Dannan's P5
+   benchmarks. When it is tagged: move the TCP, TLS, WebSocket and HTTP
+   listeners onto it and delete Lir's own. (Lir's stop already sends MQTT 5
+   DISCONNECT 0x8B, since `6fc0cc5`.)
+4. **The Lugh plugin.** Done and merged (`9452fd0`; `lir/auth/lugh.h`,
+   `LIR_BUILD_LUGH`, `--lugh-issuer`, `--lugh-ca`, `tools/ci.sh lugh`),
+   pinned at Lugh's develop `2b60b52` (P10.0 to P10.3c, which the maintainer had
+   merged so Lir could start). Next: repin when Lugh names a later
+   commit or tags a release, and add `tools/ci.sh lugh` to the hosted CI
+   once Lugh's repository can be fetched there. The record of how it was
+   shaped (`../lugh/TODO/2026-11-14-p10-plan.md`): The maintainer's rulings (2026-11-14): the
    plugin is optional and Lir builds without Lugh when it is off; it is a
    few-line adapter, `lir::auth::TokenVerifier` over
    `lugh::client::Verifier(issuers, WallClock)`: `set_keys(issuer, jwks)`
