@@ -422,12 +422,13 @@ TEST_F(ClusterTest, ABusyNodeSendsNewClientsToAQuieterOne) {
       held.push_back(std::move(client));
     }
     // Give b's and c's adverts time to be heard.
-    if (i == 0)
+    if (i == 0) {
       ASSERT_TRUE(eventually([&] {
         for (const auto& record : a->node->context().nodes().active())
           if (record.id == c->id() && record.advert("lir.endpoints") && record.advert("lir.connections")) return true;
         return false;
       }));
+    }
   }
   ASSERT_TRUE(reference);
   EXPECT_TRUE(quieter.contains(*reference)) << *reference;
@@ -441,16 +442,16 @@ TEST_F(ClusterTest, HeldMessagesAreLeasedInTheNodesLedger) {
   leases.start();
   // The leases follow the bytes the broker holds, a chunk per MiB begun.
   const auto follows = [&] {
-    const auto held = a->on_broker<uint64_t>([](broker::Broker& b) { return b.held_bytes(); });
+    const auto held = a->on_broker<uint64_t>([](broker::Broker& br) { return br.held_bytes(); });
     return leases.chunks() == (held + (1u << 20) - 1) / (1u << 20);
   };
   const auto set = [&](int i, size_t bytes) {
-    a->on_broker<bool>([i, bytes](broker::Broker& b) {
+    a->on_broker<bool>([i, bytes](broker::Broker& br) {
       broker::Message m;
       m.topic = "big/" + std::to_string(i);
       m.payload = broker::Bytes(bytes, 'x');
       m.retain = true;
-      b.publish(std::move(m));
+      br.publish(std::move(m));
       return true;
     });
   };
