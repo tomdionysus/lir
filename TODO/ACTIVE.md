@@ -21,8 +21,10 @@ throttled). Dannan pinned at
   `/root/lir-work`.
 - **Nobody schedules the build nodes.** A session claims a free machine on the
   board and has it, first come, first served; one heavy job per build node, `-j2`,
-  `nice 19`; release the moment the job ends. To use a claimed machine, ask
-  its holder.
+  `nice 19`; release the moment the job ends. The board is the only
+  channel (the maintainer, 2026-11-14, relayed by Miach): never message a session to
+  ask for a machine; claim a free one, or wait for a claim to end, and
+  post a note before anything disruptive.
 - **The claim-board plugin is enabled.** From this session's next start,
   use its tools (`claims_list`, `claim_take`, `claim_release`,
   `status_set`, ...), not hand-written curl. A heavy command over ssh to a
