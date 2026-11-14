@@ -737,3 +737,19 @@ and claiming the machine on the board first.
   `HttpConfig::maximum_retained_bytes` (4 MiB) it is refused whole with 413.
 - `message_json` is the one JSON form of a delivered message, shared by the
   event stream and the snapshot.
+
+## 2026-11-14: hosted CI, fuzz targets, and the board's rule
+
+- Hosted CI as the stack has it, copied from Dannan's and renamed:
+  `tools/ci.sh` (check, release, clang, asan, tsan, coverage), the CI and
+  CodeQL workflows, Dependabot, Codecov and the README's badges. Dannan is
+  fetched from its public repository where there is no sibling checkout.
+  `tools/ci.sh check` passes on the whole tree; the build steps are not yet
+  run anywhere.
+- Four fuzz targets written (`feature/fuzz-targets`), not yet built: no build node
+  has clang yet.
+- The standing cluster upgraded to the build with `GET /retained`; claims
+  and statuses survived the rolling restart. The maintainer's rule that nobody
+  schedules the build nodes posted on the board (`stack/rules/scheduling`), in the
+  board's README, and to every session sharing the build nodes. Claims moved to one
+  topic per session per machine.

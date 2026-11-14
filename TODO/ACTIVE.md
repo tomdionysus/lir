@@ -45,6 +45,14 @@ Lir's work while they build, all of it chosen by the maintainer on 2026-11-13:
    `stack/pis/<host>/claim` and status on `stack/sessions/<name>/status`.
    Upgrade it with `deploy/test-cluster/install.sh` after each Lir change
    worth trying on real machines.
+2f. ~~Hosted CI~~ Done 2026-11-14 (`tools/ci.sh`, `.github/`, `codecov.yml`,
+   badges): check, release, clang, asan, tsan and coverage on Debian 13
+   x86-64 and arm64, and macOS. `tools/ci.sh check` passes; the build steps
+   are first proven on a build node when one is free (`tools/ci.sh release`).
+2g. Fuzz targets for every parser of untrusted bytes, on
+   `feature/fuzz-targets` (MQTT-SN, the HTTP target, the cluster codec, the
+   stored entries), unmerged until built with clang on a build node and each run
+   for a bounded time.
 2e. The claim board plugin, specified at the maintainer's request for another session
    to implement (`../coordination/TODO/2026-11-14-claim-board-plugin.md`).
    Lir owes it two things:
@@ -95,6 +103,13 @@ written new; Macha has no event system to extract (`COMPLETED.md`,
 
 ## Decisions
 
+- (2026-11-14, the maintainer) No builds or test runs on the workstation: every Lir build is
+  on the shared build nodes. Nobody schedules the build nodes: a session claims a free
+  machine on the board (`deploy/test-cluster/README.md`) and has it, first
+  come, first served; one heavy job per build node. Hosted CI is added, as the
+  stack has it; it runs only when the maintainer pushes. Split joins (nodes added
+  during a partition can give two majorities) are a stated limit in
+  Dannan's partition reading, not prevented.
 - (2026-11-13, the maintainer) "You all need to discuss your needs and ensure the
   the more fundamental projects, namely Dannan and Dagda, support Macha,
   Lugh and Lir as first class citizens. This was the purpose of splitting
