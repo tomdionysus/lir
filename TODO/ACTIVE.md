@@ -98,10 +98,11 @@ for the release gate.
    Dannan 0.7.0: `AccessToken::x5t` comes decoded, so the adapter copies
    it, and the tests sign with Lugh's public `lugh/client/testing.h`;
    nothing internal to Lugh is included any more. Next: repin at Lugh's
-   first release; and add `tools/ci.sh lugh` to the hosted CI
-   once Lugh's repository can be fetched there (it is private, checked
-   2026-11-14: it needs a read token as a secret, Tom's call; until then
-   the plugin's gate is `tools/ci.sh lugh` on a Pi). The record of how it was
+   first release (Tom paused Lugh after P10). The hosted CI has a `lugh`
+   job (Tom said yes, 2026-11-14): it checks out Lugh's private develop
+   with the repository secret `LUGH_READ_TOKEN` and runs `tools/ci.sh
+   lugh`; without the secret it says so and builds nothing. Tom adds the
+   secret. The record of how it was
    shaped (`../lugh/TODO/2026-11-14-p10-plan.md`): Tom's rulings (2026-11-14): the
    plugin is optional and Lir builds without Lugh when it is off; it is a
    few-line adapter, `lir::auth::TokenVerifier` over
