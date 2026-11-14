@@ -97,7 +97,14 @@ for the release gate.
    `public_jwk` (`lugh/client/jose.h`) for a test-support header Lugh will
    publish under `lugh/include`, and the adapter's
    `lugh::encoding::base64url_decode` (`lugh/core/encoding.h`) for an
-   `x5t` Lugh decodes itself, or a public decoder (asked 2026-11-14); and add `tools/ci.sh lugh` to the hosted CI
+   `x5t` Lugh decodes itself. Lugh agreed (2026-11-14): `AccessToken::x5t`
+   becomes `std::optional<std::array<uint8_t, 32>>`, a malformed one
+   refused by Lugh, so the adapter copies it; and
+   `lugh/include/lugh/client/testing.h` (`lugh::client::testing`) gives a
+   token signed as an issuer under a kid and a JWKS for `set_keys`. Both
+   land before the P10 commit, so Lir changes once, at the repin. The
+   test `AThumbprintThatIsNotSHA256IsRefused` stays, then checking
+   Lugh's refusal; and add `tools/ci.sh lugh` to the hosted CI
    once Lugh's repository can be fetched there. The record of how it was
    shaped (`../lugh/TODO/2026-11-14-p10-plan.md`): The maintainer's rulings (2026-11-14): the
    plugin is optional and Lir builds without Lugh when it is off; it is a
