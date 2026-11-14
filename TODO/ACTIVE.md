@@ -55,8 +55,16 @@ warnings as errors, no warnings). Dannan pinned at `0.6.0`. Unmerged:
    freezes at slice 4. Dagda 0.1.5 builds on Dannan 0.6.0, as Lir does.
 4. **Dannan's shared listener** (0.7.0, later in it): review it, then move
    Lir's listeners onto it and delete Lir's own.
-5. **The Lugh plugin** when Lugh's `lugh_client` (P10) lands: it is the
-   `TokenVerifier`.
+5. **The Lugh plugin** when Lugh's `lugh_client` (P10) lands whole (Lugh
+   started it 2026-11-14 and names the commit to pin;
+   `../lugh/TODO/2026-11-14-p10-plan.md`). The maintainer's rulings (2026-11-14): the
+   plugin is optional and Lir builds without Lugh when it is off; it is a
+   few-line adapter, `lir::auth::TokenVerifier` over
+   `lugh::client::Verifier` (synchronous `verify(token, now)` from cached
+   keys: subject, audiences, scopes, exp, `cnf.jkt`, `cnf.x5t#S256`, or a
+   reason); `lugh_client` links Dannan, OpenSSL and Boost; Lir pins a
+   commit on Lugh's develop by FetchContent with `LUGH_BUILD_NODE=OFF`
+   until Lugh releases. Its Dannan must be the one Lir pins.
 6. **MQTT-SN 2.0** when OASIS approves a Committee Specification.
 
 **The standing cluster** on the three build nodes (`deploy/test-cluster/`): one
