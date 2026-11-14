@@ -15,7 +15,8 @@
 #   tools/ci.sh tsan       ThreadSanitizer, with lir/test/tsan-suppressions.txt
 #   tools/ci.sh coverage   a coverage build's tests; lcov report build-ci/coverage.info
 #
-# Builds go under build-ci/ (LIR_CI_OUT to move it). Dannan is fetched at the
+# Builds go under build-ci/ (LIR_CI_OUT to move it), one job per CPU
+# (LIR_CI_JOBS to set it: 2 on the shared Pis). Dannan is fetched at the
 # pinned tag from the sibling checkout when there is one, else from its public
 # repository (LIR_DANNAN_REPOSITORY to name another). Needs g++ cmake
 # ninja-build libboost-dev libssl-dev libyaml-cpp-dev libgtest-dev openssl
@@ -25,7 +26,7 @@ set -eu
 
 top=$(cd "$(dirname "$0")/.." && pwd)
 out=${LIR_CI_OUT:-$top/build-ci}
-jobs=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+jobs=${LIR_CI_JOBS:-$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)}
 step=${1:-}
 if [ -z "${LIR_DANNAN_REPOSITORY:-}" ]; then
   if [ -d "$top/../dannan/.git" ]; then
