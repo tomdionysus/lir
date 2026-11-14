@@ -189,8 +189,16 @@ Not reopened without asking Tom.
 - **Dagda:** slices 0 to 4 of the three-systems design (0.1.5 on Dannan
   0.6.0, the measurement, node-local spaces, replicated spaces with per-space
   k and the advert aggregate, the merges and leases, the log), contract v2
-  at slice 4. Measured so far, on the Mac: the log with per-node grouping
-  passes at p99 21 to 24 ms at 8,000 a second; the Pi run is the verdict.
+  at slice 4. Slice 0's verdict, on corvus-jupiter (Dagda, 2026-11-14):
+  the log passes the PUBACK mark on a real device sync. Three processes,
+  k = 2, 8,000 a second from outside the replica set: p99 12.5 ms at a
+  10 ms tick, 23.5 ms at 20 ms, the same with 256 logs on one shared
+  segment, nothing refused; p99 is about the tick plus 2.5 ms, so 50 ms
+  holds to a tick of about 40 ms. A segment per log fails; the shared
+  segment stands. A new lease holder reads a 5 s backlog (13,462 entries)
+  in about 11 ms. Not yet measured: the notify channel's cost per space.
+  Dagda's record: its `TODO/2026-11-13-three-systems-design.md`, "What
+  slice 0 has measured (the Pi)".
 - **Dannan:** `0.7.0`: the deferred reply, the partition reading, then the
   shared listener; the small-message bench.
 - **Lugh:** `lugh_client` (P10); the grammar of scopes in its tokens.
