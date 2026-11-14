@@ -27,6 +27,16 @@ find_package(Boost 1.83 CONFIG REQUIRED COMPONENTS headers)
 find_package(OpenSSL 3 REQUIRED COMPONENTS Crypto SSL)
 find_package(Threads REQUIRED)
 
+# Fuzzing instruments everything the targets reach, Dannan's codec
+# included: libFuzzer needs coverage from the parsers, not the harness.
+if(LIR_BUILD_FUZZING)
+  if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    message(FATAL_ERROR "LIR_BUILD_FUZZING needs clang")
+  endif()
+  add_compile_options(-fsanitize=fuzzer-no-link,address,undefined -fno-omit-frame-pointer)
+  add_link_options(-fsanitize=address,undefined)
+endif()
+
 # Dannan, the network layer, at its tag, cloned from the sibling checkout
 # into the build tree, so building Lir never touches ../dannan.
 set(LIR_DANNAN_REPOSITORY "${CMAKE_CURRENT_SOURCE_DIR}/../dannan" CACHE PATH "Dannan's repository")
