@@ -31,7 +31,9 @@ machine on this board and has it, first come, first served:
 3. One heavy job per Pi, modest `-j`, `nice 19`: the Pis brown out under
    two.
 4. Release your claim the moment you finish, and keep `until` honest.
-5. To use a machine someone else has claimed, ask that session directly.
+5. The board is the only channel (Tom, 2026-11-14): never message another
+   session to ask for a machine. Wait for its claim to end, or take a free
+   one, and post a note before anything disruptive.
 
 
 Anonymous clients on the lab LAN may publish, retain and subscribe under
