@@ -1025,3 +1025,24 @@ run is also the CI script's first real build on Debian. Merged to
   Tom's rule against wasted runs (recorded in `ACTIVE.md`).
 - Recorded: Dagda's slice 0 verdict on the Pi; Tom's P10 rulings for the
   Lugh plugin; Lugh on Dannan 0.7.0 and building on Lir's Dannan.
+- The standing cluster upgraded to `a559b0a` at Tom's word (03:52Z): every
+  node's `$lir/nodes` reads majority, 3 of 3; the board's claims survived.
+
+## 2026-11-14, morning: a token's exp on the wall clock
+
+Gate: `lir_tests` 335 passed, 0 failed (one new), by one `tools/ci.sh
+release` run on corvus-neptune (warnings as errors, no warnings,
+`throttled=0x0`). Merged to `develop` as `8d78c95`; nothing pushed.
+
+- Found by the Lugh session: `TokenVerifier::verify(token, now)` passed
+  the steady clock, while a token's exp and nbf are wall-clock Unix
+  seconds, so no verifier could check a lifetime and the grant's end was
+  timed on the wrong clock. Now `verify(token)` (the verifier checks nbf
+  and exp on a WallClock of its own), `TokenClaims::expires_unix`, and a
+  `TokenAuthenticator` given a WallClock: it refuses an exp at or before
+  the wall's now (stricter than Lugh's 60 s skew, stated in
+  `lir/auth/tokens.h`) and ends the grant on the steady clock when the
+  time left on the wall runs out, capped at ten years (`3a9cd72`,
+  `0bb6be7`). Test: `TokenAuthenticatorTest.TheExpiryIsReadOnTheWallClockAndKeptOnTheSteadyOne`.
+- Reviewed Dannan's shared listener design (P3); Lir's requests all taken
+  in (`ACTIVE.md`, item 3).
