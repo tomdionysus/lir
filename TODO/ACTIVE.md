@@ -64,7 +64,10 @@ warnings as errors, no warnings). Dannan pinned at `0.6.0`. Unmerged:
    keys: subject, audiences, scopes, exp, `cnf.jkt`, `cnf.x5t#S256`, or a
    reason); `lugh_client` links Dannan, OpenSSL and Boost; Lir pins a
    commit on Lugh's develop by FetchContent with `LUGH_BUILD_NODE=OFF`
-   until Lugh releases. Its Dannan must be the one Lir pins.
+   until Lugh releases. Its Dannan must be the one Lir pins: Lugh is on
+   Dannan 0.7.0 (develop `7b0c717`), uses Lir's `dannan::dannan` when
+   fetched into Lir's build (one Dannan a process), and moves with Lir
+   when Lir moves past 0.7 (tell the Lugh session first).
 6. **MQTT-SN 2.0** when OASIS approves a Committee Specification.
 
 **The standing cluster** on the three build nodes (`deploy/test-cluster/`): one
