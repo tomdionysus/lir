@@ -47,6 +47,13 @@ throttled): the CI script's first real build, proved. Dannan pinned at
    0.6.0: Lir needs a Dagda tag built on 0.7.0 before it links Dagda.
    There the minority choice extends to session and retained commits, and
    `refuse` waits to the deadline as the design says.
+   Slice 1 is proven and on Dagda's develop (`1065b18`, 2026-11-14), not
+   tagged: node-local spaces (`Policy::node_local()`, for the sequence
+   blocks), the change notice (`Heads::watch`, `Heads::changed`), the
+   installed in-process cluster fixture (`dagda::test_fixtures`); contract
+   v2 served beside v1. Its tests (`OnDagda.SeqNeverRepeatsAcrossARestart`
+   first) are written when the tag lands. The notify channel per space and
+   `watch_keys` are slices 2 and 3.
 3. **Dannan's shared listener** (0.7.0, later in it): review it, then move
    Lir's listeners onto it and delete Lir's own.
 4. **The Lugh plugin** when Lugh's `lugh_client` (P10) lands whole (Lugh
