@@ -92,8 +92,13 @@ for the release gate.
 4. **The Lugh plugin.** Done and merged (`9452fd0`; `lir/auth/lugh.h`,
    `LIR_BUILD_LUGH`, `--lugh-issuer`, `--lugh-ca`, `tools/ci.sh lugh`),
    pinned at Lugh's develop `2b60b52` (P10.0 to P10.3c, which Tom had
-   merged so Lir could start). Next: repin when Lugh names a later
-   commit or tags a release, and add `tools/ci.sh lugh` to the hosted CI
+   merged so Lir could start). Next: repin when Lugh names the commit
+   that completes P10 (P10.3d to P10.6), still on Dannan 0.7.0. At the
+   repin, drop Lir's two uses of Lugh internals: the tests' `jws_sign` and
+   `public_jwk` (`lugh/client/jose.h`) for a test-support header Lugh will
+   publish under `lugh/include`, and the adapter's
+   `lugh::encoding::base64url_decode` (`lugh/core/encoding.h`) for an
+   `x5t` Lugh decodes itself, or a public decoder (asked 2026-11-14); and add `tools/ci.sh lugh` to the hosted CI
    once Lugh's repository can be fetched there. The record of how it was
    shaped (`../lugh/TODO/2026-11-14-p10-plan.md`): Tom's rulings (2026-11-14): the
    plugin is optional and Lir builds without Lugh when it is off; it is a
