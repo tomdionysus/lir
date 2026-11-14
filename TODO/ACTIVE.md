@@ -15,7 +15,9 @@ throttled). Dannan pinned at
 **How work is done now (the maintainer, 2026-11-14):**
 - **No builds or test runs on the workstation.** Every build is on the shared arm64
   build servers: node-a 192.0.2.1, node-b 192.0.2.2,
-  node-c 192.0.2.3, root over ssh. Work there goes in
+  node-c 192.0.2.3, root over ssh; and node-d
+  192.0.2.4 (the maintainer, 2026-11-14; 3 GB RAM, so `-j1` for Lir's heavier
+  translation units; a claimable host only, not a cluster node). Work there goes in
   `/root/lir-work`.
 - **Nobody schedules the build nodes.** A session claims a free machine on the
   board and has it, first come, first served; one heavy job per build node, `-j2`,
