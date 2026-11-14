@@ -99,7 +99,8 @@ std::string escaped(const std::string& text) {
 }
 
 std::string lir_json(const std::string& node, size_t connections, size_t sessions, size_t retained_count, const broker::Stats& s, uint64_t held_bytes,
-                     uint64_t memory_budget, broker::Pressure pressure) {
+                     uint64_t memory_budget, broker::Pressure pressure, const std::optional<dannan::membership::Partition>& partition,
+                     broker::Minority minority) {
   std::ostringstream out;
   out << "{\"node\":" << quoted(node) << ",\"version\":" << quoted(kVersion) << ",\"connections\":" << connections << ",\"sessions\":" << sessions
       << ",\"retained\":" << retained_count << ",\"accepted\":" << s.connections_accepted << ",\"refused\":" << s.connections_refused
@@ -111,7 +112,17 @@ std::string lir_json(const std::string& node, size_t connections, size_t session
       << ",\"budget\":" << memory_budget << ",\"pressure\":" << quoted(broker::pressure_name(pressure))
       << ",\"refused_publishes\":" << s.refused_pressure_publishes << ",\"refused_connections\":" << s.refused_pressure_connections
       << "},\"rules\":{\"dropped\":" << s.rules_dropped << ",\"republished\":" << s.rules_republished << ",\"skipped\":" << s.rules_skipped
-      << ",\"too_deep\":" << s.rules_too_deep << ",\"invalid\":" << s.rules_invalid << "}}";
+      << ",\"too_deep\":" << s.rules_too_deep << ",\"invalid\":" << s.rules_invalid << "},\"partition\":{";
+  if (partition) {
+    out << "\"side\":" << (partition->majority ? "\"majority\"" : "\"minority\"") << ",\"members\":" << partition->members
+        << ",\"reachable\":" << partition->reachable << ",\"unreachable\":[";
+    for (size_t i = 0; i < partition->unreachable.size(); ++i) out << (i ? "," : "") << quoted(to_string(partition->unreachable[i]));
+    out << "],";
+  } else {
+    out << "\"side\":\"unknown\",";
+  }
+  out << "\"on_minority\":" << quoted(broker::minority_name(minority)) << ",\"under_replicated\":" << s.under_replicated
+      << ",\"refused_publishes\":" << s.refused_minority_publishes << "}}";
   return out.str();
 }
 
@@ -270,7 +281,7 @@ struct SystemTopics::State : std::enable_shared_from_this<SystemTopics::State> {
     advertise();
     if (config.nodes) {
       const auto lir = lir_json(id(), broker.connections(), broker.sessions(), broker.retained(), broker.stats(), broker.held_bytes(),
-                                broker.config().memory_budget, broker.pressure());
+                                broker.config().memory_budget, broker.pressure(), broker.partition(), broker.config().minority);
       if (lir != last_lir) {
         last_lir = lir;
         broker.publish(retained("$lir/nodes/" + id(), lir));

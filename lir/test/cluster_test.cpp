@@ -335,6 +335,41 @@ TEST_F(ClusterTest, ANodeThatLeavesHasItsSystemTopicsCleared) {
   EXPECT_TRUE(eventually([&] { return !has(*a) && !has(*b); }, 15s));
 }
 
+// Dannan's partition reading reaches the broker: one node gone leaves a
+// majority, two leave a minority, which degrades QoS 1 by default and says
+// so in $lir/nodes with the ids it cannot reach.
+TEST_F(ClusterTest, ANodeCutOffFromMostOfTheClusterReadsMinorityAndSaysSo) {
+  using Reading = std::optional<dannan::membership::Partition>;
+  const auto side = [](LirNode& node) { return node.on_broker<Reading>([](broker::Broker& broker) { return broker.partition(); }); };
+  ASSERT_TRUE(eventually([&] {
+    const auto p = side(*a);
+    return p && p->majority && p->members == 3 && p->reachable == 3;
+  }));
+  c.reset();
+  ASSERT_TRUE(eventually([&] { return side(*a)->reachable == 2; }, 15s));
+  EXPECT_TRUE(side(*a)->majority);
+  const auto b_id = dannan::identity::to_string(b->id());
+  b.reset();
+  ASSERT_TRUE(eventually([&] { return !side(*a)->majority; }, 15s));
+  EXPECT_EQ(side(*a)->members, 3u);
+  EXPECT_EQ(side(*a)->unreachable.size(), 2u);
+
+  MqttClient pub(a->port());
+  pub.connect("pub");
+  pub.publish("t", "x", QoS::at_least_once);
+  EXPECT_EQ(a->on_broker<uint64_t>([](broker::Broker& broker) { return broker.stats().under_replicated; }), 1u);
+  const auto own = "$lir/nodes/" + dannan::identity::to_string(a->id());
+  EXPECT_TRUE(eventually([&] {
+    return a->on_broker<bool>([&](broker::Broker& broker) {
+      for (const auto& m : broker.retained_entries()) {
+        const std::string json(m.payload.begin(), m.payload.end());
+        if (m.topic == own && json.find(R"("side":"minority")") != std::string::npos && json.find(b_id) != std::string::npos) return true;
+      }
+      return false;
+    });
+  }));
+}
+
 // The next message on `topic` whose payload contains `needle`, within a
 // bound; others are skipped.
 std::optional<std::string> next_containing(MqttClient& client, const std::string& topic, const std::string& needle, std::chrono::seconds bound = 10s) {

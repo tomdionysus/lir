@@ -45,6 +45,29 @@ TEST(SystemJson, LimitsAgreeOrNameTheDifference) {
   EXPECT_TRUE(differing_limits({}).empty());
 }
 
+TEST(SystemJson, ANodeReportsItsSideOfASplitAndWhoItCannotReach) {
+  broker::Stats s;
+  s.under_replicated = 4;
+  s.refused_minority_publishes = 2;
+  dannan::membership::Partition p;
+  p.majority = false;
+  p.members = 3;
+  p.reachable = 1;
+  p.unreachable = {*dannan::identity::NodeId::parse("00000000000000000000000000000002"), *dannan::identity::NodeId::parse("00000000000000000000000000000003")};
+  const auto json = lir_json("n", 0, 0, 0, s, 0, 0, broker::Pressure::none, p, broker::Minority::refuse);
+  EXPECT_NE(json.find(R"("partition":{"side":"minority","members":3,"reachable":1,"unreachable":[")"), std::string::npos) << json;
+  EXPECT_NE(json.find(R"(],"on_minority":"refuse","under_replicated":4,"refused_publishes":2})"), std::string::npos) << json;
+  p.majority = true;
+  p.reachable = 3;
+  p.unreachable.clear();
+  EXPECT_NE(lir_json("n", 0, 0, 0, {}, 0, 0, broker::Pressure::none, p)
+                .find(R"("side":"majority","members":3,"reachable":3,"unreachable":[],"on_minority":"degrade")"),
+            std::string::npos);
+  // No reading yet (or a node outside any cluster): the side is unknown.
+  EXPECT_NE(lir_json("n", 0, 0, 0, {}).find(R"("partition":{"side":"unknown","on_minority":"degrade","under_replicated":0,"refused_publishes":0})"),
+            std::string::npos);
+}
+
 TEST(SystemJson, ALimitOneNodeLacksDiffers) { EXPECT_EQ(differing_limits({"a=1;b=2", "a=1"}), (std::vector<std::string>{"b"})); }
 
 TEST(SystemJson, ClusterSummary) {

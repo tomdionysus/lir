@@ -134,7 +134,7 @@ would.
 ### Build
 
 A C++20 compiler, CMake 3.24 or later, Boost 1.83 or later (Asio and Beast; Debian 13's is 1.83), OpenSSL 3, and
-GoogleTest for the tests. Dannan is fetched from `../dannan` at the pinned release (0.6.0),
+GoogleTest for the tests. Dannan is fetched from `../dannan` at the pinned release (0.7.0),
 so clone it beside this repository; building Dannan needs yaml-cpp.
 
 ```
@@ -355,6 +355,15 @@ ledger; the rules engine; MQTT-SN 1.2 over UDP and DTLS; the Lugh token authenti
 The cluster is an interim one until Dagda: retained messages are held in memory on every
 node, sessions are mirrored in memory, and a QoS 1 or 2 publish is acknowledged on
 acceptance, not on replication.
+
+A node knows which side of a split it is on: Dannan reads it against the cluster's agreed
+roster, a majority only with more than half of it reachable, so an even split is a
+minority on both sides. On a minority side a node takes QoS 1 and 2 publishes and counts
+them as under-replicated (`--minority degrade`, the default), or refuses them with 0x97
+(`--minority refuse`; a 3.x client is closed and resends when it returns). QoS 0 always
+flows. `$lir/nodes/<id>` reports the side, the nodes it cannot reach, and both counts.
+One limit is Dannan's, stated: nodes joined during a split can give both sides a
+majority, so join new nodes to a whole cluster.
 
 Next, persistence on Dagda (`TODO/2026-11-13-step5-design.md`). A QoS 1 or 2 publish is
 written to its shard's replicated log and acknowledged once two replicas hold it, with

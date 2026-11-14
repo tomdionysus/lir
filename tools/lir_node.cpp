@@ -182,6 +182,7 @@ dannan::config::Reader reader() {
   add("cluster.bootstrap", Kind::list, "--bootstrap", "HOST:PORT");
   add("cluster.session_standbys", Kind::value, "--session-standbys", "a count, 0 to 16");
   add("cluster.rebalance_over", Kind::value, "--rebalance-over", "a percentage over the average, or -1 for never");
+  add("cluster.minority", Kind::value, "--minority", "on a minority side of a split, QoS 1 and 2 degrade or refuse");
   add("node.state", Kind::value, "--state", "the state directory");
   add("node.name", Kind::value, "--name", "a name");
   add("node.domain", Kind::value, "--domain", "a failure domain");
@@ -306,6 +307,9 @@ Options parse(int argc, char** argv) {
       throw settings.refuse("system.off", "nodes, cluster, clients or roster");
   }
   auto& limits = out.limits;
+  if (const auto minority = settings.choice("cluster.minority", {"degrade", "refuse"})) {
+    limits.minority = *minority == "refuse" ? lir::broker::Minority::refuse : lir::broker::Minority::degrade;
+  }
   limits.maximum_packet_size = static_cast<uint32_t>(settings.number("limits.max_packet_size", 16, 268435455).value_or(limits.maximum_packet_size));
   limits.receive_maximum = static_cast<uint16_t>(settings.number("limits.receive_maximum", 1, 65535).value_or(limits.receive_maximum));
   limits.maximum_queued = settings.number("limits.max_queued", 1, UINT32_MAX).value_or(limits.maximum_queued);
