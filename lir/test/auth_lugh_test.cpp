@@ -14,30 +14,31 @@
 #include "dannan/status/log.h"
 #include "dannan/test/fixtures/stepped_time.h"
 #include "lir/auth/lugh.h"
-#include "lugh/client/jose.h"
-#include "lugh/core/encoding.h"
+#include "lugh/client/testing.h"
 
 // The Lugh plugin (design, section 1; Tom 2026-11-14, P10): Lir's
 // TokenVerifier over lugh_client's Verifier. The tokens here are real,
-// signed by Lugh's own code under a key the verifier is given, so what is
-// tested is the adapter's reading of what Lugh says, not a stand-in.
+// signed as a Lugh issuer signs them (Lugh's public testing.h) under a key
+// the verifier is given, so what is tested is the adapter's reading of what
+// Lugh says, not a stand-in.
 namespace lir::auth {
 namespace {
 
 using namespace std::chrono_literals;
 namespace reason = mqtt::reason;
+// Not `testing`: that is GoogleTest's.
+namespace lt = lugh::client::testing;
 
 constexpr const char* kIssuer = "https://lugh.example";
+
+// base64url, unpadded: 32 bytes of 0x07, and 20 of them.
+constexpr const char* kSevens32 = "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc";
+constexpr const char* kSevens20 = "BwcHBwcHBwcHBwcHBwcHBwcHBwc";
 
 class LughVerifierTest : public ::testing::Test {
  protected:
   LughVerifierTest() : key(dannan::identity::SigningKey::generate(dannan::identity::SigningAlgorithm::ed25519)), verifier({kIssuer}, wall), adapter(verifier) {
-    lugh::client::VerifyKey public_key{"k1", key.algorithm(), key.public_key()};
-    boost::json::array keys;
-    keys.push_back(*lugh::client::public_jwk(public_key));
-    boost::json::object jwks;
-    jwks["keys"] = std::move(keys);
-    verifier.set_keys(kIssuer, jwks);
+    verifier.set_keys(kIssuer, lt::jwks(key, "k1"));
   }
 
   boost::json::object claims() const {
@@ -51,11 +52,7 @@ class LughVerifierTest : public ::testing::Test {
     c["exp"] = wall.unix_ms() / 1000 + 900;
     return c;
   }
-  std::string sign(const boost::json::object& c) const { return lugh::client::jws_sign(key, "k1", "at+jwt", c); }
-  static std::string thumbprint(uint8_t fill, size_t size) {
-    std::vector<unsigned char> bytes(size, fill);
-    return lugh::encoding::base64url(bytes);
-  }
+  std::string sign(const boost::json::object& c) const { return lt::sign_access_token(key, "k1", c); }
 
   dannan::test::SteppedTime time;
   dannan::test::SteppedWall wall;
@@ -78,7 +75,7 @@ TEST_F(LughVerifierTest, AGenuineTokenGivesWhatLirReads) {
 
 TEST_F(LughVerifierTest, ACertificateBoundTokenCarriesItsThumbprint) {
   auto c = claims();
-  c["cnf"] = boost::json::object{{"x5t#S256", thumbprint(7, 32)}};
+  c["cnf"] = boost::json::object{{"x5t#S256", kSevens32}};
   const auto verified = adapter.verify(sign(c));
   ASSERT_TRUE(std::holds_alternative<TokenClaims>(verified)) << std::get<std::string>(verified);
   std::array<uint8_t, 32> sevens{};
@@ -87,9 +84,10 @@ TEST_F(LughVerifierTest, ACertificateBoundTokenCarriesItsThumbprint) {
 }
 
 // RFC 8705: x5t#S256 is a SHA-256 thumbprint. Anything else could never
-// match a certificate, so it is refused rather than read as unbound.
+// match a certificate, so it is refused (by Lugh) rather than read as
+// unbound.
 TEST_F(LughVerifierTest, AThumbprintThatIsNotSHA256IsRefused) {
-  for (const auto& bad : {thumbprint(7, 20), std::string("not base64url!")}) {
+  for (const auto& bad : {std::string(kSevens20), std::string("not base64url!")}) {
     auto c = claims();
     c["cnf"] = boost::json::object{{"x5t#S256", bad}};
     EXPECT_TRUE(std::holds_alternative<std::string>(adapter.verify(sign(c)))) << bad;
@@ -106,7 +104,7 @@ TEST_F(LughVerifierTest, AKeyBoundTokenIsMarkedBound) {
 
 TEST_F(LughVerifierTest, AForgedTokenSaysWhy) {
   const auto other = dannan::identity::SigningKey::generate(dannan::identity::SigningAlgorithm::ed25519);
-  const auto forged = lugh::client::jws_sign(other, "k1", "at+jwt", claims());
+  const auto forged = lt::sign_access_token(other, "k1", claims());
   const auto verified = adapter.verify(forged);
   ASSERT_TRUE(std::holds_alternative<std::string>(verified));
   EXPECT_FALSE(std::get<std::string>(verified).empty());
