@@ -1,0 +1,28 @@
+#
+# Lir - The Message Broker
+#
+# Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+# Licensed under the GNU GPLv3 - see <https://www.gnu.org/licenses/gpl-3.0.html>
+#
+
+# One node of the standing Lir cluster on the shared Pi build servers
+# (README.md beside this file). Installed by install.sh as
+# /etc/systemd/system/lir-node.service; runs as tom from /home/tom/lir-cluster.
+[Unit]
+Description=Lir node (standing cluster on the Pi build servers)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=tom
+WorkingDirectory=/home/tom/lir-cluster
+Environment=LD_LIBRARY_PATH=/home/tom/lir-cluster/lib
+ExecStart=/home/tom/lir-cluster/bin/lir-node --config /home/tom/lir-cluster/node.yaml
+Nice=10
+Restart=on-failure
+RestartSec=5
+# A light service on machines shared with heavy builds.
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target

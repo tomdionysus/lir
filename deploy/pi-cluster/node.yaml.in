@@ -1,0 +1,39 @@
+#
+# Lir - The Message Broker
+#
+# Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+# Licensed under the GNU GPLv3 - see <https://www.gnu.org/licenses/gpl-3.0.html>
+#
+
+# A node of the standing Lir cluster on the Pi build servers. install.sh
+# fills @NAME@, @ADDRESS@ and @BOOTSTRAP@ per node. The ports keep clear of
+# other sessions' test nodes, which use Dannan's default 7437.
+cluster:
+  key: /home/tom/lir-cluster/cluster.key
+  bootstrap: [@BOOTSTRAP@]
+node:
+  name: @NAME@
+  state: /home/tom/lir-cluster/state
+  advertise: @ADDRESS@
+  port: 7537
+mqtt:
+  port: 1983
+http:
+  port: 8183
+# The lab LAN only. Anonymous clients may use the coordination topics, a
+# scratch tree for testing, and read the system topics; nothing else.
+auth:
+  allow_anonymous: true
+  anonymous_scopes:
+    - "lir:pub:stack/#"
+    - "lir:retain:stack/#"
+    - "lir:sub:stack/#"
+    - "lir:pub:test/#"
+    - "lir:retain:test/#"
+    - "lir:sub:test/#"
+    - "lir:sub:$lir/#"
+    - "lir:sub:$dannan/#"
+limits:
+  memory_budget: 268435456
+log:
+  level: info
