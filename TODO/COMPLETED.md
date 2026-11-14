@@ -720,3 +720,20 @@ throttled=0x0 throughout), and 323 on macOS.
   neptune rejoining and serving retained values again.
 - Announced to the Macha, Dagda, Dannan, Lugh, Corvus LoRa, Corvus
   Radioberry, AthenaSIP and Miach sessions.
+
+## 2026-11-14: GET /retained, built on the Pis
+
+Gate: `lir_tests` 329 passed, 0 failed, on corvus-saturn (GCC 14, Release,
+warnings as errors, no warnings, throttled=0x0). 6 new HTTP cases, and the
+token case extended. From now on every Lir build and test run is on the
+Pis, never the Mac (Tom, 2026-11-14), taking turns with the other sessions
+and claiming the machine on the board first.
+
+- `GET /retained?filter=F[&filter=G]`: the retained messages the filters
+  match, as one JSON array of the event stream's objects, then the
+  connection closes. The snapshot is exact: the broker sends a
+  subscription's retained messages inside the SUBSCRIBE, on the edge's
+  strand, so nothing live can be among them. Past
+  `HttpConfig::maximum_retained_bytes` (4 MiB) it is refused whole with 413.
+- `message_json` is the one JSON form of a delivered message, shared by the
+  event stream and the snapshot.
