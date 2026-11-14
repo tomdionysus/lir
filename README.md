@@ -1,5 +1,10 @@
 # Lir - The Message Broker
 
+[![CI](https://github.com/tomdionysus/lir/actions/workflows/ci.yml/badge.svg)](https://github.com/tomdionysus/lir/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/tomdionysus/lir/graph/badge.svg)](https://codecov.io/gh/tomdionysus/lir)
+[![CodeQL](https://github.com/tomdionysus/lir/actions/workflows/codeql.yml/badge.svg)](https://github.com/tomdionysus/lir/actions/workflows/codeql.yml)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+
 Lir is the event system for a cluster of trusted machines. It is a C++20 library and a
 node binary that turn a set of nodes into one MQTT broker: connect to any node, publish
 or subscribe on any node, drop the connection and resume the session on another, and the
