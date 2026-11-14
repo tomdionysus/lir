@@ -5,12 +5,13 @@ file carried until today is there, "Archived from ACTIVE.md, 2026-11-14".
 
 ## Resume here
 
-**State.** `develop` at `9452fd0` (the shutdown DISCONNECT and the Lugh
-plugin merged); pushed to `b5c9a65` at the maintainer's word, the rest local. Gate on
-node-c (arm64, Debian 13, GCC 14, Boost 1.83, Ninja, Release,
-warnings as errors, no warnings, never throttled): `tools/ci.sh release`
-337 passed, `tools/ci.sh lugh` (the plugin on) 343 passed. Dannan pinned at
-`0.7.0`, Lugh at `2b60b52` (plugin only). Unmerged: `feature/fuzz-targets`,
+**State.** `develop` at `33b7c8b` (the Lugh repin merged); pushed to
+`b5c9a65` at the maintainer's word, the rest local. Gate on node-c (arm64,
+Debian 13, GCC 14, Boost 1.83, Ninja, Release, warnings as errors, no
+warnings, never throttled): `tools/ci.sh release` 337 passed (at
+`9452fd0`; the repin does not touch that configuration), `tools/ci.sh
+lugh` (the plugin on) 343 passed at `33b7c8b`. Dannan pinned at `0.7.0`,
+Lugh at `dbb0573` (plugin only). Unmerged: `feature/fuzz-targets`,
 for the release gate.
 
 **How work is done now (the maintainer, 2026-11-14):**
@@ -92,21 +93,11 @@ for the release gate.
    DISCONNECT 0x8B, since `6fc0cc5`.)
 4. **The Lugh plugin.** Done and merged (`9452fd0`; `lir/auth/lugh.h`,
    `LIR_BUILD_LUGH`, `--lugh-issuer`, `--lugh-ca`, `tools/ci.sh lugh`),
-   pinned at Lugh's develop `2b60b52` (P10.0 to P10.3c, which the maintainer had
-   merged so Lir could start). Next: repin when Lugh names the commit
-   that completes P10 (P10.3d to P10.6), still on Dannan 0.7.0. At the
-   repin, drop Lir's two uses of Lugh internals: the tests' `jws_sign` and
-   `public_jwk` (`lugh/client/jose.h`) for a test-support header Lugh will
-   publish under `lugh/include`, and the adapter's
-   `lugh::encoding::base64url_decode` (`lugh/core/encoding.h`) for an
-   `x5t` Lugh decodes itself. Lugh agreed (2026-11-14): `AccessToken::x5t`
-   becomes `std::optional<std::array<uint8_t, 32>>`, a malformed one
-   refused by Lugh, so the adapter copies it; and
-   `lugh/include/lugh/client/testing.h` (`lugh::client::testing`) gives a
-   token signed as an issuer under a kid and a JWKS for `set_keys`. Both
-   land before the P10 commit, so Lir changes once, at the repin. The
-   test `AThumbprintThatIsNotSHA256IsRefused` stays, then checking
-   Lugh's refusal; and add `tools/ci.sh lugh` to the hosted CI
+   repinned (`33b7c8b`) at Lugh's develop `dbb0573`, the end of P10, on
+   Dannan 0.7.0: `AccessToken::x5t` comes decoded, so the adapter copies
+   it, and the tests sign with Lugh's public `lugh/client/testing.h`;
+   nothing internal to Lugh is included any more. Next: repin at Lugh's
+   first release; and add `tools/ci.sh lugh` to the hosted CI
    once Lugh's repository can be fetched there (it is private, checked
    2026-11-14: it needs a read token as a secret, the maintainer's call; until then
    the plugin's gate is `tools/ci.sh lugh` on a build node). The record of how it was
