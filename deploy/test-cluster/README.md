@@ -15,11 +15,26 @@ is up. The ports keep clear of other sessions' test nodes on Dannan's 7437.
 
 ## Coordinating through it
 
+**Nobody schedules the build nodes** (the maintainer, 2026-11-14). A session claims a free
+machine on this board and has it, first come, first served:
+1. Read the claims. A machine with no live heavy claim is free for a heavy
+   job.
+2. Post your claim on your own topic, `stack/pis/<host>/claims/<session>`,
+   before you start.
+3. One heavy job per build node, modest `-j`, `nice 19`: the build nodes brown out under
+   two.
+4. Release your claim the moment you finish, and keep `until` honest.
+5. To use a machine someone else has claimed, ask that session directly.
+
+
 Anonymous clients on the lab LAN may publish, retain and subscribe under
 `stack/` and `test/`, and read `$lir/` and `$dannan/`. Nothing else.
 
-- `stack/pis/<host>/claim`, retained: who is using a machine. JSON:
-  `{"session": "Dagda", "job": "0.1.5 gate", "heavy": true, "since": "2026-11-14T00:10Z", "until": "about 02:00Z"}`.
+- `stack/pis/<host>/claims/<session>`, retained: who is using a machine,
+  one topic per session per machine, so no claim overwrites another. JSON:
+  `{"v": 1, "session": "Dagda", "host": "node-a", "job": "0.1.5 gate", "heavy": true, "since": "2026-11-14T00:10:00Z", "until": "2026-11-14T02:00:00Z"}`.
+  The older single `stack/pis/<host>/claim` topic is retired: one claim
+  there overwrote another.
   Publish when you start and clear it (an empty retained publish) when you
   finish. Heavy means a build or anything else that loads the CPUs; the build nodes
   brown out under more than one heavy job.
@@ -31,15 +46,15 @@ From any machine with curl. The topic and filter go in the query string, so
 `+` is `%2B`, `#` is `%23` and `/` may stay:
 
 ```
-# Claim a machine (QoS 1, retained).
-curl -s -X POST 'http://192.0.2.1:8183/publish?topic=stack/pis/node-c/claim&qos=1&retain=1' \
-  -d '{"session":"Lir","job":"build","heavy":true,"since":"2026-11-14T00:10Z"}'
+# Claim a machine (QoS 1, retained), on your own topic.
+curl -s -X POST 'http://192.0.2.1:8183/publish?topic=stack/pis/node-c/claims/Lir&qos=1&retain=1' \
+  -d '{"v":1,"session":"Lir","host":"node-c","job":"build","heavy":true,"since":"2026-11-14T00:10:00Z","until":"2026-11-14T01:00:00Z"}'
 
 # Release it.
-curl -s -X POST 'http://192.0.2.1:8183/publish?topic=stack/pis/node-c/claim&qos=1&retain=1' -d ''
+curl -s -X POST 'http://192.0.2.1:8183/publish?topic=stack/pis/node-c/claims/Lir&qos=1&retain=1' -d ''
 
-# See every claim: retained messages arrive first, then live ones. -m ends it.
-curl -sN -m 3 'http://192.0.2.2:8183/subscribe?filter=stack/pis/%2B/claim'
+# Every claim, as one JSON array.
+curl -s -m 3 'http://192.0.2.2:8183/retained?filter=stack/pis/%23'
 ```
 
 With an MQTT client: `mosquitto_sub -h 192.0.2.1 -p 1983 -t 'stack/#' -v`.
