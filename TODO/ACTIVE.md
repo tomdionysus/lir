@@ -5,11 +5,12 @@ file carried until today is there, "Archived from ACTIVE.md, 2026-11-14".
 
 ## Resume here
 
-**State.** `develop` at `71e429d` plus this rationalisation, 23 commits
-ahead of `origin/develop` (push only at the maintainer's word). Gate `lir_tests` 329,
-0 failed, on node-b (arm64, Debian 13, GCC 14, Boost 1.83, Release,
-warnings as errors, no warnings). Dannan pinned at `0.6.0`. Unmerged:
-`feature/fuzz-targets`.
+**State.** `develop` at `a559b0a` (the partition reading merged), not
+pushed (push only at the maintainer's word). Gate `lir_tests` 334, 0 failed, by one
+`tools/ci.sh release` run on node-b (arm64, Debian 13, GCC 14,
+Boost 1.83, Ninja, Release, warnings as errors, no warnings, never
+throttled): the CI script's first real build, proved. Dannan pinned at
+`0.7.0`. Unmerged: `feature/fuzz-targets`, for the release gate.
 
 **How work is done now (the maintainer, 2026-11-14):**
 - **No builds or test runs on the workstation.** Every build is on the shared arm64
@@ -35,24 +36,20 @@ warnings as errors, no warnings). Dannan pinned at `0.6.0`. Unmerged:
   any undervoltage flag, and runs the tests. Claim the build node first.
 
 **Next, in order:**
-1. **On a free build node, once:** prove `tools/ci.sh release` on Debian, the
-   hosted CI's first real build (`LIR_CI_JOBS=2`, `nice 19`).
-   `feature/fuzz-targets` (now instrumenting the whole build, `3af35be`)
-   waits for the release gate: there, install `clang` and
-   `libclang-rt-19-dev`, build it (`CXX=clang++ -DLIR_BUILD_FUZZING=ON`),
-   run each target once for `-max_total_time=60`, fix what they find,
-   merge.
-2. **Dannan 0.7.0** (the Dannan session says when it is tagged): repin, then
-   wire the partition reading into the interim. A node on a minority side
-   (an even split is one) degrades QoS 1/2 to one durable copy or refuses
-   with 0x97, set per node, and `$lir/nodes` reports the reading and the
-   unreachable ids. The reading: `Nodes::partition()` and
-   `watch_partition()`; "reachable" is active, gossip counting. Its stated
-   limit: nodes joined during a split can give two majorities.
+1. **Optional, on a free build node:** upgrade the standing cluster to `a559b0a`
+   and watch `$lir/nodes` read majority on all three. Worth it only if
+   The maintainer wants the partition reading seen on real machines before step 5.
+2. **At the release gate:** `feature/fuzz-targets` (instrumenting the
+   whole build, `3af35be`): install `clang` and `libclang-rt-19-dev`,
+   build it (`CXX=clang++ -DLIR_BUILD_FUZZING=ON`), run each target once
+   for `-max_total_time=60`, fix what they find, merge.
 3. **Dagda's slices** (the Dagda session tells Lir as each lands): step 5,
    by [`2026-11-13-step5-design.md`](2026-11-13-step5-design.md), its tests
    written as each slice's tag lands. Ship nothing before contract v2
-   freezes at slice 4. Dagda 0.1.5 builds on Dannan 0.6.0, as Lir does.
+   freezes at slice 4. Lir is now on Dannan 0.7.0 and Dagda 0.1.5 on
+   0.6.0: Lir needs a Dagda tag built on 0.7.0 before it links Dagda.
+   There the minority choice extends to session and retained commits, and
+   `refuse` waits to the deadline as the design says.
 4. **Dannan's shared listener** (0.7.0, later in it): review it, then move
    Lir's listeners onto it and delete Lir's own.
 5. **The Lugh plugin** when Lugh's `lugh_client` (P10) lands whole (Lugh

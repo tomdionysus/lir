@@ -991,3 +991,37 @@ written new; Macha has no event system to extract (`COMPLETED.md`,
   Dannan `0.7.0`.
 - Lugh: the grammar of scopes in its tokens.
 - OASIS: an approved MQTT-SN 2.0 Committee Specification.
+
+## 2026-11-14, early: Dannan 0.7.0 and the partition reading
+
+Gate: `lir_tests` 334 passed, 0 failed (329 before, five new), by one
+`tools/ci.sh release` run on node-b (arm64, Debian 13, GCC 14,
+Ninja, Release, warnings as errors, no warnings, `throttled=0x0`). That
+run is also the CI script's first real build on Debian. Merged to
+`develop` as `a559b0a`; nothing pushed.
+
+- Dannan repinned at `0.7.0` (`376bacc`).
+- The minority side (`bf7ec5d`): the cluster watches
+  `Nodes::watch_partition()` on the edge's strand and gives each reading
+  to the broker (`Broker::partition`). On a minority side QoS 1 and 2
+  from clients are accepted and counted (`Stats::under_replicated`,
+  `--minority degrade`, the default) or refused with 0x97
+  (`Stats::refused_minority_publishes`, `--minority refuse`; a 3.x client
+  is closed), in `Link::on_publish` beside the memory-pressure refusal,
+  so MQTT, MQTT-SN and HTTP publishes all pass it. QoS 0 always flows.
+  `$lir/nodes/<id>` carries `"partition"`: side, members, reachable, the
+  unreachable ids, the setting and both counts. Interim limits, stated:
+  `refuse` is at once (nothing to wait on before Dagda); session and
+  retained commits and server-made messages (wills) are not covered until
+  step 5. Tests: `BrokerTest.AMinoritySideDegradesByDefault`,
+  `BrokerRefusingOnMinority.QoS1And2AreRefusedWith0x97AndQoS0Flows`,
+  `BrokerRefusingOnMinority.NoReadingOrAMajorityRefusesNothingAndAHealEndsTheRefusal`,
+  `SystemJson.ANodeReportsItsSideOfASplitAndWhoItCannotReach`,
+  `ClusterTest.ANodeCutOffFromMostOfTheClusterReadsMinorityAndSaysSo`.
+- `tools/ci.sh` takes `LIR_CI_JOBS` (`3733552`).
+- `feature/fuzz-targets`: the whole build instrumented for fuzzing, not
+  only the harnesses, which left libFuzzer without coverage of the
+  parsers (`3af35be`); not built, it waits for the release gate under
+  The maintainer's rule against wasted runs (recorded in `ACTIVE.md`).
+- Recorded: Dagda's slice 0 verdict on the build node; the maintainer's P10 rulings for the
+  Lugh plugin; Lugh on Dannan 0.7.0 and building on Lir's Dannan.
