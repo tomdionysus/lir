@@ -8,15 +8,17 @@
 #include "lir/auth/tokens.h"
 
 #include <algorithm>
+#include <chrono>
+#include <cstdint>
 
 namespace lir::auth {
 
 namespace reason = mqtt::reason;
 using contract::AuthDecision;
 
-TokenAuthenticator::TokenAuthenticator(const TokenVerifier& verifier, const dannan::contract::TimeSource& time, TokenConfig config,
-                                       dannan::status::ScopedLogger logger)
-    : _verifier(verifier), _time(time), _config(std::move(config)), _logger(std::move(logger)) {
+TokenAuthenticator::TokenAuthenticator(const TokenVerifier& verifier, const dannan::contract::TimeSource& time, const dannan::contract::WallClock& wall,
+                                       TokenConfig config, dannan::status::ScopedLogger logger)
+    : _verifier(verifier), _time(time), _wall(wall), _config(std::move(config)), _logger(std::move(logger)) {
   if (_config.anonymous) _anonymous = std::make_shared<ScopeGrant>(*_config.anonymous);
 }
 
@@ -41,14 +43,21 @@ AuthDecision TokenAuthenticator::auth(const std::string&, const std::string& met
 }
 
 AuthDecision TokenAuthenticator::decide(std::string_view token, const contract::Peer& peer) {
-  const auto now = _time.now();
-  auto verified = _verifier.verify(token, now);
+  auto verified = _verifier.verify(token);
   if (const auto* why = std::get_if<std::string>(&verified)) {
     _logger.info("refusing a token from " + peer.address + ": " + *why);
     return AuthDecision::refuse(reason::bad_user_name_or_password);
   }
   const auto& claims = std::get<TokenClaims>(verified);
-  if (claims.expires <= now) return AuthDecision::refuse(reason::bad_user_name_or_password);
+  // exp is read on the wall clock and the grant kept on the steady one: the
+  // time left, from both clocks read now.
+  const uint64_t wall_ms = _wall.unix_ms();
+  const uint64_t expires_ms = claims.expires_unix > UINT64_MAX / 1000 ? UINT64_MAX : claims.expires_unix * 1000;
+  if (expires_ms <= wall_ms) return AuthDecision::refuse(reason::bad_user_name_or_password);
+  // Capped at ten years, so the sum stays in the steady clock's range.
+  constexpr uint64_t longest_ms = 10ull * 365 * 24 * 3600 * 1000;
+  const auto left = std::chrono::milliseconds(static_cast<int64_t>(std::min(expires_ms - wall_ms, longest_ms)));
+  const auto expires = _time.now() + left;
   if (std::find(claims.audiences.begin(), claims.audiences.end(), _config.audience) == claims.audiences.end()) {
     _logger.info("refusing " + claims.subject + " from " + peer.address + ": the token is not for " + _config.audience);
     return AuthDecision::refuse(reason::not_authorized);
@@ -63,7 +72,7 @@ AuthDecision TokenAuthenticator::decide(std::string_view token, const contract::
   }
   auto parsed = parse_scopes(claims.scopes, claims.subject);
   for (const auto& scope : parsed.refused) _logger.warn("ignoring the scope " + scope + " in a token for " + claims.subject);
-  return AuthDecision::accept(std::make_shared<ScopeGrant>(std::move(parsed.scopes), claims.expires));
+  return AuthDecision::accept(std::make_shared<ScopeGrant>(std::move(parsed.scopes), expires));
 }
 
 }  // namespace lir::auth
