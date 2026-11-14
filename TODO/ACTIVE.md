@@ -5,11 +5,11 @@ file carried until today is there, "Archived from ACTIVE.md, 2026-11-14".
 
 ## Resume here
 
-**State.** `develop` at `a559b0a` (the partition reading merged), not
-pushed (push only at the maintainer's word). Gate `lir_tests` 334, 0 failed, by one
-`tools/ci.sh release` run on node-b (arm64, Debian 13, GCC 14,
+**State.** `develop` at `8d78c95` (the token's wall-clock expiry merged),
+not pushed (push only at the maintainer's word). Gate `lir_tests` 335, 0 failed, by
+one `tools/ci.sh release` run on node-c (arm64, Debian 13, GCC 14,
 Boost 1.83, Ninja, Release, warnings as errors, no warnings, never
-throttled): the CI script's first real build, proved. Dannan pinned at
+throttled). Dannan pinned at
 `0.7.0`. Unmerged: `feature/fuzz-targets`, for the release gate.
 
 **How work is done now (the maintainer, 2026-11-14):**
@@ -53,9 +53,10 @@ throttled): the CI script's first real build, proved. Dannan pinned at
    installed in-process cluster fixture (`dagda::test_fixtures`); contract
    v2 served beside v1. Its tests (`OnDagda.SeqNeverRepeatsAcrossARestart`
    first) are written when the tag lands. The notify channel per space and
-   `watch_keys` are slices 2 and 3. Slice 1 is on Dannan 0.6.0; Dagda
-   recommends to the maintainer that its tag (0.2.0 proposed) is built on 0.7.0 and
-   is proving that move.
+   `watch_keys` are slices 2 and 3. Dagda's develop is on Dannan 0.7.0
+   since `f31c52e` (proven on node-a, 1062 passed, 3 opt-in
+   skipped), so slice 1's tag (0.2.0 recommended, the maintainer's to cut) will be
+   linkable.
 3. **Dannan's shared listener** (P3, `dannan::listen`): the design
    (`../dannan/TODO/2026-11-14-p3-public-listener.md`) is reviewed
    (2026-11-14): the stream side in Dannan 0.8.0, DTLS in 0.9.0, Lir's
@@ -67,7 +68,10 @@ throttled): the CI script's first real build, proved. Dannan pinned at
    SSE); writes queued in the Stream against a per-listener bound; a stop
    in two steps, so Lir can end its clients first; plain UDP, DTLS,
    cookies, client certificates and a broadcast send on the datagram
-   side. When 0.8.0 lands: move the TCP, TLS, WebSocket and HTTP
+   side. Dannan took all of them into the design (`e6bed42`; the stop is
+   `stop_accepting()` then `close_all()`); nothing is built until the maintainer
+   answers its two questions (the name `dannan::listen`, the phasing;
+   Lir's view: yes to both). When 0.8.0 lands: move the TCP, TLS, WebSocket and HTTP
    listeners onto it and delete Lir's own. Lir's own finding from the
    review: a stopping node never sends MQTT 5 DISCONNECT 0x8B (server
    shutting down); add it with the two-step stop.
@@ -76,9 +80,13 @@ throttled): the CI script's first real build, proved. Dannan pinned at
    `../lugh/TODO/2026-11-14-p10-plan.md`). The maintainer's rulings (2026-11-14): the
    plugin is optional and Lir builds without Lugh when it is off; it is a
    few-line adapter, `lir::auth::TokenVerifier` over
-   `lugh::client::Verifier` (synchronous `verify(token, now)` from cached
-   keys: subject, audiences, scopes, exp, `cnf.jkt`, `cnf.x5t#S256`, or a
-   reason); `lugh_client` links Dannan, OpenSSL and Boost; Lir pins a
+   `lugh::client::Verifier(issuers, WallClock)`: `set_keys(issuer, jwks)`
+   from the key source, `verify_access(token, audience)` answering an
+   `AccessToken` (subject, audiences, scopes, expires in Unix seconds,
+   jkt, x5t as base64url text, decoded to 32 bytes) or a reason; headers
+   `lugh/client/verifier.h` and `lugh/client/tokens.h`. Lir's seam carries
+   exp as wall time since `8d78c95` (Lugh's finding), and Lir refuses a
+   token at or past exp despite Lugh's 60 s skew (`lir/auth/tokens.h`); `lugh_client` links Dannan, OpenSSL and Boost; Lir pins a
    commit on Lugh's develop by FetchContent with `LUGH_BUILD_NODE=OFF`
    until Lugh releases. Its Dannan must be the one Lir pins: Lugh is on
    Dannan 0.7.0 (develop `7b0c717`), uses Lir's `dannan::dannan` when
