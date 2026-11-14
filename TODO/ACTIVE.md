@@ -53,9 +53,24 @@ throttled): the CI script's first real build, proved. Dannan pinned at
    installed in-process cluster fixture (`dagda::test_fixtures`); contract
    v2 served beside v1. Its tests (`OnDagda.SeqNeverRepeatsAcrossARestart`
    first) are written when the tag lands. The notify channel per space and
-   `watch_keys` are slices 2 and 3.
-3. **Dannan's shared listener** (0.7.0, later in it): review it, then move
-   Lir's listeners onto it and delete Lir's own.
+   `watch_keys` are slices 2 and 3. Slice 1 is on Dannan 0.6.0; Dagda
+   recommends to the maintainer that its tag (0.2.0 proposed) is built on 0.7.0 and
+   is proving that move.
+3. **Dannan's shared listener** (P3, `dannan::listen`): the design
+   (`../dannan/TODO/2026-11-14-p3-public-listener.md`) is reviewed
+   (2026-11-14): the stream side in Dannan 0.8.0, DTLS in 0.9.0, Lir's
+   DTLS gateway kept until then. Lir asked for: `listen::Stream` an Asio
+   AsyncRead/WriteStream with the SSL* reachable (Beast WebSocket and
+   HTTP run over it); one Certificates for several listeners; every limit
+   optional and off by default (Lir answers its cap with CONNACK 0x89);
+   the idle deadline off by default and settable per stream (keep alive,
+   SSE); writes queued in the Stream against a per-listener bound; a stop
+   in two steps, so Lir can end its clients first; plain UDP, DTLS,
+   cookies, client certificates and a broadcast send on the datagram
+   side. When 0.8.0 lands: move the TCP, TLS, WebSocket and HTTP
+   listeners onto it and delete Lir's own. Lir's own finding from the
+   review: a stopping node never sends MQTT 5 DISCONNECT 0x8B (server
+   shutting down); add it with the two-step stop.
 4. **The Lugh plugin** when Lugh's `lugh_client` (P10) lands whole (Lugh
    started it 2026-11-14 and names the commit to pin;
    `../lugh/TODO/2026-11-14-p10-plan.md`). The maintainer's rulings (2026-11-14): the
