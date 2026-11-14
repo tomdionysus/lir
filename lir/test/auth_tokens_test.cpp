@@ -23,12 +23,11 @@ namespace lir::auth {
 namespace {
 
 using namespace std::chrono_literals;
-using dannan::contract::TimePoint;
 namespace reason = mqtt::reason;
 
 class TableVerifier final : public TokenVerifier {
  public:
-  std::variant<TokenClaims, std::string> verify(std::string_view token, TimePoint) const override {
+  std::variant<TokenClaims, std::string> verify(std::string_view token) const override {
     const auto it = tokens.find(std::string(token));
     if (it == tokens.end()) return std::string("signature does not verify");
     return it->second;
@@ -43,7 +42,7 @@ class TokenAuthenticatorTest : public ::testing::Test {
     device.subject = "device-17";
     device.audiences = {"lugh", "lir"};
     device.scopes = {"openid", "lir:pub:sensors/{sub}/%23", "lir:sub:commands/{sub}/%23", "lugh:me.read"};
-    device.expires = time.now() + 15min;
+    device.expires_unix = wall.unix_ms() / 1000 + 15 * 60;
     verifier.tokens["good"] = device;
     auto other = device;
     other.audiences = {"lugh"};
@@ -56,7 +55,7 @@ class TokenAuthenticatorTest : public ::testing::Test {
     verifier.tokens["certificate-bound"] = mtls;
     auto narrow = device;
     narrow.scopes = {"lir:pub:sensors/{sub}/temperature"};
-    narrow.expires = time.now() + 30min;
+    narrow.expires_unix = wall.unix_ms() / 1000 + 30 * 60;
     verifier.tokens["narrow"] = narrow;
   }
 
@@ -79,11 +78,12 @@ class TokenAuthenticatorTest : public ::testing::Test {
     return c;
   }
   TokenAuthenticator make(TokenConfig config = {}) {
-    return TokenAuthenticator(verifier, time, std::move(config),
+    return TokenAuthenticator(verifier, time, wall, std::move(config),
                               dannan::status::ScopedLogger{std::make_shared<dannan::status::ConsoleSink>(dannan::status::LogLevel::error), "lir"});
   }
 
   dannan::test::SteppedTime time;
+  dannan::test::SteppedWall wall;
   TableVerifier verifier;
 };
 
@@ -103,7 +103,22 @@ TEST_F(TokenAuthenticatorTest, TheGrantEndsAtTheTokensExpiry) {
   auto authenticator = make();
   const auto decision = authenticator.connect(with_password("good"), {});
   ASSERT_TRUE(decision.grant);
-  EXPECT_EQ(decision.grant->expires(), verifier.tokens["good"].expires);
+  EXPECT_EQ(decision.grant->expires(), time.now() + 15min);
+}
+
+// exp is wall-clock Unix seconds and the grant ends on the steady clock the
+// broker decides by: the time left is read on the wall and kept on the
+// steady clock, so neither clock's own reading leaks into the other.
+TEST_F(TokenAuthenticatorTest, TheExpiryIsReadOnTheWallClockAndKeptOnTheSteadyOne) {
+  auto authenticator = make();
+  time.advance(1h);
+  auto decision = authenticator.connect(with_password("good"), {});
+  ASSERT_EQ(decision.kind, contract::AuthDecision::Kind::accept);
+  EXPECT_EQ(decision.grant->expires(), time.now() + 15min);
+  wall.advance(5min);
+  decision = authenticator.connect(with_password("good"), {});
+  ASSERT_EQ(decision.kind, contract::AuthDecision::Kind::accept);
+  EXPECT_EQ(decision.grant->expires(), time.now() + 10min);
 }
 
 TEST_F(TokenAuthenticatorTest, ATokenThatDoesNotVerifyIsABadPassword) {
@@ -113,7 +128,9 @@ TEST_F(TokenAuthenticatorTest, ATokenThatDoesNotVerifyIsABadPassword) {
 
 TEST_F(TokenAuthenticatorTest, AnExpiredTokenIsABadPassword) {
   auto authenticator = make();
-  time.advance(16min);
+  wall.advance(15min);
+  EXPECT_EQ(authenticator.connect(with_password("good"), {}).reason, reason::bad_user_name_or_password);
+  wall.advance(1min);
   EXPECT_EQ(authenticator.connect(with_password("good"), {}).reason, reason::bad_user_name_or_password);
 }
 
@@ -155,7 +172,7 @@ TEST_F(TokenAuthenticatorTest, ReauthenticatingWithAFreshTokenReplacesTheGrant) 
   ASSERT_EQ(decision.kind, contract::AuthDecision::Kind::accept);
   EXPECT_TRUE(decision.grant->may_publish("sensors/device-17/temperature", false));
   EXPECT_FALSE(decision.grant->may_publish("sensors/device-17/humidity", false));
-  EXPECT_EQ(decision.grant->expires(), verifier.tokens["narrow"].expires);
+  EXPECT_EQ(decision.grant->expires(), time.now() + 30min);
   EXPECT_EQ(authenticator.auth("c", "other", mqtt::Bytes(token.begin(), token.end()), {}).reason, reason::bad_authentication_method);
   const std::string forged = "forged";
   EXPECT_EQ(authenticator.auth("c", "lugh", mqtt::Bytes(forged.begin(), forged.end()), {}).reason, reason::bad_user_name_or_password);
