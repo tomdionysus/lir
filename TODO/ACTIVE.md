@@ -36,23 +36,20 @@ throttled): the CI script's first real build, proved. Dannan pinned at
   any undervoltage flag, and runs the tests. Claim the build node first.
 
 **Next, in order:**
-1. **Optional, on a free build node:** upgrade the standing cluster to `a559b0a`
-   and watch `$lir/nodes` read majority on all three. Worth it only if
-   The maintainer wants the partition reading seen on real machines before step 5.
-2. **At the release gate:** `feature/fuzz-targets` (instrumenting the
+1. **At the release gate:** `feature/fuzz-targets` (instrumenting the
    whole build, `3af35be`): install `clang` and `libclang-rt-19-dev`,
    build it (`CXX=clang++ -DLIR_BUILD_FUZZING=ON`), run each target once
    for `-max_total_time=60`, fix what they find, merge.
-3. **Dagda's slices** (the Dagda session tells Lir as each lands): step 5,
+2. **Dagda's slices** (the Dagda session tells Lir as each lands): step 5,
    by [`2026-11-13-step5-design.md`](2026-11-13-step5-design.md), its tests
    written as each slice's tag lands. Ship nothing before contract v2
    freezes at slice 4. Lir is now on Dannan 0.7.0 and Dagda 0.1.5 on
    0.6.0: Lir needs a Dagda tag built on 0.7.0 before it links Dagda.
    There the minority choice extends to session and retained commits, and
    `refuse` waits to the deadline as the design says.
-4. **Dannan's shared listener** (0.7.0, later in it): review it, then move
+3. **Dannan's shared listener** (0.7.0, later in it): review it, then move
    Lir's listeners onto it and delete Lir's own.
-5. **The Lugh plugin** when Lugh's `lugh_client` (P10) lands whole (Lugh
+4. **The Lugh plugin** when Lugh's `lugh_client` (P10) lands whole (Lugh
    started it 2026-11-14 and names the commit to pin;
    `../lugh/TODO/2026-11-14-p10-plan.md`). The maintainer's rulings (2026-11-14): the
    plugin is optional and Lir builds without Lugh when it is off; it is a
@@ -74,7 +71,7 @@ throttled): the CI script's first real build, proved. Dannan pinned at
    definitions live in the exported `lugh_client` library, its Boost.JSON
    macros are PUBLIC on `lugh::client`, and its P10.6 tests a consumer
    that links it and uses Boost.JSON.
-6. **MQTT-SN 2.0** when OASIS approves a Committee Specification.
+5. **MQTT-SN 2.0** when OASIS approves a Committee Specification.
 
 **The standing cluster** on the three build nodes (`deploy/test-cluster/`): one
 `lir-node` each, ports 7537 (Dannan), 1983 (MQTT) and 8183 (HTTP), a
@@ -84,6 +81,10 @@ with `deploy/test-cluster/install.sh root@<node>:/root/lir-work/build
 node-a=192.0.2.1 node-b=192.0.2.2
 node-c=192.0.2.3` after a Lir change worth trying on real
 machines; the restart is rolling and the board survives it.
+
+The standing cluster runs `a559b0a` (Dannan 0.7.0) since 2026-11-14
+03:52Z, upgraded at the maintainer's word from the gate run's build; each node's
+`$lir/nodes` reads majority, 3 of 3, and the board's claims survived.
 
 **Waiting on the maintainer:** nothing open.
 
