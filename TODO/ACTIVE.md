@@ -26,16 +26,23 @@ warnings as errors, no warnings). Dannan pinned at `0.6.0`. Unmerged:
   Pi is blocked without a heavy claim there. Docs:
   `../lir-develop-cluster/docs/how-it-works.md`; questions to the Lir
   Development Cluster session.
+- **No wasted runs (Tom, 2026-11-14, to every session).** ASan and TSan
+  runs are for releases. The same tests run more than once only for a
+  stated reason: a flaky test or odd behaviour. "We're spending 50% of our
+  time heating silicon for no good reason, and it stops now." The fuzz
+  targets are sanitizer builds, so they run at the release gate.
 - `build/pi.sh [host] [gtest filter]` (untracked, in `build/`) syncs the
   working tree to a Pi, builds incrementally at `-j2`, `nice 19`, stops on
   any undervoltage flag, and runs the tests. Claim the Pi first.
 
 **Next, in order:**
-1. **On a free Pi:** prove `tools/ci.sh release` on Debian, the hosted CI's
-   first real build. Then install `clang` and its fuzzer runtime
-   (`libclang-rt-19-dev`) as root, build `feature/fuzz-targets`
-   (`CXX=clang++ -DLIR_BUILD_FUZZING=ON`), run each target for a bounded
-   time (`-max_total_time=60`), fix what they find, and merge.
+1. **On a free Pi, once:** prove `tools/ci.sh release` on Debian, the
+   hosted CI's first real build (`LIR_CI_JOBS=2`, `nice 19`).
+   `feature/fuzz-targets` (now instrumenting the whole build, `3af35be`)
+   waits for the release gate: there, install `clang` and
+   `libclang-rt-19-dev`, build it (`CXX=clang++ -DLIR_BUILD_FUZZING=ON`),
+   run each target once for `-max_total_time=60`, fix what they find,
+   merge.
 2. **Dannan 0.7.0** (the Dannan session says when it is tagged): repin, then
    wire the partition reading into the interim. A node on a minority side
    (an even split is one) degrades QoS 1/2 to one durable copy or refuses
