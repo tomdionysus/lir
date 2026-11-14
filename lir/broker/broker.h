@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "dannan/contract/time_source.h"
+#include "dannan/membership/agreed_roster.h"
 #include "dannan/status/log.h"
 #include "lir/contract/authenticator.h"
 #include "lir/contract/connection.h"
@@ -118,6 +119,14 @@ struct SessionImage {
   uint16_t next_packet_id = 1;
 };
 
+// What a node on the minority side of a split does with QoS 1 and 2 (step 5
+// design, "On a minority side"; set per node): `degrade` accepts and counts
+// them under-replicated, `refuse` refuses them with 0x97 (a 3.x client is
+// closed, and resends when it returns). Until Dagda there is no replica
+// write to wait on, so a refusal is at once.
+enum class Minority : uint8_t { degrade, refuse };
+const char* minority_name(Minority minority) noexcept;
+
 // The defaults are the design's moderate set (section 4, the maintainer 2026-11-04),
 // sized for about 10,000 messages a second across a cluster, mostly under
 // 1 KiB; every one is configurable.
@@ -165,6 +174,7 @@ struct Config {
   uint32_t shed_percent = 80;
   uint32_t refuse_publish_percent = 90;
   uint32_t refuse_connect_percent = 100;
+  Minority minority = Minority::degrade;
 };
 
 // How hard the memory budget presses, in the order it gives way.
@@ -190,6 +200,9 @@ struct Stats {
   uint64_t refused_pressure_publishes = 0;
   uint64_t refused_pressure_connections = 0;
   uint64_t connections_redirected = 0;
+  // QoS 1 and 2 publishes accepted, or refused, on a minority side.
+  uint64_t under_replicated = 0;
+  uint64_t refused_minority_publishes = 0;
   // The rules engine (rules/rules.h).
   uint64_t rules_dropped = 0;
   uint64_t rules_republished = 0;
@@ -389,6 +402,11 @@ class Broker {
   // the node) refused Lir room: while it does, the pressure is at least
   // refuse_connect.
   void ledger_full(bool full) noexcept { _ledger_full = full; }
+  // Which side of a split the node is on, Dannan's reading as the cluster
+  // passes it on. Nothing until a cluster gives one: a node alone serves.
+  // While it reads minority, QoS 1 and 2 go as `Config::minority` says.
+  void partition(dannan::membership::Partition reading) { _partition = std::move(reading); }
+  const std::optional<dannan::membership::Partition>& partition() const noexcept { return _partition; }
   const Stats& stats() const noexcept { return _stats; }
   const Config& config() const noexcept { return _config; }
   // The rules held, from the retained $lir/rules/ messages.
@@ -487,6 +505,7 @@ class Broker {
   uint64_t _held = 0;
   std::unique_ptr<rules::RuleSet> _rules;
   bool _ledger_full = false;
+  std::optional<dannan::membership::Partition> _partition;
   std::map<std::string, std::unique_ptr<Session>> _sessions;
   // Non-shared subscriptions keyed by client id.
   subs::Trie<std::string, Options> _subscriptions;
