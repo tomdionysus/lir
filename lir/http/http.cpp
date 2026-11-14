@@ -157,7 +157,7 @@ Target parse_target(std::string_view target) {
   return out;
 }
 
-std::string sse_event(const mqtt::Publish& publish) {
+std::string message_json(const mqtt::Publish& publish) {
   const std::string_view text(reinterpret_cast<const char*>(publish.payload.data()), publish.payload.size());
   std::string data = "{\"topic\":" + json_string(publish.topic) + ",\"qos\":" + std::to_string(static_cast<int>(publish.qos)) +
                      ",\"retain\":" + (publish.retain ? "true" : "false");
@@ -166,8 +166,10 @@ std::string sse_event(const mqtt::Publish& publish) {
   } else {
     data += ",\"payload_hex\":\"" + dannan::identity::hex(publish.payload) + "\"";
   }
-  return "event: message\ndata: " + data + "}\n\n";
+  return data + "}";
 }
+
+std::string sse_event(const mqtt::Publish& publish) { return "event: message\ndata: " + message_json(publish) + "\n\n"; }
 
 // An exchange as the server holds it.
 class ExchangeBase {
@@ -231,6 +233,10 @@ class Exchange final : public ExchangeBase, public std::enable_shared_from_this<
     if (target.path == "/subscribe") {
       if (request.method() != bhttp::verb::get) return respond(405, json_error("GET /subscribe"));
       return subscribe(request, target);
+    }
+    if (target.path == "/retained") {
+      if (request.method() != bhttp::verb::get) return respond(405, json_error("GET /retained"));
+      return retained(request, target);
     }
     respond(404, json_error("no such endpoint"));
   }
@@ -341,6 +347,54 @@ class Exchange final : public ExchangeBase, public std::enable_shared_from_this<
     _pending.clear();
     keepalive();
     watch_close();
+  }
+
+  // A snapshot of the retained messages the filters match. The broker sends a
+  // subscription's retained messages inside the SUBSCRIBE, on this strand,
+  // so what arrives during it is exactly the snapshot and nothing live.
+  void retained(const bhttp::request<bhttp::string_body>& request, const Target& target) {
+    const auto filters = target.query.find("filter");
+    if (filters == target.query.end() || filters->second.empty()) return respond(400, json_error("at least one filter is required"));
+    for (const auto& f : filters->second) {
+      if (!mqtt::valid_utf8(f)) return respond(400, json_error("filter is not UTF-8"));
+    }
+    std::vector<mqtt::Packet> got;
+    if (const auto refused = connect(request, got)) {
+      end_client();
+      return respond(status_for(*refused), json_error("refused", refused));
+    }
+    got.clear();
+    mqtt::Subscribe s{1, {}, {}};
+    for (const auto& f : filters->second) s.subscriptions.push_back(mqtt::Subscription{f, mqtt::QoS::at_most_once});
+    try {
+      _link->receive(mqtt::encode(s, Version::v5));
+    } catch (const std::invalid_argument& e) {
+      end_client();
+      return respond(400, json_error(e.what()));
+    }
+    std::string body = "[";
+    bool acknowledged = false;
+    for (const auto& packet : got) {
+      if (const auto* ack = std::get_if<mqtt::Suback>(&packet)) {
+        acknowledged = true;
+        for (const uint8_t code : ack->reasons) {
+          if (code >= 0x80) {
+            end_client();
+            return respond(status_for(code), json_error("a filter was refused", code));
+          }
+        }
+      } else if (const auto* p = std::get_if<mqtt::Publish>(&packet); p && p->retain) {
+        if (body.size() > 1) body += ",";
+        body += message_json(*p);
+        if (body.size() + 1 > _config.maximum_retained_bytes) {
+          end_client();
+          return respond(413, json_error("more retained messages than an answer holds: narrow the filter"));
+        }
+      }
+    }
+    end_client();
+    if (!acknowledged) return respond(400, json_error("the subscription was refused"));
+    respond(200, body + "]");
   }
 
   void on_stream_packet(mqtt::Packet packet) {

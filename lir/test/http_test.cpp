@@ -193,6 +193,72 @@ TEST_F(HttpTest, AStreamThatCloses_LeavesTheBroker) {
   EXPECT_TRUE(test::eventually([&] { return edge.call<size_t>([](broker::Broker& b) { return b.connections(); }) == 0; }, 3s));
 }
 
+// GET /retained (the claim board's snapshot call): the retained values a
+// filter matches, as one JSON array, then the connection closes. Nothing
+// live is in it, since the broker sends a subscription's retained values
+// inside the SUBSCRIBE itself.
+TEST_F(HttpTest, RetainedAnswersTheMatchingRetainedValuesAndCloses) {
+  MqttClient pub(edge.port());
+  pub.connect("pub");
+  pub.publish("room/0/temp", "19", QoS::at_least_once, true);
+  pub.publish("room/1/temp", "21.5", QoS::at_least_once, true);
+  pub.publish("room/2/temp", "live only", QoS::at_least_once);
+  pub.publish("hall/temp", "elsewhere", QoS::at_least_once, true);
+
+  const auto response = request(http.port(), "GET", "/retained?filter=room/+/temp");
+  ASSERT_TRUE(response.starts_with("HTTP/1.1 200")) << response;
+  EXPECT_NE(response.find("Content-Type: application/json"), std::string::npos) << response;
+  const auto body = response.substr(response.find("\r\n\r\n") + 4);
+  ASSERT_TRUE(body.starts_with("[") && body.ends_with("]")) << body;
+  EXPECT_NE(body.find("{\"topic\":\"room/0/temp\",\"qos\":0,\"retain\":true,\"payload\":\"19\"}"), std::string::npos) << body;
+  EXPECT_NE(body.find("{\"topic\":\"room/1/temp\",\"qos\":0,\"retain\":true,\"payload\":\"21.5\"}"), std::string::npos) << body;
+  EXPECT_EQ(body.find("live only"), std::string::npos) << body;
+  EXPECT_EQ(body.find("elsewhere"), std::string::npos) << body;
+}
+
+TEST_F(HttpTest, RetainedTakesSeveralFilters) {
+  MqttClient pub(edge.port());
+  pub.connect("pub");
+  pub.publish("a/1", "x", QoS::at_least_once, true);
+  pub.publish("b/1", "y", QoS::at_least_once, true);
+  const auto response = request(http.port(), "GET", "/retained?filter=a/%23&filter=b/%23");
+  EXPECT_NE(response.find("\"topic\":\"a/1\""), std::string::npos) << response;
+  EXPECT_NE(response.find("\"topic\":\"b/1\""), std::string::npos) << response;
+}
+
+// A read that finds nothing succeeds with an empty value.
+TEST_F(HttpTest, RetainedOfNothingIsAnEmptyArray) {
+  const auto response = request(http.port(), "GET", "/retained?filter=nobody/%23");
+  ASSERT_TRUE(response.starts_with("HTTP/1.1 200")) << response;
+  EXPECT_TRUE(response.ends_with("\r\n\r\n[]")) << response;
+}
+
+TEST_F(HttpTest, RetainedLeavesNoClientBehind) {
+  request(http.port(), "GET", "/retained?filter=x");
+  EXPECT_TRUE(test::eventually([&] { return edge.call<size_t>([](broker::Broker& br) { return br.connections(); }) == 0; }, 3s));
+}
+
+TEST_F(HttpTest, RetainedRefusals) {
+  EXPECT_TRUE(request(http.port(), "POST", "/retained?filter=x", "").starts_with("HTTP/1.1 405"));
+  EXPECT_TRUE(request(http.port(), "GET", "/retained", "").starts_with("HTTP/1.1 400"));
+  EXPECT_TRUE(request(http.port(), "GET", "/retained?filter=a/%23/b", "").starts_with("HTTP/1.1 400"));
+}
+
+// The answer is bounded: past maximum_retained_bytes it is refused whole,
+// never cut short, and the filter should be narrowed.
+TEST_F(HttpTest, RetainedPastItsBoundIsRefusedWhole) {
+  MqttClient pub(edge.port());
+  pub.connect("pub");
+  for (int i = 0; i < 8; ++i) pub.publish("big/" + std::to_string(i), std::string(100, 'x'), QoS::at_least_once, true);
+  auto config = http_config();
+  config.maximum_retained_bytes = 512;
+  HttpServer small(io.context, edge, config, logger());
+  small.start();
+  EXPECT_TRUE(request(small.port(), "GET", "/retained?filter=big/%23").starts_with("HTTP/1.1 413"));
+  EXPECT_TRUE(request(small.port(), "GET", "/retained?filter=big/0").starts_with("HTTP/1.1 200"));
+  small.stop();
+}
+
 class TokenOnly final : public contract::Authenticator {
  public:
   contract::AuthDecision connect(const mqtt::Connect& c, const contract::Peer&) override {
@@ -216,6 +282,8 @@ TEST_F(HttpAuthTest, TheBearerTokenIsTheConnectPassword) {
   EXPECT_TRUE(request(http.port(), "POST", "/publish?topic=t", "x", "Authorization: Bearer bad\r\n").starts_with("HTTP/1.1 401"));
   EXPECT_TRUE(request(http.port(), "POST", "/publish?topic=t", "x", "Authorization: Bearer good\r\n").starts_with("HTTP/1.1 200"));
   EXPECT_TRUE(request(http.port(), "GET", "/subscribe?filter=t", "").starts_with("HTTP/1.1 401"));
+  EXPECT_TRUE(request(http.port(), "GET", "/retained?filter=t", "").starts_with("HTTP/1.1 401"));
+  EXPECT_TRUE(request(http.port(), "GET", "/retained?filter=t", "", "Authorization: Bearer good\r\n").starts_with("HTTP/1.1 200"));
 }
 
 class HttpsTest : public ::testing::Test {
