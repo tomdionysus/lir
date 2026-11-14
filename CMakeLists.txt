@@ -44,7 +44,7 @@ FetchContent_MakeAvailable(dannan)
 # (lir/rules/boost_json.cpp) is left out when it is linked.
 if(LIR_BUILD_LUGH)
   set(LIR_LUGH_REPOSITORY "${CMAKE_CURRENT_SOURCE_DIR}/../lugh" CACHE PATH "Lugh's repository")
-  set(LIR_LUGH_REF "2b60b5228a1e535c4614a00ef28f017dd0b5dcbb")
+  set(LIR_LUGH_REF "dbb0573420952336ede86d8db3e86640e48dddb3")
   FetchContent_Declare(lugh GIT_REPOSITORY "${LIR_LUGH_REPOSITORY}" GIT_TAG "${LIR_LUGH_REF}")
   set(LUGH_BUILD_NODE OFF CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(lugh)
