@@ -22,10 +22,12 @@ for the release gate.
   `/root/lir-work`.
 - **Nobody schedules the Pis.** A session claims a free machine on the
   board and has it, first come, first served; one heavy job per Pi, `-j2`,
-  `nice 19`; release the moment the job ends. The board is the only
-  channel (Tom, 2026-11-14, relayed by Miach): never message a session to
-  ask for a machine; claim a free one, or wait for a claim to end, and
-  post a note before anything disruptive.
+  `nice 19`; release the moment the job ends. Claim board 0.2.0
+  (2026-11-14): claims name cores (4 a Pi; Lir's gate takes 2, its `-j`),
+  and when none are free, `claim-board wait --any --cores 2 --job "..."
+  --for 2h` in the background waits in the scheduler's queue instead of a
+  sleep. Tom reversed the board-only rule: a session may also ask a
+  machine's holder to make room.
 - **The claim-board plugin is enabled.** From this session's next start,
   use its tools (`claims_list`, `claim_take`, `claim_release`,
   `status_set`, ...), not hand-written curl. A heavy command over ssh to a
