@@ -148,6 +148,10 @@ Pass `-DCMAKE_PREFIX_PATH` where Boost and OpenSSL are not on the default path (
 with MacPorts: `"/opt/local/libexec/boost/1.88;/opt/local"`). The process tests use
 `mosquitto_pub` and `mosquitto_sub` when they are installed.
 
+`-DLIR_BUILD_LUGH=ON` adds the optional Lugh plugin, so clients can sign in with a Lugh
+access token. It fetches Lugh's `lugh_client` from `../lugh` at a pinned commit, built on
+the same Dannan. Lir builds and runs without it.
+
 ### Run a node
 
 `lir-node` is one node of a cluster: a Dannan node that advertises `lir` and serves MQTT.
@@ -159,8 +163,11 @@ printf '%s' 'a long shared secret' > cluster.key
 #   {"event":"listening","id":"...","port":7437,"mqtt_port":1883,"http_port":8083,...}
 ```
 
-Clients are refused unless `--allow-anonymous` is given; until the Lugh
-authenticator there is nothing to check a credential against. An anonymous client
+Clients are refused unless `--allow-anonymous` is given, or, with the Lugh plugin built
+and `--lugh-issuer URL` given (once for each trusted Lugh; `--lugh-ca PEM` for its roots),
+they sign in with a Lugh access token as the CONNECT password or by the MQTT 5 method
+`lugh`. The token's `lir:` scopes are what the client may do, until its expiry. Without
+the plugin, a client presenting a credential is refused. An anonymous client
 may publish, retain and subscribe anywhere and read the system topics, or only
 what `--anonymous-scope` allows, repeated:
 

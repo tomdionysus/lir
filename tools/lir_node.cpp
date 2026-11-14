@@ -32,6 +32,7 @@
 //            [--tls-client-ca PEM [--tls-client-certificate required|optional]]
 //            [--ws-port N] [--ws-listen ADDR] [--wss-port N] [--wss-listen ADDR]
 //            [--allow-anonymous [--anonymous-scope SCOPE]...]
+//            [--lugh-issuer URL]... [--lugh-ca PEM]
 //            [--no-system-topics nodes|cluster|clients|roster]...
 //            [--max-packet-size BYTES] [--receive-maximum N] [--max-queued N]
 //            [--max-session-expiry SECONDS] [--max-outbound-bytes BYTES]
@@ -45,11 +46,13 @@
 //   lir-node --version
 //
 // Clients are refused unless --allow-anonymous is given (design, section
-// 1); until the Lugh plugin there is nothing to check a credential against,
-// so a client presenting one is refused too. An anonymous client may do
-// what the --anonymous-scope values say ("lir:pub:F", "lir:sub:F",
-// "lir:retain:F"; auth/scopes.h), or anything but write the system topics
-// when none is given.
+// 1), or, in a lir-node built with the Lugh plugin (LIR_BUILD_LUGH) and
+// given --lugh-issuer, they sign in with an access token from a trusted
+// Lugh as the CONNECT password or by the 5.0 method "lugh" (auth/lugh.h).
+// Without the plugin a client presenting a credential is refused. An
+// anonymous client may do what the --anonymous-scope values say
+// ("lir:pub:F", "lir:sub:F", "lir:retain:F"; auth/scopes.h), or anything
+// but write the system topics when none is given.
 
 #include <signal.h>
 
@@ -59,6 +62,7 @@
 #include <chrono>
 #include <cstdint>
 #include <iostream>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <sstream>
@@ -69,6 +73,10 @@
 #include "dannan/config/config.h"
 #include "dannan/node.h"
 #include "lir/auth/scopes.h"
+#include "lir/auth/tokens.h"
+#ifdef LIR_WITH_LUGH
+#include "lir/auth/lugh.h"
+#endif
 #include "lir/cluster/cluster.h"
 #include "lir/edge/edge.h"
 #include "lir/http/http.h"
@@ -144,6 +152,10 @@ struct Options {
   std::string mqttsn_advertise_address = "255.255.255.255";
   bool allow_anonymous = false;
   std::vector<std::string> anonymous_scopes;
+  // The Lugh plugin: each trusted Lugh's issuer URL, and the roots its HTTPS
+  // chains to (empty: the system's). No issuers: no plugin.
+  std::vector<std::string> lugh_issuers;
+  std::string lugh_ca;
 };
 
 dannan::net::Endpoint endpoint(const std::string& text) {
@@ -219,6 +231,8 @@ dannan::config::Reader reader() {
   add("tls.client_certificate", Kind::value, "--tls-client-certificate", "required or optional");
   add("auth.allow_anonymous", Kind::toggle, "--allow-anonymous", "whether anonymous clients are served");
   add("auth.anonymous_scopes", Kind::list, "--anonymous-scope", "a topic scope, lir:pub|sub|retain:FILTER");
+  add("auth.lugh_issuers", Kind::list, "--lugh-issuer", "a trusted Lugh's issuer URL (needs the Lugh plugin)");
+  add("auth.lugh_ca", Kind::value, "--lugh-ca", "a PEM file of the roots the Lugh issuers' HTTPS chains to");
   add("system.off", Kind::list, "--no-system-topics", "nodes, cluster, clients or roster");
   add("limits.max_packet_size", Kind::value, "--max-packet-size", "bytes, 16 to 268435455");
   add("limits.receive_maximum", Kind::value, "--receive-maximum", "a count, 1 to 65535");
@@ -294,6 +308,11 @@ Options parse(int argc, char** argv) {
   if (const auto mode = settings.choice("tls.client_certificate", {"required", "optional"})) out.tls_client_certificate_required = *mode == "required";
   out.allow_anonymous = settings.toggle("auth.allow_anonymous").value_or(false);
   out.anonymous_scopes = settings.list("auth.anonymous_scopes");
+  out.lugh_issuers = settings.list("auth.lugh_issuers");
+  out.lugh_ca = settings.path_of("auth.lugh_ca").value_or("");
+#ifndef LIR_WITH_LUGH
+  if (!out.lugh_issuers.empty()) throw std::runtime_error("--lugh-issuer: this lir-node was built without the Lugh plugin (LIR_BUILD_LUGH)");
+#endif
   for (const auto& off : settings.list("system.off")) {
     if (off == "nodes")
       out.system.nodes = false;
@@ -411,8 +430,26 @@ int main(int argc, char** argv) {
         anonymous = std::move(parsed.scopes);
       }
     }
-    lir::auth::AnonymousAuthenticator authenticator(std::move(anonymous));
-    lir::edge::Edge edge(io, edge_config, dannan::contract::steady_time_source(), authenticator, node.context().logger("lir"));
+    // Clients sign in with a Lugh token when the plugin is given issuers;
+    // otherwise only anonymous clients, as allowed, are served.
+    std::unique_ptr<lir::contract::Authenticator> authenticator;
+#ifdef LIR_WITH_LUGH
+    std::optional<lir::auth::LughPlugin> lugh;
+    if (!options.lugh_issuers.empty()) {
+      lir::auth::LughConfig lugh_config;
+      lugh_config.issuers = options.lugh_issuers;
+      lugh_config.ca_path = options.lugh_ca;
+      lugh.emplace(io, std::move(lugh_config), dannan::contract::steady_time_source(), dannan::contract::system_wall_clock());
+      lugh->start();
+      lir::auth::TokenConfig token_config;
+      token_config.anonymous = anonymous;
+      authenticator =
+          std::make_unique<lir::auth::TokenAuthenticator>(lugh->verifier(), dannan::contract::steady_time_source(), dannan::contract::system_wall_clock(),
+                                                          std::move(token_config), node.context().logger("lir.auth"));
+    }
+#endif
+    if (!authenticator) authenticator = std::make_unique<lir::auth::AnonymousAuthenticator>(std::move(anonymous));
+    lir::edge::Edge edge(io, edge_config, dannan::contract::steady_time_source(), *authenticator, node.context().logger("lir"));
     // The cluster's routes are registered before the node starts.
     lir::cluster::ClusterConfig cluster_config;
     cluster_config.session_standbys = options.session_standbys;

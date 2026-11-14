@@ -22,6 +22,7 @@ endif()
 option(LIR_BUILD_TESTING "Build lir_tests (GoogleTest)" OFF)
 option(LIR_BUILD_FUZZING "Build the libFuzzer targets in lir/fuzz; needs a clang that ships libFuzzer" OFF)
 option(LIR_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
+option(LIR_BUILD_LUGH "Build the Lugh plugin: clients sign in with a Lugh access token (fetches Lugh's lugh_client)" OFF)
 
 find_package(Boost 1.83 CONFIG REQUIRED COMPONENTS headers)
 find_package(OpenSSL 3 REQUIRED COMPONENTS Crypto SSL)
@@ -35,6 +36,19 @@ include(FetchContent)
 FetchContent_Declare(dannan GIT_REPOSITORY "${LIR_DANNAN_REPOSITORY}" GIT_TAG "${LIR_DANNAN_TAG}")
 set(DANNAN_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(dannan)
+
+# Lugh's lugh_client, for the optional Lugh plugin (Tom, 2026-11-14): a
+# commit on Lugh's develop until Lugh releases, tested there on the Dannan
+# pinned above, which it takes rather than fetching its own. Only the
+# library is built. It carries Boost.JSON's definitions, so Lir's own
+# (lir/rules/boost_json.cpp) is left out when it is linked.
+if(LIR_BUILD_LUGH)
+  set(LIR_LUGH_REPOSITORY "${CMAKE_CURRENT_SOURCE_DIR}/../lugh" CACHE PATH "Lugh's repository")
+  set(LIR_LUGH_REF "2b60b5228a1e535c4614a00ef28f017dd0b5dcbb")
+  FetchContent_Declare(lugh GIT_REPOSITORY "${LIR_LUGH_REPOSITORY}" GIT_TAG "${LIR_LUGH_REF}")
+  set(LUGH_BUILD_NODE OFF CACHE BOOL "" FORCE)
+  FetchContent_MakeAvailable(lugh)
+endif()
 
 add_library(lir_warnings INTERFACE)
 target_compile_options(lir_warnings INTERFACE -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wno-sign-conversion)
