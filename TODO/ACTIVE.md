@@ -15,7 +15,9 @@ throttled). Dannan pinned at
 **How work is done now (Tom, 2026-11-14):**
 - **No builds or test runs on the Mac.** Every build is on the shared Pi 5
   build servers: corvus-jupiter 10.44.1.169, corvus-saturn 10.44.1.170,
-  corvus-neptune 10.44.1.202, root over ssh. Work there goes in
+  corvus-neptune 10.44.1.202, root over ssh; and corvus-uranus
+  10.44.1.228 (Tom, 2026-11-14; 3 GB RAM, so `-j1` for Lir's heavier
+  translation units; a claimable host only, not a cluster node). Work there goes in
   `/root/lir-work`.
 - **Nobody schedules the Pis.** A session claims a free machine on the
   board and has it, first come, first served; one heavy job per Pi, `-j2`,

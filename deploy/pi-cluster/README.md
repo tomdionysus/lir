@@ -13,6 +13,13 @@ them.
 Any node serves any client; the cluster is one broker. Connect to whichever
 is up. The ports keep clear of other sessions' test nodes on Dannan's 7437.
 
+corvus-uranus (10.44.1.228; arm64, 4 cores, 3 GB RAM, added by Tom on
+2026-11-14) is a build machine to claim, not a node of this cluster or of
+the board. Kept out on purpose: a fourth node makes an even split, 2 and 2,
+a minority on both sides (Dannan's partition reading), where three nodes
+keep a majority through any one loss; and 3 GB leaves no room for a node
+beside a build. The board's claims list it like the others.
+
 ## Coordinating through it
 
 **Nobody schedules the Pis** (Tom, 2026-11-14). A session claims a free
