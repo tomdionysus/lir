@@ -65,7 +65,13 @@ throttled): the CI script's first real build, proved. Dannan pinned at
    until Lugh releases. Its Dannan must be the one Lir pins: Lugh is on
    Dannan 0.7.0 (develop `7b0c717`), uses Lir's `dannan::dannan` when
    fetched into Lir's build (one Dannan a process), and moves with Lir
-   when Lir moves past 0.7 (tell the Lugh session first).
+   when Lir moves past 0.7 (tell the Lugh session first). Boost.JSON
+   (Tom, 2026-11-14): `lugh_client` compiles `boost/json/src.hpp`
+   itself, and so does Lir, for the rules engine
+   (`lir/rules/boost_json.cpp`, listed at `lir/CMakeLists.txt:25`). With
+   the plugin on, Lir leaves that file out and takes the definitions from
+   `lugh::client`; with it off, Lir compiles its own. A test of both
+   configurations' link comes with the plugin.
 6. **MQTT-SN 2.0** when OASIS approves a Committee Specification.
 
 **The standing cluster** on the three Pis (`deploy/pi-cluster/`): one
