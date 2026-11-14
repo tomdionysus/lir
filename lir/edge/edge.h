@@ -107,8 +107,11 @@ class Edge {
   // boost::system::system_error when an address cannot be bound or the
   // certificate or key cannot be loaded. Waits on the bind.
   void start();
-  // Closes the listener and every client, then waits for the strand to
-  // have done so. Never from one of the io context's threads.
+  // Closes the listeners and ends every client: a 5.0 client is told the
+  // server is shutting down (0x8B) and each connection ends cleanly, within
+  // the clean-end bound (2 s), before what is left is closed at once.
+  // Waits for that, on the strand. Never from one of the io context's
+  // threads.
   void stop();
   uint16_t port() const noexcept;
   // Zero without a TLS listener.

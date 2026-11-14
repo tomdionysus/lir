@@ -1353,6 +1353,29 @@ TEST_F(BrokerScopesAtReconnect, AResumedThreeOneOneSessionKeepsOnlyWhatTheNewGra
   EXPECT_EQ(got[0].topic, "a/1");
 }
 
+TEST_F(BrokerTest, ShuttingDownEndsEveryConnectionAndTellsA5ClientWhy) {
+  std::vector<ClientEvent> events;
+  broker.observe([&](const ClientEvent& e) { events.push_back(e); });
+  auto five = connect("five");
+  auto old = connect("old", Version::v3_1_1);
+  auto waiting = open();
+  broker.shutting_down();
+  EXPECT_EQ(five.take_one<mqtt::Disconnect>().reason, reason::server_shutting_down);
+  EXPECT_TRUE(five.closed());
+  EXPECT_TRUE(old.take().empty());
+  EXPECT_TRUE(old.closed());
+  EXPECT_TRUE(waiting.closed());
+  EXPECT_EQ(broker.connections(), 0u);
+  size_t ended = 0;
+  for (const auto& e : events) {
+    if (e.kind != ClientEvent::Kind::disconnected) continue;
+    ++ended;
+    EXPECT_EQ(e.by, ClientEvent::By::server);
+    EXPECT_EQ(e.reason, reason::server_shutting_down);
+  }
+  EXPECT_EQ(ended, 2u);
+}
+
 // ---- a minority side (Dannan's partition reading; step 5 design, "On a
 // minority side", as the interim has it)
 
