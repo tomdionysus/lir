@@ -33,13 +33,18 @@ Lir's work while they build, all of it chosen by Tom on 2026-11-13:
    sequence blocks behind `SequenceStore` (a node-local space fills it), and
    the stored forms of inflight and queue entries, whose expiry is
    wall-clock time because a log entry outlives the steady clock.
-2c. Linux arm64 on the shared Pi cluster (Tom, 2026-11-13: corvus-jupiter
-   .169, corvus-saturn .170, corvus-neptune .202; ask the session using a
-   machine first, modest -j, nice 19, files under /home/tom/lir-work). Lir's
-   first GCC build is on `feature/linux-arm64` (Boost floor 1.83, as Dannan
-   and Dagda), unmerged until it passes there; then a two-node lir-node
-   cluster across two Pis, driven over HTTP and SSE. A slot is asked of the
-   Macha session.
+2c. ~~Linux arm64~~ Done 2026-11-14 on corvus-neptune: GCC 14, Debian 13,
+   Boost 1.83, warnings as errors, all 323 tests (`COMPLETED.md`). The Pis
+   are shared (corvus-jupiter .169, corvus-saturn .170, corvus-neptune
+   .202; root over ssh): ask the session using a machine first, post a claim
+   on the standing cluster, modest -j, nice 19, one heavy job per Pi.
+2d. The standing Lir cluster on the three Pis (Tom, 2026-11-14: "install a
+   Lir cluster on these machines and use it to test lir, and coordinate
+   work"): `deploy/pi-cluster/`, ports 7537, 1983 and 8183, the key kept in
+   `build/pi-cluster/` on the Mac. Sessions post claims on
+   `stack/pis/<host>/claim` and status on `stack/sessions/<name>/status`.
+   Upgrade it with `deploy/pi-cluster/install.sh` after each Lir change
+   worth trying on real machines.
 2b. When Dannan lands its partition reading (Tom, 2026-11-13): wire it
    into the interim, so a node on a minority side (an even split is one)
    degrades or refuses QoS 1/2 per its setting, ahead of Dagda.
