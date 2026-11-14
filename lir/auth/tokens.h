@@ -70,7 +70,10 @@ class TokenAuthenticator final : public contract::Authenticator {
  public:
   // The verifier and both clocks outlive the authenticator. A grant ends on
   // `time`, the steady clock the broker decides by, at the moment the wall
-  // clock says the token's exp comes.
+  // clock says the token's exp comes. A token at or past its exp is refused
+  // here even when the verifier's clock skew (Lugh's is 60 s) passed it: a
+  // grant until exp would already have ended, and a refused CONNECT is
+  // plainer than an accepted one closed at once with 0x87.
   TokenAuthenticator(const TokenVerifier& verifier, const dannan::contract::TimeSource& time, const dannan::contract::WallClock& wall, TokenConfig config,
                      dannan::status::ScopedLogger logger);
   contract::AuthDecision connect(const mqtt::Connect& connect, const contract::Peer& peer) override;
