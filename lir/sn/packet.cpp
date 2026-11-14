@@ -83,6 +83,7 @@ class Writer {
   Bytes framed(Type type) const {
     const size_t body = _out.size() + 1;
     Bytes out;
+    out.reserve(body + 3);
     if (body + 1 <= 255) {
       out.push_back(static_cast<uint8_t>(body + 1));
     } else {
