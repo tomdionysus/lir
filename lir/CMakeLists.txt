@@ -22,7 +22,6 @@ add_library(lir SHARED
   mqtt/properties.cpp
   mqtt/topic.cpp
   mqtt/wire.cpp
-  rules/boost_json.cpp
   rules/rules.cpp
   shard/shard.cpp
   sn/gateway.cpp
@@ -41,4 +40,13 @@ target_link_libraries(lir
   PUBLIC dannan::dannan Boost::headers OpenSSL::SSL OpenSSL::Crypto Threads::Threads
   PRIVATE lir_warnings
 )
+# The Lugh plugin, linked into the library whole so Boost.JSON's definitions
+# (lugh_client's then) are in one place; without it, Lir compiles its own.
+if(LIR_BUILD_LUGH)
+  target_sources(lir PRIVATE auth/lugh.cpp)
+  target_link_libraries(lir PUBLIC lugh::client)
+  target_compile_definitions(lir PUBLIC LIR_WITH_LUGH=1)
+else()
+  target_sources(lir PRIVATE rules/boost_json.cpp)
+endif()
 set_target_properties(lir PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR})
