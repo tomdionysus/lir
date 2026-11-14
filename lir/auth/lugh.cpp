@@ -7,11 +7,6 @@
 
 #include "lir/auth/lugh.h"
 
-#include <algorithm>
-#include <array>
-
-#include "lugh/core/encoding.h"
-
 namespace lir::auth {
 
 std::variant<TokenClaims, std::string> LughVerifier::verify(std::string_view token) const {
@@ -26,15 +21,9 @@ std::variant<TokenClaims, std::string> LughVerifier::verify(std::string_view tok
   claims.scopes = std::move(access.scopes);
   claims.expires_unix = access.expires;
   claims.bound_to_key = access.jkt.has_value();
-  if (access.x5t) {
-    // cnf x5t#S256 is a SHA-256 thumbprint, base64url (RFC 8705, 3.1); one
-    // that is not could never match a certificate.
-    const auto bytes = lugh::encoding::base64url_decode(*access.x5t);
-    if (!bytes || bytes->size() != 32) return std::string("cnf.x5t#S256 is not a SHA-256 thumbprint");
-    std::array<uint8_t, 32> thumbprint{};
-    std::copy(bytes->begin(), bytes->end(), thumbprint.begin());
-    claims.bound_certificate = thumbprint;
-  }
+  // cnf x5t#S256, decoded by Lugh, which refuses one that is not a SHA-256
+  // thumbprint (RFC 8705, 3.1).
+  claims.bound_certificate = access.x5t;
   return claims;
 }
 
