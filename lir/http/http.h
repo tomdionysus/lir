@@ -33,6 +33,10 @@
 //     each message as "event: message" with data
 //     {"topic","qos","retain","payload"} (UTF-8 text) or "payload_hex";
 //     retained messages first; a comment every `keepalive`.
+//   GET /retained?filter=F[&filter=G...]           application/json
+//     the retained messages the filters match, as one array of the same
+//     objects, then the connection closes: a snapshot, nothing live. 413
+//     past `maximum_retained_bytes`, refused whole and never cut short.
 //
 // "Authorization: Bearer <token>" is passed as the CONNECT password. In
 // the query, only %XX is decoded: '+' is MQTT's wildcard, never a space.
@@ -49,6 +53,9 @@ struct HttpConfig {
   std::chrono::milliseconds read_timeout{30000};
   // Bytes queued for one event stream before it is closed as too slow.
   size_t maximum_outbound_bytes = 4u << 20;
+  // The largest answer GET /retained gives; past it the filter must be
+  // narrowed.
+  size_t maximum_retained_bytes = 4u << 20;
   // HTTPS on its own port, beside the plain one. Nothing: none.
   std::optional<edge::TlsConfig> tls;
 };
@@ -64,6 +71,9 @@ Target parse_target(std::string_view target);
 // query here, never a space.
 using dannan::encoding::percent_decode;
 
+// A delivered message as JSON: {"topic","qos","retain","payload"} (UTF-8
+// text) or "payload_hex".
+std::string message_json(const mqtt::Publish& publish);
 // One SSE event for a delivered message.
 std::string sse_event(const mqtt::Publish& publish);
 
