@@ -382,8 +382,10 @@ void Link::on_publish(mqtt::Publish&& publish) {
     if (session.inbound_qos2.size() >= config.receive_maximum) return shutdown(reason::receive_maximum_exceeded, true);
   }
 
-  if (publish.qos != QoS::at_most_once && broker.pressure() >= Pressure::refuse_publish) {
-    ++broker._stats.refused_pressure_publishes;
+  const bool minority = broker._partition && !broker._partition->majority;
+  const bool pressed = broker.pressure() >= Pressure::refuse_publish;
+  if (publish.qos != QoS::at_most_once && (pressed || (minority && config.minority == Minority::refuse))) {
+    ++(pressed ? broker._stats.refused_pressure_publishes : broker._stats.refused_minority_publishes);
     // A 3.x client has no way to be told: it is closed, and resends what
     // was not acknowledged when it returns.
     if (!v5()) return shutdown(reason::quota_exceeded, true);
@@ -413,6 +415,7 @@ void Link::on_publish(mqtt::Publish&& publish) {
     message.user_properties = std::move(p.user_properties);
     message.origin = _client_id;
     ++broker._stats.messages_received;
+    if (minority && message.qos != QoS::at_most_once) ++broker._stats.under_replicated;
     if (broker.route(message) == 0) code = reason::no_matching_subscribers;
   }
   if (!v5()) code = reason::success;
@@ -1137,6 +1140,8 @@ const char* pressure_name(Pressure pressure) noexcept {
   }
   return "?";
 }
+
+const char* minority_name(Minority minority) noexcept { return minority == Minority::refuse ? "refuse" : "degrade"; }
 
 Pressure Broker::pressure() const noexcept {
   if (_ledger_full) return Pressure::refuse_connect;
