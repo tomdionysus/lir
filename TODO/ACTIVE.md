@@ -70,7 +70,10 @@ throttled): the CI script's first real build, proved. Dannan pinned at
    (`lir/rules/boost_json.cpp`, listed at `lir/CMakeLists.txt:25`). With
    the plugin on, Lir leaves that file out and takes the definitions from
    `lugh::client`; with it off, Lir compiles its own. A test of both
-   configurations' link comes with the plugin.
+   configurations' link comes with the plugin. Lugh agreed: the
+   definitions live in the exported `lugh_client` library, its Boost.JSON
+   macros are PUBLIC on `lugh::client`, and its P10.6 tests a consumer
+   that links it and uses Boost.JSON.
 6. **MQTT-SN 2.0** when OASIS approves a Committee Specification.
 
 **The standing cluster** on the three build nodes (`deploy/test-cluster/`): one
