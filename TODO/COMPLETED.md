@@ -696,3 +696,27 @@ sequence blocks.
 - A first GCC build on node-a was started before the Macha session's
   note that the machine was Dagda's, and stopped within minutes; both
   sessions were told.
+
+## 2026-11-14: Linux arm64, and a standing cluster on the build nodes
+
+Gate: `lir_tests` 323 passed, 0 failed, on node-c (arm64, Debian 13,
+GCC 14, Boost 1.83, Release, warnings as errors, no warnings; -j1, nice 19,
+throttled=0x0 throughout), and 323 on macOS.
+
+- Lir's first GCC build. Boost's floor lowered to 1.83, as Dannan's and
+  Dagda's. GCC 14 found two shadowed names in the broker, dangling elses
+  around test macros and lambda parameters shadowing a fixture's node, all
+  fixed; and a false positive on MQTT-SN framing's growing vector, twice
+  (a reserve traded one warning for another), fixed by sizing the frame
+  once. No behaviour changed.
+- `deploy/test-cluster/`: a systemd unit, a node config template, an install
+  script run from the workstation, and a README of the coordination topics. Three
+  nodes joined, `$lir/cluster` reporting 3 with consistent limits.
+- Trial across the three build nodes: QoS 2 from node-a to a subscriber on
+  node-c, in order; a retained value published on node-b served from
+  node-c; a persistent session leaving node-a and resuming on node-c
+  with its three queued messages; with node-c stopped, the same session
+  resuming on node-a from its standby with both messages queued since;
+  node-c rejoining and serving retained values again.
+- Announced to the Macha, Dagda, Dannan, Lugh, Corvus LoRa, Corvus
+  Radioberry, AthenaSIP and Miach sessions.
