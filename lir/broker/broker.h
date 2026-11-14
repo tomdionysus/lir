@@ -339,6 +339,11 @@ class Broker {
   // injected time has made due. The owner calls it on a timer.
   void poll();
 
+  // The node is stopping: every connection is ended, a 5.0 client told why
+  // first (DISCONNECT 0x8B, Server shutting down) and each closed cleanly by
+  // its transport. Sessions and wills go as for any close by the server.
+  void shutting_down();
+
   // `observer` is told of each ClientEvent, on the broker's strand; it must
   // not call back into the broker before returning. Empty: none.
   void observe(std::function<void(const ClientEvent&)> observer);

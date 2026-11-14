@@ -252,12 +252,17 @@ TEST_F(WebSocketTest, WebSocketAndTcpClientsShareTheBroker) {
   EXPECT_EQ(std::string(publish.payload.begin(), publish.payload.end()), "21.5");
 }
 
+// A 5.0 client is told the server is shutting down (0x8B) in a binary
+// frame, then the WebSocket closes.
 TEST_F(WebSocketTest, StopClosesWebSocketClients) {
   auto c = client();
   ASSERT_FALSE(c->handshake("mqtt").first);
   ASSERT_TRUE(c->send(mqtt::Connect{Version::v5, true, 0, "w", {}, {}, {}, {}}));
   ASSERT_TRUE(c->next());
   edge.stop();
+  const auto told = c->next();
+  ASSERT_TRUE(told && std::holds_alternative<mqtt::Disconnect>(*told));
+  EXPECT_EQ(std::get<mqtt::Disconnect>(*told).reason, mqtt::reason::server_shutting_down);
   EXPECT_TRUE(c->closed_by_server());
 }
 

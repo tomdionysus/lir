@@ -335,8 +335,18 @@ struct Edge::State : std::enable_shared_from_this<Edge::State> {
 
   std::function<void(ClientConnection*)> forgetter() {
     return [weak = weak_from_this()](ClientConnection* gone) {
-      if (const auto state = weak.lock()) state->connections.erase(gone);
+      if (const auto state = weak.lock()) {
+        state->connections.erase(gone);
+        state->settle();
+      }
     };
+  }
+
+  // While stopping: tells stop() once the last connection has gone.
+  void settle() {
+    if (!drained || !connections.empty()) return;
+    drained->set_value();
+    drained.reset();
   }
 
   template <typename Connection>
@@ -496,6 +506,8 @@ struct Edge::State : std::enable_shared_from_this<Edge::State> {
   dannan::status::ScopedLogger logger;
   broker::Broker broker;
   std::map<ClientConnection*, std::weak_ptr<ClientConnection>> connections;
+  // Set while stop() waits for the connections to end cleanly.
+  std::shared_ptr<std::promise<void>> drained;
   bool started = false;
   bool stopped = false;
   std::atomic<uint16_t> port{0};
@@ -550,8 +562,12 @@ void Edge::start() {
 
 void Edge::stop() {
   if (!_state->started) return;
-  wait([state = _state](broker::Broker&) {
-    if (state->stopped) return;
+  // First every client is told and its connection ended cleanly, each
+  // within its own bound; then whatever is left is closed at once.
+  auto drained = std::make_shared<std::promise<void>>();
+  auto all_gone = drained->get_future();
+  wait([state = _state, drained](broker::Broker& broker) {
+    if (state->stopped) return drained->set_value();
     state->stopped = true;
     boost::system::error_code ignored;
     state->acceptor.close(ignored);
@@ -559,6 +575,13 @@ void Edge::stop() {
     state->ws_acceptor.close(ignored);
     state->wss_acceptor.close(ignored);
     state->timer.cancel();
+    state->drained = drained;
+    broker.shutting_down();
+    state->settle();
+  });
+  all_gone.wait_for(clean_end_deadline + 1s);
+  wait([state = _state](broker::Broker&) {
+    state->drained.reset();
     std::vector<std::shared_ptr<ClientConnection>> open;
     for (const auto& [raw, weak] : state->connections) {
       if (auto connection = weak.lock()) open.push_back(std::move(connection));

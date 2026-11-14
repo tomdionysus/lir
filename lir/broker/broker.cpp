@@ -1194,6 +1194,12 @@ void Broker::tell(ClientEvent event) {
   if (_observer) _observer(event);
 }
 
+void Broker::shutting_down() {
+  std::vector<std::shared_ptr<Link>> links;
+  for (const auto& [raw, link] : _links) links.push_back(link);
+  for (const auto& link : links) link->shutdown(mqtt::reason::server_shutting_down, true);
+}
+
 void Broker::poll() {
   const auto now = _time.now();
   std::vector<std::shared_ptr<Link>> links;
