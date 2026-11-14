@@ -1082,4 +1082,18 @@ Tom's word (Tom, 2026-11-14), the hosted CI's first run.
 - Recorded: Tom's answers (push develop, tag Dagda 0.2.0, yes to P3's name
   and phasing, fuzzing at the release); Dagda's pause for Macha's port;
   corvus-uranus a claim host only; the board the only channel for the
-  Pis.
+  Pis (later reversed by Tom: a holder may be asked to make room; claim
+  board 0.2.0 claims cores and queues waits).
+
+## 2026-11-14, evening: the Lugh plugin repinned at the end of P10
+
+Gate: `tools/ci.sh lugh` 343 passed, 0 failed, on corvus-neptune (2 cores
+claimed, warnings as errors, no warnings, `throttled=0x0`); the release
+configuration is untouched by it. Merged to `develop` as `33b7c8b`;
+nothing pushed.
+
+- Lugh at develop `dbb0573` (P10 complete, on Dannan 0.7.0, `66e0509`):
+  `AccessToken::x5t` arrives decoded and a malformed one is refused by
+  Lugh, so `LughVerifier` copies it; the tests sign with Lugh's public
+  `lugh/client/testing.h` (`lt::sign_access_token`, `lt::jwks`). Lir no
+  longer includes Lugh's `jose.h` or `core/encoding.h`.
