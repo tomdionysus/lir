@@ -70,7 +70,9 @@ Lir is the broker written once for this stack:
   - `$dannan/roster/joined`, `/left` and `/changed`: the cluster's membership, once per
     change.
 - **HTTP.** `POST /publish?topic=T` publishes the body; `GET /subscribe?filter=F` streams
-  matching messages as Server-Sent Events, retained messages first. Each request is a
+  matching messages as Server-Sent Events, retained messages first;
+  `GET /retained?filter=F` answers the retained messages the filters match as one JSON
+  array and closes. Each request is a
   short-lived MQTT client of the broker, so authentication, retained messages and the
   cluster apply exactly as they do to any client. A bearer token is passed to the
   authenticator as the CONNECT password. HTTPS on its own port.

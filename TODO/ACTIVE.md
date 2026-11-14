@@ -48,9 +48,9 @@ Lir's work while they build, all of it chosen by the maintainer on 2026-11-13:
 2e. The claim board plugin, specified at the maintainer's request for another session
    to implement (`../coordination/TODO/2026-11-14-claim-board-plugin.md`).
    Lir owes it two things:
-   - `GET /retained?filter=F`: the retained messages matching F as a JSON
-     array, then close. This replaces the timed SSE read; the plugin falls
-     back to that read on a 404.
+   - ~~`GET /retained?filter=F`~~ Done 2026-11-14: the retained messages
+     matching F as a JSON array, then close; 413 past
+     `maximum_retained_bytes`, never cut short. Gate 329 on node-b.
    - Once the plugin lands: migrate the board to one topic per session per
      machine (`stack/pis/<host>/claims/<session>`), clear the old
      `stack/pis/<host>/claim` topics, and update `deploy/test-cluster/README.md`.
