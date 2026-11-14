@@ -42,6 +42,15 @@ and makes it durable. Fan-out does not move to a shard primary.
 | Message history | Not built | A log per opted-in topic filter, bounded by count and age | Log |
 | Wildcard and shared-group interest | Channels and memory | Unchanged | (none) |
 
+Measured by Dagda on the workstation (2026-11-14, its design, "What slice 0 has
+measured"): a head commit today manages 50 to 110 a second per node with
+four writers, p99 110 to 210 ms, so heads are not the hot path's vehicle,
+as ruled; and a node opening about its 30th head space is refused ("a node
+advertises at most 64 things"), so the per-shard retained and session
+spaces wait for slice 2's advert aggregate. The log's appends, grouped per
+node per tick, are about 100 calls a second per replica, well inside
+Dannan 0.7.0's deferred reply.
+
 Shards: topics by `shard_of(topic)` (`lir/shard/shard.h:34`); sessions by
 `SHA-256("lir-sess:" || client id) mod S` (plan 103). `S` defaults to 256,
 which gives about 1,280 spaces and logs: inflight log, queue log, session
