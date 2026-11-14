@@ -60,7 +60,9 @@ TEST(Shard, ShardLocalFilterMatchesOnlyItsShard) {
     const auto shard = shard_of_filter(filter, 2, 64);
     ASSERT_TRUE(shard) << filter;
     for (const auto& topic : topics) {
-      if (mqtt::matches(filter, topic)) EXPECT_EQ(shard_of(topic, 2, 64), *shard) << filter << " " << topic;
+      if (mqtt::matches(filter, topic)) {
+        EXPECT_EQ(shard_of(topic, 2, 64), *shard) << filter << " " << topic;
+      }
     }
   }
 }

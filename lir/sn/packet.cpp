@@ -7,6 +7,8 @@
 
 #include "lir/sn/packet.h"
 
+#include <algorithm>
+
 namespace lir::sn {
 
 namespace {
@@ -80,19 +82,23 @@ class Writer {
   }
   void bytes(const Bytes& b) { _out.insert(_out.end(), b.begin(), b.end()); }
   void text(const std::string& s) { _out.insert(_out.end(), s.begin(), s.end()); }
+  // Sized once and written in place: GCC 14 misreads a growing vector here.
   Bytes framed(Type type) const {
     const size_t body = _out.size() + 1;
-    Bytes out;
-    if (body + 1 <= 255) {
-      out.push_back(static_cast<uint8_t>(body + 1));
+    const bool short_length = body + 1 <= 255;
+    const size_t length = short_length ? body + 1 : body + 3;
+    if (length > 65535) throw std::invalid_argument("an MQTT-SN packet over 65535 bytes");
+    Bytes out(length);
+    size_t at = 0;
+    if (short_length) {
+      out[at++] = static_cast<uint8_t>(length);
     } else {
-      if (body + 3 > 65535) throw std::invalid_argument("an MQTT-SN packet over 65535 bytes");
-      out.push_back(0x01);
-      out.push_back(static_cast<uint8_t>((body + 3) >> 8));
-      out.push_back(static_cast<uint8_t>(body + 3));
+      out[at++] = 0x01;
+      out[at++] = static_cast<uint8_t>(length >> 8);
+      out[at++] = static_cast<uint8_t>(length);
     }
-    out.push_back(static_cast<uint8_t>(type));
-    out.insert(out.end(), _out.begin(), _out.end());
+    out[at++] = static_cast<uint8_t>(type);
+    std::copy(_out.begin(), _out.end(), out.begin() + static_cast<std::ptrdiff_t>(at));
     return out;
   }
 

@@ -88,7 +88,9 @@ class MqttClient {
     p.retain = retain;
     p.packet_id = qos == mqtt::QoS::at_most_once ? 0 : _next_id++;
     send(p);
-    if (qos == mqtt::QoS::at_least_once) EXPECT_TRUE(receive_a<mqtt::Ack>());
+    if (qos == mqtt::QoS::at_least_once) {
+      EXPECT_TRUE(receive_a<mqtt::Ack>());
+    }
     if (qos == mqtt::QoS::exactly_once) {
       EXPECT_TRUE(receive_a<mqtt::Ack>());
       send(mqtt::Ack{mqtt::PacketType::pubrel, p.packet_id, mqtt::reason::success, {}});

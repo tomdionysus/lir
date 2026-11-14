@@ -23,7 +23,7 @@ option(LIR_BUILD_TESTING "Build lir_tests (GoogleTest)" OFF)
 option(LIR_BUILD_FUZZING "Build the libFuzzer targets in lir/fuzz; needs a clang that ships libFuzzer" OFF)
 option(LIR_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 
-find_package(Boost 1.87 CONFIG REQUIRED COMPONENTS headers)
+find_package(Boost 1.83 CONFIG REQUIRED COMPONENTS headers)
 find_package(OpenSSL 3 REQUIRED COMPONENTS Crypto SSL)
 find_package(Threads REQUIRED)
 
