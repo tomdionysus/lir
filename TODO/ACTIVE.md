@@ -108,7 +108,9 @@ for the release gate.
    land before the P10 commit, so Lir changes once, at the repin. The
    test `AThumbprintThatIsNotSHA256IsRefused` stays, then checking
    Lugh's refusal; and add `tools/ci.sh lugh` to the hosted CI
-   once Lugh's repository can be fetched there. The record of how it was
+   once Lugh's repository can be fetched there (it is private, checked
+   2026-11-14: it needs a read token as a secret, Tom's call; until then
+   the plugin's gate is `tools/ci.sh lugh` on a Pi). The record of how it was
    shaped (`../lugh/TODO/2026-11-14-p10-plan.md`): Tom's rulings (2026-11-14): the
    plugin is optional and Lir builds without Lugh when it is off; it is a
    few-line adapter, `lir::auth::TokenVerifier` over
