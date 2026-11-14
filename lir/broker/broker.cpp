@@ -430,12 +430,12 @@ void Link::on_publish(mqtt::Publish&& publish) {
 void Link::on_ack(const mqtt::Ack& ack) {
   auto& broker = _broker;
   auto& session = *broker._sessions.at(_client_id);
-  using State = Inflight::State;
+  using Stage = Inflight::State;
   const auto it = session.outbound.find(ack.packet_id);
   const auto not_found = v5() ? reason::packet_identifier_not_found : reason::success;
   switch (ack.type) {
     case PacketType::puback:
-      if (it != session.outbound.end() && it->second.state == State::awaiting_puback) {
+      if (it != session.outbound.end() && it->second.state == Stage::awaiting_puback) {
         broker.charge(session, -footprint(it->second.delivery));
         session.outbound.erase(it);
         broker.pump(session);
@@ -443,20 +443,20 @@ void Link::on_ack(const mqtt::Ack& ack) {
       return;
     case PacketType::pubrec:
       if (it == session.outbound.end()) return send(mqtt::Ack{PacketType::pubrel, ack.packet_id, not_found, {}});
-      if (it->second.state == State::awaiting_puback) return;
+      if (it->second.state == Stage::awaiting_puback) return;
       if (ack.reason >= 0x80) {
         broker.charge(session, -footprint(it->second.delivery));
         session.outbound.erase(it);
         broker.pump(session);
         return;
       }
-      it->second.state = State::awaiting_pubcomp;
+      it->second.state = Stage::awaiting_pubcomp;
       return send(mqtt::Ack{PacketType::pubrel, ack.packet_id, reason::success, {}});
     case PacketType::pubrel:
       if (session.inbound_qos2.erase(ack.packet_id) > 0) return send(mqtt::Ack{PacketType::pubcomp, ack.packet_id, reason::success, {}});
       return send(mqtt::Ack{PacketType::pubcomp, ack.packet_id, not_found, {}});
     case PacketType::pubcomp:
-      if (it != session.outbound.end() && it->second.state == State::awaiting_pubcomp) {
+      if (it != session.outbound.end() && it->second.state == Stage::awaiting_pubcomp) {
         broker.charge(session, -footprint(it->second.delivery));
         session.outbound.erase(it);
         broker.pump(session);
@@ -1220,10 +1220,10 @@ void Broker::poll() {
     end_session(client);
   }
   std::erase_if(_retained, [this, now](const auto& entry) {
-    const bool expired = entry.second.expires_at && *entry.second.expires_at <= now;
-    if (expired) charge_retained(-footprint(entry.second));
-    if (expired && entry.first.starts_with(rules::kPrefix)) _rules->erase(entry.first.substr(rules::kPrefix.size()));
-    return expired;
+    const bool gone = entry.second.expires_at && *entry.second.expires_at <= now;
+    if (gone) charge_retained(-footprint(entry.second));
+    if (gone && entry.first.starts_with(rules::kPrefix)) _rules->erase(entry.first.substr(rules::kPrefix.size()));
+    return gone;
   });
   if (pressure() >= Pressure::shed_qos0) shed();
 }

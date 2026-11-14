@@ -222,8 +222,10 @@ TEST_F(SnDtlsTest, PlainMqttSnOnTheDtlsPortGetsNothing) {
   const auto n = ::recv(fd, buffer.data(), buffer.size(), 0);
   ::close(fd);
   // Whatever came back (nothing, or a DTLS alert), it was no CONNACK.
-  if (n > 0) EXPECT_THROW(decode(std::span<const uint8_t>(buffer.data(), static_cast<size_t>(n))), Malformed);
-  EXPECT_EQ(edge->call<size_t>([](broker::Broker& b) { return b.connections(); }), 0u);
+  if (n > 0) {
+    EXPECT_THROW(decode(std::span<const uint8_t>(buffer.data(), static_cast<size_t>(n))), Malformed);
+  }
+  EXPECT_EQ(edge->call<size_t>([](broker::Broker& br) { return br.connections(); }), 0u);
 }
 
 }  // namespace

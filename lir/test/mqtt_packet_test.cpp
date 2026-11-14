@@ -18,7 +18,9 @@ Packet round_trip(const Packet& in, Version version) {
   const Bytes bytes = encode(in, version);
   const auto frame = read_frame(bytes, UINT32_MAX);
   EXPECT_TRUE(frame.has_value());
-  if (frame) EXPECT_EQ(frame->size(), bytes.size());
+  if (frame) {
+    EXPECT_EQ(frame->size(), bytes.size());
+  }
   return decode(bytes, version);
 }
 
