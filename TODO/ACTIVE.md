@@ -45,6 +45,16 @@ Lir's work while they build, all of it chosen by Tom on 2026-11-13:
    `stack/pis/<host>/claim` and status on `stack/sessions/<name>/status`.
    Upgrade it with `deploy/pi-cluster/install.sh` after each Lir change
    worth trying on real machines.
+2e. The claim board plugin, specified at Tom's request for another session
+   to implement (`../lir-develop-cluster/TODO/2026-11-14-claim-board-plugin.md`).
+   Lir owes it two things:
+   - `GET /retained?filter=F`: the retained messages matching F as a JSON
+     array, then close. This replaces the timed SSE read; the plugin falls
+     back to that read on a 404.
+   - Once the plugin lands: migrate the board to one topic per session per
+     machine (`stack/pis/<host>/claims/<session>`), clear the old
+     `stack/pis/<host>/claim` topics, and update `deploy/pi-cluster/README.md`.
+     The first layout lets a second claim overwrite the first.
 2b. When Dannan lands its partition reading (Tom, 2026-11-13): wire it
    into the interim, so a node on a minority side (an even split is one)
    degrades or refuses QoS 1/2 per its setting, ahead of Dagda.
