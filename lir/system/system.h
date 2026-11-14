@@ -20,7 +20,9 @@
 // section 3). Each is configurable and on by default. All are JSON:
 //
 //   $lir/nodes/<node id>     retained: connections, sessions, retained,
-//                            message counts. Each node its own, on change
+//                            message counts, and which side of a split the
+//                            node is on with the ids it cannot reach (Dannan's
+//                            partition reading). Each node its own, on change
 //                            (checked every `every`); cleared by every node
 //                            when the node leaves the roster.
 //   $dannan/nodes/<node id>  retained: the node's record, its peers and
@@ -54,7 +56,8 @@ struct SystemConfig {
 
 // The JSON a node publishes; pure, for tests.
 std::string lir_json(const std::string& node, size_t connections, size_t sessions, size_t retained, const broker::Stats& stats, uint64_t held_bytes = 0,
-                     uint64_t memory_budget = 0, broker::Pressure pressure = broker::Pressure::none);
+                     uint64_t memory_budget = 0, broker::Pressure pressure = broker::Pressure::none,
+                     const std::optional<dannan::membership::Partition>& partition = std::nullopt, broker::Minority minority = broker::Minority::degrade);
 std::string dannan_json(const dannan::membership::NodeRecord& self, const std::vector<dannan::membership::NodeRecord>& active,
                         const std::map<dannan::identity::NodeId, std::chrono::milliseconds>& latencies);
 std::string escaped(const std::string& text);
