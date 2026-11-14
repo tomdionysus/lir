@@ -122,9 +122,10 @@ lives in exactly one.
 - **[Dagda](https://github.com/tomdionysus/dagda)** is the store: objects, claims, leases
   and heads with merges their owner supplies, at a durability level each write chooses.
   Lir keeps its retained messages, in-flight messages and sessions there.
-- **[Lugh](https://github.com/tomdionysus/lugh)** is the directory and sign-on. Lir never
-  links it; to Lir it is an identity provider, and a Lugh authenticator plugin turns a
-  Lugh token into a client's topic scopes.
+- **[Lugh](https://github.com/tomdionysus/lugh)** is the directory and sign-on. To Lir it
+  is one possible identity provider: an optional Lugh plugin, built only when enabled,
+  links Lugh's client library to verify a Lugh token and turn it into a client's topic
+  scopes. Lir itself, and a build without the plugin, never link Lugh.
 
 Hosted systems never address one another. Other systems use Lir as any MQTT client
 would.
