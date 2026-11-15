@@ -211,6 +211,9 @@ Not reopened without asking the maintainer.
   today that needs a single agreed decision.
 - (2026-11-15, the maintainer) Lir commits and pushes `develop` on its own; tags,
   releases and any other publishing still wait for his word.
+- (2026-11-15, the maintainer) The repository is public ("It's time"), so CodeQL's
+  code scanning works as Dannan's does. Checked first: no keys or tokens
+  in its history; the test cluster's LAN addresses are in the deploy docs.
 - (2026-11-14, the maintainer) No builds or test runs on the workstation; the build nodes only.
   Nobody schedules the build nodes: claims on the board, first come, first served.
   The claim-board plugin is enabled for every session. Hosted CI is added,
