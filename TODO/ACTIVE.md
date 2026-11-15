@@ -11,7 +11,9 @@ pushed to `488e89e` at Tom's word, the rest local. Gate on corvus-neptune
 no warnings, never throttled): `tools/ci.sh release` 337 passed at
 `ce4bcd0`; `tools/ci.sh lugh` (the plugin on) 343 passed at the 0.8.0
 repin (`912d33f`). Dannan pinned at `0.8.0`, Lugh at `dbb0573` (plugin
-only; Lugh tested it on 0.7, Lir on 0.8). Unmerged: `feature/fuzz-targets`,
+only). Lugh is on 0.8.0 at `ab28e2d` (724 passed there) with `lugh_client`
+unchanged since `dbb0573`, so the pin stays until Lugh's first release
+(Lugh, 2026-11-15). Unmerged: `feature/fuzz-targets`,
 for the release gate.
 
 **How work is done now (Tom, 2026-11-14):**
