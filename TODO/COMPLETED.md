@@ -1300,3 +1300,19 @@ computed). Open: the cluster upgrade of jupiter, saturn and neptune, first
 next session (`ACTIVE.md`); Louhi's reboot of jupiter is also deferred to
 its next session and will not overlap. No claims held. `develop` pushed.
 
+## 2026-11-15: the standing cluster on 7db72d1
+
+All four nodes run `7db72d1` (Dannan 0.8.3) since 22:33Z, the same binary
+on each (md5 `9ed89541c601`), installed from uranus's release build with
+`LIR_ONLY` one node at a time: saturn, neptune, then jupiter. Louhi and the
+Lir Development Cluster session were told before and after. After each
+restart: `lir-node` and `claim-board-scheduler` active everywhere,
+jupiter's scheduler acting and the others standing by, `$lir/cluster` 4
+nodes, each node's `$lir/nodes` partition majority 4 of 4, and retained
+`stack/#` identical on all four. The untracked `build/cluster-check.py`
+now fetches the four retained sets in parallel and retries, since a board
+write landing between sequential samples read as a false divergence, and
+it finds each node's `$lir/nodes` entry by the id in
+`state/node-id`, which fills the partition column. No build or test run;
+no cores claimed.
+
