@@ -1121,3 +1121,19 @@ no warnings, `throttled=0x0`); merged to `develop`, nothing pushed:
   of its own; HTTPS refuses an unverified certificate as MQTT over TLS
   does.
 - Open with Dannan: TCP_NODELAY (`ACTIVE.md`, item 3).
+
+## 2026-11-15: Dannan 0.8.1
+
+- Lir reviewed Dannan's `feature/no-delay` (three points, all taken: the
+  io context found by type, the restart race stated, `no_delay()` on the
+  stream's executor only). 0.8.1 sets TCP_NODELAY on every accepted
+  socket and `stop_accepting` no longer hangs from an io thread or a
+  context that never ran.
+- The repin (`6254f0d`, merged `13553c0`), no code change: `tools/ci.sh
+  release` 337 passed on node-c (2 cores claimed,
+  `libdannan.so.0.8.1`, `throttled=0x0`).
+- Lugh is on 0.8.0 at `ab28e2d` with `lugh_client` unchanged since
+  `dbb0573`; Lir's Lugh pin stays until Lugh's first release.
+- Answered Louhi (the new compute project) on using Lir for its
+  lifecycle events: as any MQTT client, its own topic root, scopes from
+  Lugh tokens; durability waits on step 5.
