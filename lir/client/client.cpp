@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "dannan/listen/connector.h"
 #include "lir/mqtt/topic.h"
 
 namespace lir::client {
@@ -57,6 +58,28 @@ std::optional<std::pair<std::string, uint16_t>> parse_reference(const std::strin
   return std::pair{reference.substr(0, colon), port};
 }
 
+// The connector's settings: the client's streams on the executor it is given
+// (its strand), so reads, timers and callbacks share one.
+dannan::listen::ConnectorConfig connector_config(const ClientConfig& config) {
+  dannan::listen::ConnectorConfig out;
+  out.name = "lir.client";
+  out.outbound_bound = std::max<size_t>(config.maximum_queued_bytes, 1u << 20);
+  out.strand_per_stream = false;
+  return out;
+}
+
+// Read once, here, so a bad bundle or key is found at construction.
+std::optional<dannan::listen::ClientTls> client_tls(const std::optional<Tls>& tls) {
+  if (!tls) return std::nullopt;
+  dannan::listen::ClientTls out;
+  out.trust = std::make_shared<dannan::listen::ClientTrust>(tls->trust);
+  out.server_name = tls->server_name;
+  if (!tls->certificate_chain.empty() && !tls->private_key.empty()) {
+    out.certificate = std::make_shared<dannan::listen::Certificates>(dannan::listen::CertificatePaths{tls->certificate_chain, tls->private_key, {}});
+  }
+  return out;
+}
+
 }  // namespace
 
 struct Client::State : std::enable_shared_from_this<State> {
@@ -77,14 +100,15 @@ struct Client::State : std::enable_shared_from_this<State> {
     bool acknowledged = false;
   };
 
-  struct Outgoing {
-    mqtt::Bytes bytes;
-    // Told whether it was written; nothing for packets that need no word.
-    std::function<void(bool)> after;
-  };
-
   State(asio::any_io_executor executor, ClientConfig given, const dannan::contract::TimeSource& clock, dannan::status::ScopedLogger log)
-      : strand(asio::make_strand(executor)), config(std::move(given)), time(clock), logger(std::move(log)), timer(strand), random(std::random_device{}()) {
+      : strand(asio::make_strand(executor)),
+        config(std::move(given)),
+        time(clock),
+        logger(std::move(log)),
+        timer(strand),
+        random(std::random_device{}()),
+        tls(client_tls(config.tls)),
+        connector(executor, connector_config(config), &clock) {
     backoff = config.backoff_first;
   }
 
@@ -117,19 +141,19 @@ struct Client::State : std::enable_shared_from_this<State> {
       port = redirect->second;
       redirect.reset();
     }
-    client::connect(strand, host, port, config.tls, config.connect_timeout,
-                    [self = shared_from_this(), attempt_generation](std::shared_ptr<Transport> made, std::string why) {
-                      if (self->generation != attempt_generation || self->phase != Phase::connecting) {
-                        if (made) made->close();
-                        return;
-                      }
-                      if (!made) return self->lost(std::move(why), reason::success);
-                      self->transport = std::move(made);
-                      self->phase = Phase::awaiting_connack;
-                      self->incoming.clear();
-                      self->read();
-                      self->send_connect();
-                    });
+    connector.connect(strand, host, port, tls, config.connect_timeout,
+                      [self = shared_from_this(), attempt_generation](std::shared_ptr<dannan::listen::Stream> made, std::string why) {
+                        if (self->generation != attempt_generation || self->phase != Phase::connecting) {
+                          if (made) made->abort();
+                          return;
+                        }
+                        if (!made) return self->lost(std::move(why), reason::success);
+                        self->stream = std::move(made);
+                        self->phase = Phase::awaiting_connack;
+                        self->incoming.clear();
+                        self->read();
+                        self->send_connect();
+                      });
     arm();
   }
 
@@ -147,7 +171,7 @@ struct Client::State : std::enable_shared_from_this<State> {
       if (auto password = config.password()) connect.password = mqtt::Bytes(password->begin(), password->end());
     }
     if (config.version == Version::v5 && config.session_expiry > 0) connect.properties.session_expiry_interval = config.session_expiry;
-    write_packet(connect, {});
+    write_packet(connect);
   }
 
   void on_connack(const mqtt::Connack& connack) {
@@ -189,15 +213,10 @@ struct Client::State : std::enable_shared_from_this<State> {
   void lost(std::string why, uint8_t broker_reason) {
     if (phase == Phase::stopped || phase == Phase::idle || phase == Phase::waiting) return;
     ++generation;
-    if (transport) {
-      transport->close();
-      transport.reset();
+    if (stream) {
+      stream->abort();
+      stream.reset();
     }
-    for (auto& outgoing : outgoing_queue) {
-      if (outgoing.after) outgoing.after(false);
-    }
-    outgoing_queue.clear();
-    writing = false;
     suback_waiting.clear();
     for (auto& [id, sub] : subscriptions) sub.acknowledged = false;
     logger.info("disconnected from the broker: " + why);
@@ -219,7 +238,7 @@ struct Client::State : std::enable_shared_from_this<State> {
   void read() {
     const uint64_t read_generation = generation;
     chunk.resize(kReadChunk);
-    transport->read_some(chunk, [self = shared_from_this(), read_generation](boost::system::error_code error, size_t n) {
+    stream->async_read_some(asio::buffer(chunk), [self = shared_from_this(), read_generation](boost::system::error_code error, size_t n) {
       if (self->generation != read_generation) return;
       if (error) return self->lost("the connection closed: " + error.message(), reason::success);
       self->incoming.insert(self->incoming.end(), self->chunk.begin(), self->chunk.begin() + static_cast<std::ptrdiff_t>(n));
@@ -247,12 +266,11 @@ struct Client::State : std::enable_shared_from_this<State> {
   }
 
   void protocol_failure(uint8_t code, std::string why) {
-    if (config.version == Version::v5 && transport && phase == Phase::connected) {
-      // Said before closing, as a 5.0 client should; not waited for.
-      try {
-        transport->write(mqtt::encode(mqtt::Disconnect{code, {}}, config.version), [](auto) {});
-      } catch (const std::exception&) {
-      }
+    if (config.version == Version::v5 && stream && phase == Phase::connected) {
+      // Said before closing, as a 5.0 client should: the close sends it first.
+      write_packet(mqtt::Disconnect{code, {}});
+      stream->close();
+      stream.reset();
     }
     lost(std::move(why), code);
   }
@@ -307,7 +325,7 @@ struct Client::State : std::enable_shared_from_this<State> {
       }
       if (wanted) tell([on_message = sub.on_message, message] { (*on_message)(*message); });
     }
-    if (publish.qos == QoS::at_least_once) write_packet(mqtt::Ack{mqtt::PacketType::puback, publish.packet_id, reason::success, {}}, {});
+    if (publish.qos == QoS::at_least_once) write_packet(mqtt::Ack{mqtt::PacketType::puback, publish.packet_id, reason::success, {}});
   }
 
   void on_puback(const mqtt::Ack& ack) {
@@ -360,7 +378,7 @@ struct Client::State : std::enable_shared_from_this<State> {
     if (config.version == Version::v5) subscribe.properties.subscription_identifiers.push_back(static_cast<uint32_t>(id));
     subscribe.subscriptions.push_back({sub.filter, sub.qos});
     suback_waiting[subscribe.packet_id] = id;
-    write_packet(subscribe, {});
+    write_packet(subscribe);
   }
 
   void send_publish(Pending& pending, bool dup) {
@@ -371,7 +389,7 @@ struct Client::State : std::enable_shared_from_this<State> {
     publish.topic = pending.message.topic;
     publish.packet_id = pending.packet_id;
     publish.payload = pending.message.payload;
-    write_packet(publish, {});
+    write_packet(publish);
   }
 
   // Why the broker cannot take `message` as it said at CONNACK, or nothing.
@@ -406,47 +424,34 @@ struct Client::State : std::enable_shared_from_this<State> {
       if (pending.message.qos == QoS::at_least_once) {
         const uint16_t id = pending.packet_id;
         inflight.emplace(id, std::move(pending));
-        write_bytes(std::move(bytes), {});
+        write_bytes(bytes);
       } else {
-        write_bytes(std::move(bytes), [self = shared_from_this(), done = std::move(pending.done)](bool written) mutable {
-          self->tell_outcome(std::move(done),
-                             written ? Outcome{true, reason::success, {}} : Outcome{false, reason::unspecified_error, "the connection was lost first"});
-        });
+        // QoS 0 is done once it is handed to the connection.
+        const bool sent = write_bytes(bytes);
+        tell_outcome(std::move(pending.done),
+                     sent ? Outcome{true, reason::success, {}} : Outcome{false, reason::unspecified_error, "the connection was lost first"});
       }
     }
   }
 
-  void write_packet(const mqtt::Packet& packet, std::function<void(bool)> after) {
+  // Whether it was handed to the connection: Dannan's stream queues it, bounded,
+  // and its close sends what is queued first.
+  bool write_packet(const mqtt::Packet& packet) {
     mqtt::Bytes bytes;
     try {
       bytes = mqtt::encode(packet, config.version);
     } catch (const std::exception& e) {
       logger.error(std::string("a packet could not be encoded: ") + e.what());
-      if (after) after(false);
-      return;
+      return false;
     }
-    write_bytes(std::move(bytes), std::move(after));
+    return write_bytes(bytes);
   }
 
-  void write_bytes(mqtt::Bytes bytes, std::function<void(bool)> after) {
-    outgoing_queue.push_back({std::move(bytes), std::move(after)});
-    write_next();
-  }
-
-  void write_next() {
-    if (writing || outgoing_queue.empty() || !transport) return;
-    writing = true;
+  bool write_bytes(const mqtt::Bytes& bytes) {
+    if (!stream) return false;
     last_sent = time.now();
-    const uint64_t write_generation = generation;
-    transport->write(outgoing_queue.front().bytes, [self = shared_from_this(), write_generation](boost::system::error_code error) {
-      if (self->generation != write_generation) return;
-      self->writing = false;
-      if (error) return self->lost("writing failed: " + error.message(), reason::success);
-      auto after = std::move(self->outgoing_queue.front().after);
-      self->outgoing_queue.pop_front();
-      if (after) after(true);
-      self->write_next();
-    });
+    stream->send(std::string(bytes.begin(), bytes.end()));
+    return true;
   }
 
   // ---- time
@@ -492,7 +497,7 @@ struct Client::State : std::enable_shared_from_this<State> {
           if (ping_sent && now >= *ping_sent + keep_alive) return lost("the broker stopped answering", reason::keep_alive_timeout);
           if (!ping_sent && now >= last_sent + keep_alive) {
             ping_sent = now;
-            write_packet(mqtt::Pingreq{}, {});
+            write_packet(mqtt::Pingreq{});
           }
         }
         break;
@@ -523,30 +528,23 @@ struct Client::State : std::enable_shared_from_this<State> {
       if (done) tell(std::move(done));
       return;
     }
-    const bool was_connected = phase == Phase::connected && transport;
+    const bool was_connected = phase == Phase::connected && stream;
     phase = Phase::stopped;
     ++generation;
     timer.cancel();
     fail_everything("stopped");
-    for (auto& outgoing : outgoing_queue) {
-      if (outgoing.after) outgoing.after(false);
-    }
-    outgoing_queue.clear();
-    writing = false;
-    auto ending = std::move(transport);
     if (!was_connected) {
-      if (ending) ending->close();
+      if (stream) stream->abort();
+      stream.reset();
       if (done) tell(std::move(done));
       return;
     }
-    // DISCONNECT, normal: the will is not published. Then close.
-    mqtt::Bytes bytes;
-    try {
-      bytes = mqtt::encode(mqtt::Disconnect{}, config.version);
-    } catch (const std::exception&) {
-    }
-    ending->write(std::move(bytes), [self = shared_from_this(), ending, done = std::move(done)](auto) mutable {
-      ending->close();
+    // DISCONNECT, normal: the will is not published. The close writes it first,
+    // within Dannan's close bound.
+    write_packet(mqtt::Disconnect{});
+    auto ending = std::move(stream);
+    ending->close();
+    ending->when_finished([self = shared_from_this(), done = std::move(done)]() mutable {
       if (done) self->tell(std::move(done));
     });
   }
@@ -562,11 +560,11 @@ struct Client::State : std::enable_shared_from_this<State> {
   // Moves on with each attempt and each loss, so a handler of an older
   // connection does nothing.
   uint64_t generation = 0;
-  std::shared_ptr<Transport> transport;
+  std::optional<dannan::listen::ClientTls> tls;
+  dannan::listen::StreamConnector connector;
+  std::shared_ptr<dannan::listen::Stream> stream;
   std::vector<uint8_t> chunk;
   mqtt::Bytes incoming;
-  std::deque<Outgoing> outgoing_queue;
-  bool writing = false;
 
   std::deque<Pending> queued;
   size_t queued_bytes = 0;
@@ -662,7 +660,7 @@ void Client::unsubscribe(SubscriptionId id) {
       mqtt::Unsubscribe unsubscribe;
       unsubscribe.packet_id = state->next_packet_id();
       unsubscribe.filters.push_back(filter);
-      state->write_packet(unsubscribe, {});
+      state->write_packet(unsubscribe);
     }
   });
 }
