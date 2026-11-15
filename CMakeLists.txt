@@ -33,7 +33,9 @@ find_package(Threads REQUIRED)
 
 # Dannan, the network layer, at its tag, cloned from the sibling checkout
 # into the build tree, so building Lir never touches ../dannan.
-set(LIR_DANNAN_REPOSITORY "${CMAKE_CURRENT_SOURCE_DIR}/../dannan" CACHE PATH "Dannan's repository")
+# A path or a URL: STRING, as a PATH entry would make a URL given with -D
+# into a path under the source tree.
+set(LIR_DANNAN_REPOSITORY "${CMAKE_CURRENT_SOURCE_DIR}/../dannan" CACHE STRING "Dannan's repository, a path or a URL")
 # Not a cache variable: a moved pin must take effect in a build tree that
 # already exists.
 set(LIR_DANNAN_TAG "0.8.2")
@@ -51,7 +53,7 @@ endif()
 # library is built. It carries Boost.JSON's definitions, so Lir's own
 # (lir/rules/boost_json.cpp) is left out when it is linked.
 if(LIR_BUILD_LUGH AND LIR_BUILD_SERVER)
-  set(LIR_LUGH_REPOSITORY "${CMAKE_CURRENT_SOURCE_DIR}/../lugh" CACHE PATH "Lugh's repository")
+  set(LIR_LUGH_REPOSITORY "${CMAKE_CURRENT_SOURCE_DIR}/../lugh" CACHE STRING "Lugh's repository, a path or a URL")
   set(LIR_LUGH_REF "dbb0573420952336ede86d8db3e86640e48dddb3")
   FetchContent_Declare(lugh GIT_REPOSITORY "${LIR_LUGH_REPOSITORY}" GIT_TAG "${LIR_LUGH_REF}")
   set(LUGH_BUILD_NODE OFF CACHE BOOL "" FORCE)
