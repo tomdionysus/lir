@@ -84,7 +84,9 @@ for the release gate.
    longer wait on Nagle; Lir repinned with no code change (`13553c0`,
    337 passed), after reviewing the branch. Next: the MQTT-SN DTLS gateway (`lir/sn/gateway.cpp`) onto
    `DatagramListener` at Dannan 0.9.0, then `edge::server_context` and
-   `verified_certificate(SSL*)` go.
+   `verified_certificate(SSL*)` go. At the 0.9.0 repin, also remove the TSan suppression of
+   `RetainedMemoryLedger::release` (`lir/test/tsan-suppressions.txt`), a
+   Dannan 0.8 use-after-free fixed there.
 4. **The Lugh plugin.** Done and merged (`9452fd0`; `lir/auth/lugh.h`,
    `LIR_BUILD_LUGH`, `--lugh-issuer`, `--lugh-ca`, `tools/ci.sh lugh`),
    repinned (`33b7c8b`) at Lugh's develop `dbb0573`, the end of P10, on
