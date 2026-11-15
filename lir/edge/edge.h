@@ -23,11 +23,12 @@
 #include "lir/broker/broker.h"
 #include "lir/contract/authenticator.h"
 
-// The edge: where MQTT clients connect. Listeners on the node's io context
-// (TCP, and TLS, WebSocket and WebSocket over TLS as configured), one
-// connection per socket, and the broker they share, all on one
-// strand, so the broker's confinement (broker.h) holds by construction. A
-// slow client is closed once what is queued for it passes a bound, never
+// The edge: where MQTT clients connect. Dannan's public listeners
+// (dannan::listen: accept, TLS and its deadline, the bounded close) on the
+// node's io context, for TCP, and TLS, WebSocket and WebSocket over TLS as
+// configured; one connection per stream, and the broker they share, all on
+// one strand, so the broker's confinement (broker.h) holds by construction.
+// A slow client is closed once what is queued for it passes a bound, never
 // waited for.
 struct ssl_st;
 
