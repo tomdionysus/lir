@@ -202,10 +202,18 @@ hosted CI, Linux arm64.
 
 Not reopened without asking Tom.
 
+- (2026-11-15, Tom, to Dannan, relayed by Dannan) Anything that can use
+  consensus or agreement waits for Dannan's agreement primitive, which
+  leads 0.9.0: no consensus, lease standing in for one, or workaround of
+  Lir's own meanwhile. Lir's soft per-shard leases (who resumes a departed
+  origin's entries) are a different guarantee and stand. Lir has nothing
+  today that needs a single agreed decision.
+- (2026-11-15, Tom) Lir commits and pushes `develop` on its own; tags,
+  releases and any other publishing still wait for his word.
 - (2026-11-14, Tom) No builds or test runs on the Mac; the Pis only.
   Nobody schedules the Pis: claims on the board, first come, first served.
   The claim-board plugin is enabled for every session. Hosted CI is added,
-  as the stack has it; it runs only when Tom pushes. Split joins are a
+  as the stack has it; it runs on each push. Split joins are a
   stated limit of Dannan's partition reading, not prevented.
 - (2026-11-13, Tom) Dannan and Dagda serve Macha, Lugh and Lir as
   first-class users. From the designs that followed:
