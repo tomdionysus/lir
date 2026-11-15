@@ -15,12 +15,15 @@
 
 #include <algorithm>
 #include <fstream>
+#include <future>
 #include <memory>
+#include <mutex>
 #include <set>
 
 #include "dannan/net/fanout.h"
 #include "dannan/node.h"
 #include "dannan/test/fixtures/temp_dir.h"
+#include "lir/client/client.h"
 #include "lir/system/ledger.h"
 #include "lir/system/system.h"
 #include "lir/test/fixtures/mqtt_client.h"
@@ -564,6 +567,53 @@ TEST_F(ClusterTest, ASharedGroupAcrossNodesGetsEachMessageOnce) {
   EXPECT_EQ(at_a + at_b, sent);
   EXPECT_GT(at_a, 0);
   EXPECT_GT(at_b, 0);
+}
+
+// lir::client finds Lir's nodes in its process's Dannan roster, the one list
+// of them (Tom, 2026-11-15), and when its node goes it takes the next at once,
+// well inside its backoff.
+TEST_F(ClusterTest, AClientFindsLirsNodesInDannansRosterAndFailsOver) {
+  for (auto* node : {a.get(), b.get(), c.get()}) node->cluster->advertise_endpoints();
+  const auto& roster = a->node->context().nodes();
+  ASSERT_TRUE(eventually([&] {
+    size_t serving = 0;
+    for (const auto& record : roster.active()) serving += record.advert("lir.endpoints") ? 1 : 0;
+    return serving == 3;
+  }));
+  struct Seen {
+    std::mutex mutex;
+    size_t connected = 0;
+  };
+  auto seen = std::make_shared<Seen>();
+  client::ClientConfig config;
+  config.nodes = &roster;
+  config.client_id = "roaming";
+  config.backoff_first = 10s;
+  config.connect_timeout = 2s;
+  client::Client roaming(io.context.get_executor(), config, dannan::contract::steady_time_source(), a->node->context().logger("client"));
+  roaming.on_state([seen](const client::StateChange& change) {
+    std::lock_guard lock(seen->mutex);
+    if (change.state == client::ConnectionState::connected) ++seen->connected;
+  });
+  const auto connected = [seen] {
+    std::lock_guard lock(seen->mutex);
+    return seen->connected;
+  };
+  const auto holder = [&]() -> LirNode* {
+    for (auto* node : {a.get(), b.get(), c.get()}) {
+      if (node->on_broker<size_t>([](broker::Broker& broker) { return broker.connections(); }) == 1) return node;
+    }
+    return nullptr;
+  };
+  roaming.start();
+  ASSERT_TRUE(eventually([&] { return connected() == 1 && holder() != nullptr; }));
+  LirNode* first = holder();
+  first->edge->stop();
+  ASSERT_TRUE(eventually([&] { return connected() == 2; }, 5s));
+  ASSERT_TRUE(eventually([&] { return holder() != nullptr && holder() != first; }));
+  std::promise<void> stopped;
+  roaming.stop([&stopped] { stopped.set_value(); });
+  EXPECT_EQ(stopped.get_future().wait_for(5s), std::future_status::ready);
 }
 
 }  // namespace
