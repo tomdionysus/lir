@@ -125,6 +125,15 @@ so the pin stays until Lugh's first release). Unmerged:
    macros are PUBLIC on `lugh::client`, and its P10.6 tests a consumer
    that links it and uses Boost.JSON.
 5. **MQTT-SN 2.0** when OASIS approves a Committee Specification.
+   **Guarded publish** (asked by the claim board for 0.4.0, Tom's choice
+   there, 2026-11-15; `../lir-develop-cluster/TODO/2026-11-15-claim-board-0.4.0.md`,
+   part 1): `GET /retained` with each topic's revision and `as_of`, and
+   `POST /publish` with `{"unchanged": {"filter", "since"}}`, 409 when
+   something matching was written after. Needs agreement, so it waits on
+   Dannan 0.9.0 (Tom's ruling). Lir's sketch, to put to Tom: agreed trees
+   (a node setting, e.g. `stack/pis/#`) whose every write and clear goes
+   through Dannan's agreement, the revision its log index, the minority
+   side refusing writes there; other trees stay multimaster.
 6. **lir::client** (Tom, 2026-11-15, asked by Louhi; Lugh's events and
    Mimir use it too). Done (`51381af`): `lir/client/client.h`, the codec
    alone as `lir::mqtt`, `LIR_BUILD_SERVER=OFF` for consumers (`tools/ci.sh
