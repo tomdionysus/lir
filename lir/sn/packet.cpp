@@ -201,12 +201,14 @@ Packet decode(std::span<const uint8_t> datagram) {
       return WillTopicReq{};
     case Type::willtopic:
     case Type::willtopicupd: {
-      // An empty WILLTOPIC, with no flags either, deletes the will.
+      // An empty WILLTOPIC, with no flags either, deletes the will; flags
+      // come only with a topic name, which is never empty.
       Flags flags;
       std::string topic;
       if (!r.done()) {
         flags = flags_of(r.u8());
         topic = r.text();
+        if (topic.empty()) throw Malformed("will flags without a topic");
       }
       if (type == Type::willtopic) return WillTopic{flags, topic};
       return WillTopicUpd{flags, topic};
