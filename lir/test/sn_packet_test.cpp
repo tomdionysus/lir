@@ -109,6 +109,16 @@ TEST(SnPacket, MalformedDatagramsAreRefused) {
   EXPECT_THROW(decode(b({0x06, 0x0A, 0x00, 0x00, 0x00, 0x01})), Malformed);
 }
 
+TEST(SnPacket, AWillTopicIsEmptyOrFlagsAndATopic) {
+  // 1.2, 5.4.7 and 5.4.23: two octets with no flags deletes the will;
+  // otherwise flags and a topic name, which is never empty. Found by
+  // sn_packet_fuzz: flags with no topic did not encode back the same.
+  EXPECT_EQ(decode(b({0x02, 0x07})), Packet(WillTopic{}));
+  EXPECT_EQ(decode(b({0x02, 0x1A})), Packet(WillTopicUpd{}));
+  EXPECT_THROW(decode(b({0x03, 0x07, 0x20})), Malformed);
+  EXPECT_THROW(decode(b({0x03, 0x1A, 0x6D})), Malformed);
+}
+
 TEST(SnPacket, EncapsulatedLengthEndsAtTheNodeId) {
   const Encapsulated e{0, b({1, 2, 3}), encode(Pingresp{})};
   const auto bytes = encode(e);
