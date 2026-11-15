@@ -1339,3 +1339,37 @@ targets found nothing.
 Gate, corvus-saturn: `tools/ci.sh release` 353 passed (352 and the new
 test), warnings as errors.
 
+## 2026-11-15: the cluster's join window
+
+Hosted CI was not green on every job since `e81e675`, as `ACTIVE.md`
+said. Three intermittent failures:
+`RetainedValuesAreEverywhereAndClearedEverywhere` (tsan, run 43757235866)
+and `ASharedGroupAcrossNodesGetsEachMessageOnce` (release arm64, run
+43765626713, its second failure; the first was on asan), and a TSan
+heap-use-after-free in Dannan (below).
+
+The first two were Lir's own (`8f6a465`). `Cluster::start` advertised `lir`
+before subscribing to `lir.retained` and `lir.groups`. A peer takes a node's
+snapshot when it first sees the node serving Lir, and Dannan sends a stream
+publish only to the nodes whose interest advert it already sees
+(`dannan/net/fanout.h:29`). So a retained value or a group published while
+the record carried `lir` but not that interest never reached the node:
+retained values until the node rejoined, groups until the 30 s resync.
+This was a real loss on any join, not only in the tests. Now `lir` is
+advertised last, after the strand has set `running` and subscribed (a
+subscription made before `running` would drop what arrives). Test
+`ClusterTest.ANodeIsSeenServingLirOnlyWithItsChannelsSubscribed` watches
+a's roster while d joins. It failed 4 of 30 runs before the fix and passed
+100 of 100 after; `ClusterTest.*` passed 22 of 22 ten times.
+
+The third is Dannan's, reported to the Dannan session with the stacks:
+`~NodeRecord` under the dial's `ClientHandshake` (`session.cpp:462`) and
+under `Node::observe_direct`'s `before` vector (`node.cpp:1036`), freeing
+one map node from two threads, in
+`ConnectingOnAnotherNodeTakesTheClientOver` (tsan, run 43773090610).
+Dannan has ruled out its locking and is reproducing it under TSan. It is
+not suppressed in Lir. The build's flags match across both libraries
+(asked by Dannan, answered).
+
+Gate, corvus-saturn: `lir_tests` release 354 passed.
+
