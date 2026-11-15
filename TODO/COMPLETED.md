@@ -1193,3 +1193,23 @@ plugin will use it too).
   `throttled=0x0`). Hosted CI all green from `e81e675` (CodeQL included,
   the repository public).
 
+## 2026-11-15: lir::client finds Lir's nodes in Dannan's roster
+
+Tom: Lir keeps no node list of its own, "that's what Dannan is FOR". A
+configured broker list and a Lir topic of endpoints were both dropped.
+- `d84a92a`: `ClientConfig::nodes` (the process's `dannan::Nodes`): each
+  attempt reads the active nodes advertising `lir` with a `lir.endpoints`
+  for its transport, takes the next in turn from a random start, so a lost
+  node is passed over at once; the backoff waits only once each has failed
+  since the last connection. `host`/`port` remain for a process not on
+  Dannan. The advert's key and format are `lir/contract/endpoints.h`, one
+  copy for the cluster and the client.
+  `ClusterTest.AClientFindsLirsNodesInDannansRosterAndFailsOver`.
+- `acc36ea`: `install.sh` ships `liblir_mqtt.so` (lir-node links it now)
+  and takes `LIR_ONLY=<name>` for a node-by-node upgrade; the unit gets
+  `MemoryMin=192M` and `OOMScoreAdjust=-500`; uranus is the fourth node.
+- Gate on corvus-uranus (2 cores, `-j1`, `throttled=0x0`): `tools/ci.sh
+  release` 347 passed and 5 skipped (the process tests, without
+  mosquitto-clients there); mosquitto-clients installed and the 5 run:
+  passed. 352 in all. `tools/ci.sh client` clean.
+

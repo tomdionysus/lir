@@ -143,7 +143,8 @@ so the pin stays until Lugh's first release). Unmerged:
    alone as `lir::mqtt`, `LIR_BUILD_SERVER=OFF` for consumers (`tools/ci.sh
    client`); 351 passed. On Dannan 0.8.3's `StreamConnector` since the
    repin (Lir reviewed its design and code); the local seam is deleted.
-   QoS 2, aliases, user properties and a list of brokers on request.
+   Finds Lir's nodes in Dannan's roster and fails over between them
+   (`d84a92a`). QoS 2, aliases and user properties on request.
 
 **The standing cluster** on the three Pis (`deploy/pi-cluster/`): one
 `lir-node` each, ports 7537 (Dannan), 1983 (MQTT) and 8183 (HTTP), a
