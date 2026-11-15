@@ -10,6 +10,7 @@
 #include <boost/asio/any_io_executor.hpp>
 #include <chrono>
 #include <cstdint>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -17,7 +18,6 @@
 
 #include "dannan/contract/time_source.h"
 #include "dannan/status/log.h"
-#include "lir/client/transport.h"
 #include "lir/mqtt/packet.h"
 
 // A small MQTT client of Lir (the maintainer, 2026-11-15), for the stack's projects that
@@ -30,7 +30,21 @@
 // Thread-safe: every call may come from any thread and returns at once; the
 // client runs on its own strand of the executor it was given, and every
 // callback is posted there, never called inline, in the order things happened.
+// The connection is Dannan's (dannan::listen::StreamConnector): TCP_NODELAY,
+// the TLS checks, the bounded send queue and the draining close are its.
 namespace lir::client {
+
+// The server's certificate is checked against `trust` (a PEM bundle; empty:
+// the system's store) and its name against `server_name` (empty: the host
+// connected to; an IP address is checked against the certificate's IP
+// addresses, and sent as no SNI). A client certificate is offered when both
+// of its paths are given. Read when the client is made.
+struct Tls {
+  std::filesystem::path trust;
+  std::string server_name;
+  std::filesystem::path certificate_chain;
+  std::filesystem::path private_key;
+};
 
 struct Message {
   std::string topic;
@@ -104,7 +118,9 @@ using SubscriptionId = uint64_t;
 
 class Client {
  public:
-  // The time source and the executor's context outlive the client.
+  // The time source and the executor's context outlive the client. The
+  // executor is an io context's or a strand of one. Throws std::runtime_error
+  // for a trust bundle, certificate or key that cannot be read.
   Client(boost::asio::any_io_executor executor, ClientConfig config, const dannan::contract::TimeSource& time, dannan::status::ScopedLogger logger);
   // Stops without waiting; callbacks already queued may still run. Call stop()
   // and wait for its done first when they capture what is being destroyed.
@@ -118,7 +134,7 @@ class Client {
   // publish and subscribe still open fails ("stopped"); then `done`.
   void stop(std::function<void()> done = {});
 
-  // QoS 0: done once the packet is written. QoS 1: once the broker's PUBACK
+  // QoS 0: done once the packet is handed to the connection. QoS 1: once the broker's PUBACK
   // arrives, sent again after a reconnect until it does; fails for a refusal
   // (reason 0x80 or more), a topic or payload the broker or MQTT cannot take,
   // a full queue, or stop(). Queued while disconnected.
