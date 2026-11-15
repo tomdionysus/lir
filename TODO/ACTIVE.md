@@ -78,7 +78,18 @@ reproducing it. When its fix is tagged, repin, and the tsan job should
 then hold green. If a cluster test times out again, it is a new cause:
 the join window is closed.
 
-**Waiting on the maintainer:** nothing open.
+**Waiting on the maintainer:** the window after SUBACK (found 2026-11-15). A client
+subscribes on X and gets SUBACK. A QoS 1 message then published on Y
+reaches it only once X's new interest advert has gossiped to Y, at Dannan's
+heartbeat pace (5 s default; `dannan/net/fanout.h:29`). Until then it is
+lost for that subscriber, with no gap recorded and PUBACK already given.
+Measured on the standing cluster with `build/suback-probe.py` (untracked):
+0 of 20 delivered at 0 ms after SUBACK, 5 of 20 at 1 s, 5 of 8 at 3 s,
+8 of 8 at 5 s; the same node, 20 of 20. Not a stated limit anywhere. The
+design held SUBACK until the holders had the subscription (plan,
+"Lifecycle" 1); fan-out on Dannan's channels (2026-11-04) lost that.
+Asked Dannan for a pushed advert with evidence, to hold SUBACK on; the maintainer to
+decide once Dannan answers.
 
 ## The standing cluster
 
