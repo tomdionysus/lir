@@ -1141,3 +1141,27 @@ no warnings, `throttled=0x0`); merged to `develop`, nothing pushed:
 - Answered Louhi (the new compute project) on using Lir for its
   lifecycle events: as any MQTT client, its own topic root, scopes from
   Lugh tokens; durability waits on step 5.
+
+## 2026-11-15: lir::client
+
+The maintainer approved it and its interface in Lir's session (asked by Louhi, whose
+events step needs it; Lugh's principal-events publisher and Mimir's Lugh
+plugin will use it too).
+- `9fb4167`: the codec is `lir_mqtt` (`lir::mqtt`) alone; `lir` links it.
+  `LIR_BUILD_SERVER=OFF` builds only the codec and the client; Dannan is
+  fetched only when the consumer has no `dannan::dannan` already.
+- `a1b27e6`: `lir/client/client.h`: MQTT 5.0 or 3.1.1 over TCP or TLS
+  (trust bundle or system store, IP or name checked, no SNI for an IP),
+  password asked at each CONNECT, QoS 0 and 1 publish (queued while
+  down, bounded, resent until PUBACK) and receive, retained, a will,
+  wildcard and shared subscribe kept across reconnects (5.0 subscription
+  identifiers, 3.1.1 matched locally), keep alive, Server Reference
+  followed, jittered backoff. One strand; every callback posted there.
+  The outbound connection is a local seam (`lir/client/transport.cpp`)
+  until Dannan's StreamConnector, whose design Lir reviewed (executor
+  constructor, IP SANs and no SNI for literals, the stream on the
+  executor given: all taken).
+- Gate on node-c (2 cores, `throttled=0x0`): `tools/ci.sh release`
+  351 passed (337 and 14 new `ClientTest`, `ClientTlsTest`); `tools/ci.sh
+  client` builds with no warnings. Merged `51381af`; a `client` job in the
+  hosted CI.

@@ -5,11 +5,11 @@ file carried until today is there, "Archived from ACTIVE.md, 2026-11-14".
 
 ## Resume here
 
-**State.** `develop` at the Dannan 0.8.2 repin;
+**State.** `develop` at `51381af` (lir::client);
 pushed to `488e89e` at the maintainer's word, the rest local. Gate on node-c
 (arm64, Debian 13, GCC 14, Boost 1.83, Ninja, Release, warnings as errors,
-no warnings, never throttled): `tools/ci.sh release` 337 passed at
-the 0.8.2 repin; `tools/ci.sh lugh` (the plugin on) 343 passed at the 0.8.0
+no warnings, never throttled): `tools/ci.sh release` 351 passed at
+`51381af`; `tools/ci.sh lugh` (the plugin on) 343 passed at the 0.8.0
 repin (`912d33f`). Dannan pinned at `0.8.2`, Lugh at `dbb0573` (plugin
 only). Lugh is on 0.8.0 at `ab28e2d` (724 passed there) with `lugh_client`
 unchanged since `dbb0573`, so the pin stays until Lugh's first release
@@ -120,6 +120,12 @@ for the release gate.
    macros are PUBLIC on `lugh::client`, and its P10.6 tests a consumer
    that links it and uses Boost.JSON.
 5. **MQTT-SN 2.0** when OASIS approves a Committee Specification.
+6. **lir::client** (the maintainer, 2026-11-15, asked by Louhi; Lugh's events and
+   Mimir use it too). Done (`51381af`): `lir/client/client.h`, the codec
+   alone as `lir::mqtt`, `LIR_BUILD_SERVER=OFF` for consumers (`tools/ci.sh
+   client`); 351 passed. Next: move `lir/client/transport.cpp` onto
+   Dannan's `StreamConnector` (a 0.8 patch, design reviewed 2026-11-15)
+   and delete the seam. QoS 2, aliases and user properties on request.
 
 **The standing cluster** on the three build nodes (`deploy/test-cluster/`): one
 `lir-node` each, ports 7537 (Dannan), 1983 (MQTT) and 8183 (HTTP), a
@@ -134,13 +140,7 @@ The standing cluster runs `a559b0a` (Dannan 0.7.0) since 2026-11-14
 03:52Z, upgraded at the maintainer's word from the gate run's build; each node's
 `$lir/nodes` reads majority, 3 of 3, and the board's claims survived.
 
-**Waiting on the maintainer:** one thing to schedule. Louhi reports (2026-11-15)
-that the maintainer chose for Lir to export a small MQTT client library, as Lugh
-exports `lugh_client`, so the stack keeps one MQTT codec. Louhi needs:
-TCP or TLS with a Lugh token, QoS 0 and 1 publish, retained publish, a
-will, wildcard subscribe, reconnect with backoff, on Dannan's executor
-and callback conventions; topics under `louhi/`. Louhi reaches events at
-its step 6. Nothing starts until the maintainer says so himself.
+**Waiting on the maintainer:** nothing open.
 
 ## The documents
 
