@@ -1,165 +1,98 @@
 # Lir - Active Work
 
-Last updated: 2026-11-15. `COMPLETED.md` is the record; the history this
-file carried until today is there, "Archived from ACTIVE.md, 2026-11-14".
+Last updated: 2026-11-15. `COMPLETED.md` is the record, with the gate counts
+and the detail this file no longer carries ("Archived from ACTIVE.md",
+2026-11-14 and 2026-11-15).
 
 ## Resume here
 
-**State.** `develop` at `6b23268`, pushed (Lir commits and pushes on its
-own, Tom 2026-11-15); the repository is public. Gate on the Pis (Pi 5,
-Debian 13, GCC 14, Boost 1.83, Ninja, Release, warnings as errors, no
-warnings, never throttled): `tools/ci.sh release` 351 passed and
-`tools/ci.sh client` clean at `8664691` on corvus-saturn; `tools/ci.sh
-lugh` (the plugin on) 343 passed at the 0.8.0 repin (`912d33f`). Hosted
-CI green on every job from `e81e675`, CodeQL included. Dannan pinned at
-`0.8.3`, Lugh at `dbb0573` (plugin only; `lugh_client` unchanged since,
-so the pin stays until Lugh's first release). Unmerged:
-`feature/fuzz-targets`, for the release gate. Flaky once, watched:
-`ClusterTest.ASharedGroupAcrossNodesGetsEachMessageOnce` (COMPLETED.md,
-"the first full hosted CI").
+**State.** `develop` at the record commit after `7db72d1`, pushed; the
+repository is public, and Lir commits and pushes on its own (Tom,
+2026-11-15). Dannan pinned at `0.8.3`, Lugh at `dbb0573` (plugin only).
+Last gate, corvus-uranus: 352 passed (347 in `tools/ci.sh release`, the 5
+process tests once mosquitto-clients was installed there), `tools/ci.sh
+client` clean. `tools/ci.sh lugh` 343 at the 0.8.0 repin. Hosted CI green
+on every job from `e81e675`, CodeQL included. Unmerged:
+`feature/fuzz-targets`, for the release gate.
 
-**How work is done now (Tom, 2026-11-14):**
-- **No builds or test runs on the Mac.** Every build is on the shared Pi 5
-  build servers: corvus-jupiter 10.44.1.169, corvus-saturn 10.44.1.170,
-  corvus-neptune 10.44.1.202, root over ssh; and corvus-uranus
-  10.44.1.228 (Tom, 2026-11-14; 3 GB RAM, so `-j1` for Lir's heavier
-  translation units; a claimable host only, not a cluster node). Work there goes in
-  `/root/lir-work`.
-- **Nobody schedules the Pis.** A session claims a free machine on the
-  board and has it, first come, first served; one heavy job per Pi, `-j2`,
-  `nice 19`; release the moment the job ends. Claim board 0.2.0
-  (2026-11-14): claims name cores (4 a Pi; Lir's gate takes 2, its `-j`),
-  and when none are free, `claim-board wait --any --cores 2 --job "..."
-  --for 2h` in the background waits in the scheduler's queue instead of a
-  sleep. Tom reversed the board-only rule: a session may also ask a
-  machine's holder to make room.
-- **The claim-board plugin is enabled.** From this session's next start,
-  use its tools (`claims_list`, `claim_take`, `claim_release`,
-  `status_set`, ...), not hand-written curl. A heavy command over ssh to a
-  Pi is blocked without a heavy claim there. Docs:
-  `../lir-develop-cluster/docs/how-it-works.md`; questions to the Lir
-  Development Cluster session.
-- **No wasted runs (Tom, 2026-11-14, to every session).** ASan and TSan
-  runs are for releases. The same tests run more than once only for a
-  stated reason: a flaky test or odd behaviour. "We're spending 50% of our
-  time heating silicon for no good reason, and it stops now." The fuzz
-  targets are sanitizer builds, so they run at the release gate.
-- `build/pi.sh [host] [gtest filter]` (untracked, in `build/`) syncs the
-  working tree to a Pi, builds incrementally at `-j2`, `nice 19`, stops on
-  any undervoltage flag, and runs the tests. Claim the Pi first.
+**First, next session: finish the standing cluster's upgrade** (Tom's word,
+2026-11-15). uranus is the fourth node and runs `7db72d1`; jupiter, saturn
+and neptune still run `a559b0a` (Dannan 0.7.0). Mixing is safe (Dannan: the
+0.7 and 0.8 wire is the same). Tell Louhi (it reboots jupiter for cgroups)
+and the Lir Development Cluster session before starting. Then, one node at
+a time, saturn, neptune, jupiter last:
+`LIR_ONLY=<name> sh deploy/pi-cluster/install.sh root@<pi>:/root/lir-work/build-ci/release corvus-jupiter=10.44.1.169 corvus-saturn=10.44.1.170 corvus-neptune=10.44.1.202 corvus-uranus=10.44.1.228`
+from a release build of `develop` (uranus has one at `7db72d1` in
+`/root/lir-work/build-ci/release`), then `python3 -I build/cluster-check.py`
+(untracked): every `lir-node` and `claim-board-scheduler` active, jupiter's
+scheduler acting and the others standing by, `retained?filter=stack/%23`
+identical on all four, `$lir/cluster` 4 nodes. Its partition column reads
+None: match `$lir/nodes/<id>` by the node's id to show it. Record the
+upgrade in `COMPLETED.md` and below.
 
-**Next, in order:**
-1. **At the release gate:** `feature/fuzz-targets` (instrumenting the
-   whole build, `3af35be`): install `clang` and `libclang-rt-19-dev`,
-   build it (`CXX=clang++ -DLIR_BUILD_FUZZING=ON`), run each target once
-   for `-max_total_time=60`, fix what they find, merge.
-2. **Dagda's slices** (the Dagda session tells Lir as each lands): step 5,
-   by [`2026-11-13-step5-design.md`](2026-11-13-step5-design.md), its tests
-   written as each slice's tag lands. Ship nothing before contract v2
-   freezes at slice 4. Lir is on Dannan 0.8.3: it needs a Dagda tag built
-   on the same Dannan minor before it links Dagda (one Dannan a process).
-   There the minority choice extends to session and retained commits, and
-   `refuse` waits to the deadline as the design says.
-   Slice 1 is proven and on Dagda's develop (`1065b18`, 2026-11-14), not
-   tagged: node-local spaces (`Policy::node_local()`, for the sequence
-   blocks), the change notice (`Heads::watch`, `Heads::changed`), the
-   installed in-process cluster fixture (`dagda::test_fixtures`); contract
-   v2 served beside v1. Its tests (`OnDagda.SeqNeverRepeatsAcrossARestart`
-   first) are written when the tag lands. The notify channel per space and
-   `watch_keys` are slices 2 and 3. Dagda's develop is on Dannan 0.7.0
-   since `f31c52e` (proven on corvus-jupiter, 1062 passed, 3 opt-in
-   skipped), so slice 1's tag will be linkable. Tom said tag 0.2.0, then
-   ruled (2026-11-14 evening) that Macha's port to Dagda comes first: all
-   slice work is paused until Macha runs on Dagda as well as on its own
-   store, and 0.2.0 stays local and unpushed until Tom says. Step 5 waits.
-3. **Dannan's shared listener** (P3, `dannan::listen`). Done for TCP
-   (2026-11-15): Lir is on Dannan 0.8.0 (`912d33f`), MQTT over TCP, TLS,
-   WebSocket and WebSocket over TLS (`ad65541`) and HTTP and HTTPS
-   (`ce4bcd0`) run on `StreamListener`s on the edge's strand
-   (`strand_per_stream = false`); Lir's own acceptors, TLS handshakes and
-   write queues for MQTT and HTTP are gone. `edge::listener_config`,
-   `verified_certificate(Stream)` and `presented_unverified` are shared by
-   both. A client certificate that did not verify is refused, as Lir's
-   handshake refused it (Dannan's `optional` lets it through with the
-   verdict). TCP_NODELAY: Dannan 0.8.1 sets it on every accepted
-   socket (`Stream::set_no_delay` opts out), so small MQTT packets no
-   longer wait on Nagle; Lir repinned with no code change (`13553c0`,
-   337 passed), after reviewing the branch. Next: the MQTT-SN DTLS gateway (`lir/sn/gateway.cpp`) onto
-   `DatagramListener` at Dannan 0.9.0, then `edge::server_context` and
-   `verified_certificate(SSL*)` go. At the 0.9.0 repin, also remove the TSan suppression of
-   `RetainedMemoryLedger::release` (`lir/test/tsan-suppressions.txt`), a
-   Dannan 0.8 use-after-free fixed there.
-4. **The Lugh plugin.** Done and merged (`9452fd0`; `lir/auth/lugh.h`,
-   `LIR_BUILD_LUGH`, `--lugh-issuer`, `--lugh-ca`, `tools/ci.sh lugh`),
-   repinned (`33b7c8b`) at Lugh's develop `dbb0573`, the end of P10, on
-   Dannan 0.7.0: `AccessToken::x5t` comes decoded, so the adapter copies
-   it, and the tests sign with Lugh's public `lugh/client/testing.h`;
-   nothing internal to Lugh is included any more. Next: repin at Lugh's
-   first release (Tom paused Lugh after P10). The hosted CI has a `lugh`
-   job (Tom said yes, 2026-11-14): it checks out Lugh's private develop
-   with the repository secret `LUGH_READ_TOKEN` and runs `tools/ci.sh
-   lugh`; without the secret it says so and builds nothing. Tom adds the
-   secret. The record of how it was
-   shaped (`../lugh/TODO/2026-11-14-p10-plan.md`): Tom's rulings (2026-11-14): the
-   plugin is optional and Lir builds without Lugh when it is off; it is a
-   few-line adapter, `lir::auth::TokenVerifier` over
-   `lugh::client::Verifier(issuers, WallClock)`: `set_keys(issuer, jwks)`
-   from the key source, `verify_access(token, audience)` answering an
-   `AccessToken` (subject, audiences, scopes, expires in Unix seconds,
-   jkt, x5t as base64url text, decoded to 32 bytes) or a reason; headers
-   `lugh/client/verifier.h` and `lugh/client/tokens.h`. Lir's seam carries
-   exp as wall time since `8d78c95` (Lugh's finding), and Lir refuses a
-   token at or past exp despite Lugh's 60 s skew (`lir/auth/tokens.h`); `lugh_client` links Dannan, OpenSSL and Boost; Lir pins a
-   commit on Lugh's develop by FetchContent with `LUGH_BUILD_NODE=OFF`
-   until Lugh releases. Its Dannan must be the one Lir pins: Lugh is on
-   Dannan 0.7.0 (develop `7b0c717`), uses Lir's `dannan::dannan` when
-   fetched into Lir's build (one Dannan a process), and moves with Lir
-   when Lir moves past 0.7 (tell the Lugh session first). Boost.JSON
-   (Tom, 2026-11-14): `lugh_client` compiles `boost/json/src.hpp`
-   itself, and so does Lir, for the rules engine
-   (`lir/rules/boost_json.cpp`, listed at `lir/CMakeLists.txt:25`). With
-   the plugin on, Lir leaves that file out and takes the definitions from
-   `lugh::client`; with it off, Lir compiles its own. A test of both
-   configurations' link comes with the plugin. Lugh agreed: the
-   definitions live in the exported `lugh_client` library, its Boost.JSON
-   macros are PUBLIC on `lugh::client`, and its P10.6 tests a consumer
-   that links it and uses Boost.JSON.
-5. **MQTT-SN 2.0** when OASIS approves a Committee Specification.
-   **Guarded publish** (asked by the claim board for 0.4.0, Tom's choice
-   there, 2026-11-15; `../lir-develop-cluster/TODO/2026-11-15-claim-board-0.4.0.md`,
-   part 1): `GET /retained` with each topic's revision and `as_of`, and
-   `POST /publish` with `{"unchanged": {"filter", "since"}}`, 409 when
-   something matching was written after. Needs agreement, so it waits on
-   Dannan 0.9.0 (Tom's ruling). Lir's sketch, to put to Tom: agreed trees
-   (a node setting, e.g. `stack/pis/#`) whose every write and clear goes
-   through Dannan's agreement, the revision its log index, the minority
-   side refusing writes there; other trees stay multimaster. The board
-   (2026-11-15): agreed tree `stack/pis/#` only, guards within one
-   `stack/pis/<host>/#` (an `as_of` per tree suits it), 503 on the
-   minority side read as a refused write, QoS 0 to an agreed tree refused.
-   The board moved it to its 0.5.0 or later.
-6. **lir::client** (Tom, 2026-11-15, asked by Louhi; Lugh's events and
-   Mimir use it too). Done (`51381af`): `lir/client/client.h`, the codec
-   alone as `lir::mqtt`, `LIR_BUILD_SERVER=OFF` for consumers (`tools/ci.sh
-   client`); 351 passed. On Dannan 0.8.3's `StreamConnector` since the
-   repin (Lir reviewed its design and code); the local seam is deleted.
-   Finds Lir's nodes in Dannan's roster and fails over between them
-   (`d84a92a`). QoS 2, aliases and user properties on request.
+**How work is done (Tom, 2026-11-14):**
+- No builds or test runs on the Mac; the Pis only, in `/root/lir-work`,
+  `-j2` and `nice 19` (uranus `-j1`: 4 GB). Claim cores on the board
+  first (`claim-board claim <host> "<job>" --cores 2 --until +90m`), release
+  when the job ends; `claim-board wait` in the background when none are free.
+- No wasted runs: sanitizers at the release gate; a repeat only for a
+  stated reason (a flaky test, odd behaviour, a fix).
+- Never keep a node list: Dannan's roster and adverts are the one list of
+  Lir's nodes (Tom, 2026-11-15).
 
-**The standing cluster** on the three Pis (`deploy/pi-cluster/`): one
-`lir-node` each, ports 7537 (Dannan), 1983 (MQTT) and 8183 (HTTP), a
-systemd unit as tom, the cluster key in `build/pi-cluster/cluster.key` on
-the Mac and never in the repository. It carries the claim board. Upgrade it
-with `deploy/pi-cluster/install.sh root@<pi>:/root/lir-work/build
-corvus-jupiter=10.44.1.169 corvus-saturn=10.44.1.170
-corvus-neptune=10.44.1.202` after a Lir change worth trying on real
-machines; the restart is rolling and the board survives it.
+## Next, in order
 
-The standing cluster runs `a559b0a` (Dannan 0.7.0) since 2026-11-14
-03:52Z, upgraded at Tom's word from the gate run's build; each node's
-`$lir/nodes` reads majority, 3 of 3, and the board's claims survived.
+1. **The cluster upgrade** above.
+2. **At the release gate:** `feature/fuzz-targets` (`3af35be`): install
+   `clang` and `libclang-rt-19-dev`, build with `CXX=clang++
+   -DLIR_BUILD_FUZZING=ON`, run each target once for `-max_total_time=60`,
+   fix what they find, merge. The release follows step 5.
+3. **Step 5, on Dagda**, by [`2026-11-13-step5-design.md`](2026-11-13-step5-design.md),
+   when Dagda's slices are tagged: paused by Tom until Macha runs on Dagda.
+   Slice 1 is on Dagda's develop (`1065b18`), untagged. Lir needs a Dagda
+   tag on Dannan 0.8 (one Dannan a process); its tests
+   (`OnDagda.SeqNeverRepeatsAcrossARestart` first) come with the tag.
+   Ship nothing before contract v2 freezes at slice 4. Use the named
+   acknowledgement levels.
+4. **At Dannan 0.9.0:** repin; the MQTT-SN DTLS gateway
+   (`lir/sn/gateway.cpp`) onto `DatagramListener`, then delete
+   `edge::server_context` and `verified_certificate(SSL*)`; remove the TSan
+   suppression of `RetainedMemoryLedger::release`
+   (`lir/test/tsan-suppressions.txt`). Then, with agreement there:
+   - **Guarded publish** for the claim board (its 0.5.0 or later;
+     `../lir-develop-cluster/TODO/2026-11-15-claim-board-0.4.0.md`, part 1):
+     agreed trees, a node setting (the board needs `stack/pis/#` only),
+     every write and clear there through Dannan's agreement, the revision
+     its log index; `GET /retained` gives each topic's revision and an
+     `as_of` per tree; `POST /publish` takes `{"unchanged": {"filter",
+     "since"}}` and answers 409; the minority side answers 503 there; MQTT
+     QoS 0 to an agreed tree is refused. Put the design to Tom first.
+   - **The hybrid logical clock** for retained ordering: Lir reviewed
+     Dannan's design (`../dannan/TODO/2026-11-15-hlc-design.md`); adopting
+     it needs Tom to reopen the 2026-11-04 ordering decision. Recommend it:
+     the later write wins after a heal, and expiry gets an absolute time.
+5. **At Lugh's first release:** repin the plugin (`tools/ci.sh lugh`). The
+   hosted `lugh` job uses the secret `LUGH_READ_TOKEN`.
+6. **MQTT-SN 2.0** when OASIS approves a Committee Specification.
+7. **lir::client** users: Louhi (step 8), Lugh's principal-events publisher
+   and Mimir's Lugh plugin pin `6b23268` or later. QoS 2, aliases and user
+   properties on request.
+
+**Watch:** `ClusterTest.ASharedGroupAcrossNodesGetsEachMessageOnce` timed
+out once on hosted asan (arm64), passed on a re-run; a second time, look
+at the groups channel's catch-up under ASan before touching its bound.
 
 **Waiting on Tom:** nothing open.
+
+## The standing cluster
+
+`deploy/pi-cluster/` (README there): four nodes, jupiter 10.44.1.169,
+saturn .170, neptune .202, uranus .228; ports 7537 (Dannan), 1983 (MQTT),
+8183 (HTTP); a systemd unit as tom with `MemoryMin` and `OOMScoreAdjust`;
+the cluster key in `build/pi-cluster/cluster.key` on the Mac, never in the
+repository. It carries the claim board (the Lir Development Cluster
+session's), whose clients and schedulers know all four. Four nodes keep a
+majority through one loss; a 2 and 2 split is a minority on both sides.
 
 ## The documents
 
@@ -210,7 +143,8 @@ has no event system to extract.
    follows this step.
 6. **System topics, HTTP, authentication.** System topics, HTTP and HTTPS
    publish, SSE and `GET /retained`, topic scopes and the Lugh token
-   authenticator's own checks are done. The Lugh plugin waits on Lugh.
+   authenticator's own checks are done, and the Lugh plugin; its repin
+   waits on Lugh's first release.
 
 Beyond the steps, done: MQTT-SN 1.2 over UDP and DTLS, the rules engine,
 Server Reference at CONNECT, limits and memory pressure on Dannan's ledger,
