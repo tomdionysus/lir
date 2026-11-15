@@ -1097,3 +1097,27 @@ nothing pushed.
   Lugh, so `LughVerifier` copies it; the tests sign with Lugh's public
   `lugh/client/testing.h` (`lt::sign_access_token`, `lt::jwks`). Lir no
   longer includes Lugh's `jose.h` or `core/encoding.h`.
+
+## 2026-11-15: Dannan 0.8.0, and Lir's listeners on Dannan's
+
+Gates on corvus-neptune (2 cores claimed each time, warnings as errors,
+no warnings, `throttled=0x0`); merged to `develop`, nothing pushed:
+- The repin (`5ebc037`, merged `912d33f`): `tools/ci.sh release` 337
+  passed, `tools/ci.sh lugh` 343 passed, both linking `libdannan.so.0.8.0`.
+  Lugh's `dbb0573` builds and passes on 0.8.0 in Lir's build. The pin
+  `LIR_DANNAN_TAG` is no longer a cache variable: an existing build tree
+  kept the old tag before.
+- The edge (`139e204`, `33afc3a`, merged `ad65541`): 337 passed. MQTT over
+  TCP and TLS straight over a `listen::Stream` (`RawConnection`); over
+  WebSocket and WebSocket-over-TLS as `websocket::stream<Stream&>` with
+  Dannan's teardown (`WebSocketConnection`). A first run failed
+  `ClientCertificateTest.ACertificateFromAnotherCaIsRefused`: Dannan's
+  `optional` client certificates let an unverified one through, and the
+  edge read it as none, so an intruder came in anonymous. The edge now
+  refuses a stream that presented a certificate which did not verify; the
+  test was right and is unchanged; the run was repeated for that fix.
+- HTTP and HTTPS (`1381716`, merged `ce4bcd0`): 337 passed. `Exchange`
+  runs over a `listen::Stream`, Dannan's queue and draining close in place
+  of its own; HTTPS refuses an unverified certificate as MQTT over TLS
+  does.
+- Open with Dannan: TCP_NODELAY (`ACTIVE.md`, item 3).
