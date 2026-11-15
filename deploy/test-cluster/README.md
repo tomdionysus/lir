@@ -9,16 +9,18 @@ them.
 | node-a | 192.0.2.1 | 7537 | 1983 | 8183 |
 | node-b | 192.0.2.2 | 7537 | 1983 | 8183 |
 | node-c | 192.0.2.3 | 7537 | 1983 | 8183 |
+| node-d | 192.0.2.4 | 7537 | 1983 | 8183 |
 
 Any node serves any client; the cluster is one broker. Connect to whichever
 is up. The ports keep clear of other sessions' test nodes on Dannan's 7437.
 
-node-d (192.0.2.4; arm64, 4 cores, 3 GB RAM, added by the maintainer on
-2026-11-14) is a build machine to claim, not a node of this cluster or of
-the board. Kept out on purpose: a fourth node makes an even split, 2 and 2,
-a minority on both sides (Dannan's partition reading), where three nodes
-keep a majority through any one loss; and 3 GB leaves no room for a node
-beside a build. The board's claims list it like the others.
+node-d (192.0.2.4; arm64, 4 cores, 4 GB RAM) joined as the fourth
+node at the maintainer's word (2026-11-15), reversing its earlier exclusion. Four
+nodes keep a majority (3 of 4) through any one loss; an even split, 2 and
+2, is a minority on both sides (Dannan's partition reading), so QoS 1 and 2
+degrade or are refused there until it heals. node-d stays a build machine
+too: the unit holds lir-node's memory (MemoryMin, OOMScoreAdjust) against
+a build that runs out.
 
 ## Coordinating through it
 
@@ -33,7 +35,8 @@ tools rather than by hand:
    (`claim-board wait <host...|--any> --cores <n|all> --job "..." --for 2h`,
    in the background; it exits once the claim is yours). The queue is run
    by `claim-board-scheduler.service` beside `lir-node` on node-a, node-b
-   and node-c; it only reads and writes the board.
+   and node-c (and on node-d if the board's session installs one); it only
+reads and writes the board.
 4. Release your claim the moment you finish, and keep `until` honest.
 5. A session may also ask a machine's holder to make room (the maintainer,
    2026-11-14, reversing the earlier board-only rule). Post a note before
