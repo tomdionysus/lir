@@ -212,6 +212,9 @@ Not reopened without asking Tom.
   today that needs a single agreed decision.
 - (2026-11-15, Tom) Lir commits and pushes `develop` on its own; tags,
   releases and any other publishing still wait for his word.
+- (2026-11-15, Tom) The repository is public ("It's time"), so CodeQL's
+  code scanning works as Dannan's does. Checked first: no keys or tokens
+  in its history; the Pi cluster's LAN addresses are in the deploy docs.
 - (2026-11-14, Tom) No builds or test runs on the Mac; the Pis only.
   Nobody schedules the Pis: claims on the board, first come, first served.
   The claim-board plugin is enabled for every session. Hosted CI is added,
