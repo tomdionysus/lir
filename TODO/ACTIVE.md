@@ -9,10 +9,13 @@ and the detail this file no longer carries ("Archived from ACTIVE.md",
 **State.** `develop` at the record commit after `7db72d1`, pushed; the
 repository is public, and Lir commits and pushes on its own (the maintainer,
 2026-11-15). Dannan pinned at `0.8.3`, Lugh at `dbb0573` (plugin only).
-Last gate, node-b: `tools/ci.sh release` 353 passed, with the fuzz
-targets merged and their one finding fixed. `tools/ci.sh client` clean on
-node-d at `7db72d1`. `tools/ci.sh lugh` 343 at the 0.8.0 repin. Hosted CI
-green on every job from `e81e675`, CodeQL included. Nothing unmerged.
+Last gate, node-b: `lir_tests` release 354 passed, with the fuzz
+targets merged and the cluster's join window fixed. `tools/ci.sh client`
+clean on node-d at `7db72d1`. `tools/ci.sh lugh` 343 at the 0.8.0 repin.
+Hosted CI: intermittent failures since `e81e675`. Two were Lir's join window,
+now fixed. One is a TSan finding in Dannan (`COMPLETED.md`, 2026-11-15, "the
+cluster's join window"), with Dannan and left unsuppressed, so the tsan job
+may still fail on it. Nothing unmerged.
 
 **The standing cluster** runs `7db72d1` on all four nodes (2026-11-15
 22:33Z, `COMPLETED.md`). To upgrade it, tell Louhi and the coordinating session first, then one node at a time, node-a (the acting
@@ -69,9 +72,11 @@ from a release build of `develop`, then `python3 -I build/cluster-check.py`
    and Mimir's Lugh plugin pin `6b23268` or later. QoS 2, aliases and user
    properties on request.
 
-**Watch:** `ClusterTest.ASharedGroupAcrossNodesGetsEachMessageOnce` timed
-out once on hosted asan (arm64), passed on a re-run; a second time, look
-at the groups channel's catch-up under ASan before touching its bound.
+**Watch:** the Dannan TSan finding (a `NodeRecord` map node freed from two
+threads, in `ConnectingOnAnotherNodeTakesTheClientOver`). Dannan is
+reproducing it. When its fix is tagged, repin, and the tsan job should
+then hold green. If a cluster test times out again, it is a new cause:
+the join window is closed.
 
 **Waiting on the maintainer:** nothing open.
 
