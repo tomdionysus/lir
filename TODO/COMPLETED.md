@@ -1171,3 +1171,19 @@ plugin will use it too).
   started (the logs of run 43632325244 show it). Found by Louhi. Proven
   only by the hosted CI on the next push; no build node run, as the build nodes pass a
   path. Dannan's public repository carries the 0.8.2 tag.
+
+## 2026-11-15: the first full hosted CI
+
+- After the repository URL fix, every job builds. TSan found a Dannan 0.8
+  use-after-free (a ledger Lease released by a call completion after its
+  Node was destroyed): reported, fixed by Dannan in 0.9.0, suppressed by one
+  line until the repin (`b24ab64`). CodeQL needed `actions: read`
+  (`008f5a0`) and code scanning, which came with the repository going
+  public at the maintainer's word.
+- Flaky, observed once: `ClusterTest.ASharedGroupAcrossNodesGetsEachMessageOnce`
+  timed out on asan (arm64) waiting 10 s for `shared_members == 2` (run
+  43749501256); the job passed when re-run once. Groups go on a stream
+  channel, so a lost publish is unlikely; slowness under ASan on the arm64
+  runner is the likely cause. Watch for a second occurrence before
+  changing the bound.
+
