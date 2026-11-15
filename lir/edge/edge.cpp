@@ -53,18 +53,14 @@ std::string peer_of(const Stream& stream) {
   return endpoint.address().to_string() + ":" + std::to_string(endpoint.port());
 }
 
-// The client certificate the stream's TLS verified; nothing for one that
-// did not verify, or none. The authenticator binds tokens to it.
-// A client that presented a certificate which did not verify is refused, as
-// a TLS handshake that checked the chain refuses it; one that presented
-// none, where none is required, is let in to authenticate otherwise.
-// Dannan's `optional` lets both through with the verdict on the stream.
-bool presented_unverified(const Stream& stream) {
+}  // namespace
+
+bool presented_unverified(const dannan::listen::Stream& stream) {
   const auto& presented = stream.client_certificate();
   return presented && !presented->verified;
 }
 
-std::optional<contract::ClientCertificate> verified_of(const Stream& stream) {
+std::optional<contract::ClientCertificate> verified_certificate(const dannan::listen::Stream& stream) {
   const auto& presented = stream.client_certificate();
   if (!presented || !presented->verified) return std::nullopt;
   contract::ClientCertificate out;
@@ -72,6 +68,31 @@ std::optional<contract::ClientCertificate> verified_of(const Stream& stream) {
   out.thumbprint = presented->thumbprint;
   return out;
 }
+
+// A listener for the edge on its strand: the stream's executor is the
+// strand itself, so every connection is confined with the broker.
+dannan::listen::ListenerConfig listener_config(std::string name, const std::string& host, uint16_t port, size_t outbound, const TlsConfig* tls) {
+  dannan::listen::ListenerConfig config;
+  config.name = std::move(name);
+  config.host = host;
+  config.port = port;
+  config.outbound_bound = outbound;
+  config.close_bound = clean_end_deadline;
+  config.strand_per_stream = false;
+  if (tls) {
+    config.certificates =
+        std::make_shared<dannan::listen::Certificates>(dannan::listen::CertificatePaths{tls->certificate_chain, tls->private_key, tls->client_ca});
+    // TLS 1.2 and up, as before: MQTT's small devices do not all speak 1.3.
+    config.tls.minimum = dannan::listen::TlsVersion::tls12;
+    using dannan::listen::ClientCertificates;
+    config.tls.client_certificates =
+        tls->client_ca.empty() ? ClientCertificates::never : (tls->require_client_certificate ? ClientCertificates::required : ClientCertificates::optional);
+    config.handshake_timeout = tls->handshake_timeout;
+  }
+  return config;
+}
+
+namespace {
 
 // The subprotocol to answer with, from the comma-separated list a client
 // offered: "mqtt", else "mqttv3.1" (a 3.1 client); "" when nothing was
@@ -112,7 +133,7 @@ class ClientConnection : public contract::Connection {
 class RawConnection final : public ClientConnection, public std::enable_shared_from_this<RawConnection> {
  public:
   RawConnection(std::shared_ptr<Stream> stream, std::function<void(ClientConnection*)> forget)
-      : _stream(std::move(stream)), _forget(std::move(forget)), _peer(peer_of(*_stream)), _certificate(verified_of(*_stream)) {}
+      : _stream(std::move(stream)), _forget(std::move(forget)), _peer(peer_of(*_stream)), _certificate(verified_certificate(*_stream)) {}
 
   void start(std::shared_ptr<broker::Link> link) {
     _link = std::move(link);
@@ -180,7 +201,7 @@ class WebSocketConnection final : public ClientConnection, public std::enable_sh
         _logger(std::move(logger)),
         _forget(std::move(forget)),
         _peer(peer_of(*_stream)),
-        _certificate(verified_of(*_stream)) {}
+        _certificate(verified_certificate(*_stream)) {}
 
   // The upgrade, within `within`: read the request, choose the subprotocol,
   // answer. A request that is not a WebSocket upgrade, or offers only
@@ -326,29 +347,6 @@ class WebSocketConnection final : public ClientConnection, public std::enable_sh
   bool _closed = false;
   std::optional<asio::steady_timer> _ending;
 };
-
-// A listener for the edge on its strand: the stream's executor is the
-// strand itself, so every connection is confined with the broker.
-dannan::listen::ListenerConfig listener_config(std::string name, const std::string& host, uint16_t port, size_t outbound, const TlsConfig* tls) {
-  dannan::listen::ListenerConfig config;
-  config.name = std::move(name);
-  config.host = host;
-  config.port = port;
-  config.outbound_bound = outbound;
-  config.close_bound = clean_end_deadline;
-  config.strand_per_stream = false;
-  if (tls) {
-    config.certificates =
-        std::make_shared<dannan::listen::Certificates>(dannan::listen::CertificatePaths{tls->certificate_chain, tls->private_key, tls->client_ca});
-    // TLS 1.2 and up, as before: MQTT's small devices do not all speak 1.3.
-    config.tls.minimum = dannan::listen::TlsVersion::tls12;
-    using dannan::listen::ClientCertificates;
-    config.tls.client_certificates =
-        tls->client_ca.empty() ? ClientCertificates::never : (tls->require_client_certificate ? ClientCertificates::required : ClientCertificates::optional);
-    config.handshake_timeout = tls->handshake_timeout;
-  }
-  return config;
-}
 
 }  // namespace
 
