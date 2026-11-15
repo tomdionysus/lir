@@ -1134,6 +1134,10 @@ no warnings, `throttled=0x0`); merged to `develop`, nothing pushed:
   `libdannan.so.0.8.1`, `throttled=0x0`).
 - Lugh is on 0.8.0 at `ab28e2d` with `lugh_client` unchanged since
   `dbb0573`; Lir's Lugh pin stays until Lugh's first release.
+- Dannan 0.8.2 (placement copies only its answer; a listener key refused
+  for what is wrong with it), the repin (`dcb6b53`), no code change:
+  `tools/ci.sh release` 337 passed on corvus-neptune (2 cores,
+  `libdannan.so.0.8.2`, `throttled=0x0`).
 - Answered Louhi (the new compute project) on using Lir for its
   lifecycle events: as any MQTT client, its own topic root, scopes from
   Lugh tokens; durability waits on step 5.

@@ -5,12 +5,12 @@ file carried until today is there, "Archived from ACTIVE.md, 2026-11-14".
 
 ## Resume here
 
-**State.** `develop` at `13553c0` (Dannan 0.8.1);
+**State.** `develop` at the Dannan 0.8.2 repin;
 pushed to `488e89e` at Tom's word, the rest local. Gate on corvus-neptune
 (Pi 5, Debian 13, GCC 14, Boost 1.83, Ninja, Release, warnings as errors,
 no warnings, never throttled): `tools/ci.sh release` 337 passed at
-`13553c0` (Dannan 0.8.1); `tools/ci.sh lugh` (the plugin on) 343 passed at the 0.8.0
-repin (`912d33f`). Dannan pinned at `0.8.1`, Lugh at `dbb0573` (plugin
+the 0.8.2 repin; `tools/ci.sh lugh` (the plugin on) 343 passed at the 0.8.0
+repin (`912d33f`). Dannan pinned at `0.8.2`, Lugh at `dbb0573` (plugin
 only). Lugh is on 0.8.0 at `ab28e2d` (724 passed there) with `lugh_client`
 unchanged since `dbb0573`, so the pin stays until Lugh's first release
 (Lugh, 2026-11-15). Unmerged: `feature/fuzz-targets`,
