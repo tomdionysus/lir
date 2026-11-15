@@ -132,7 +132,11 @@ so the pin stays until Lugh's first release). Unmerged:
    Dannan 0.9.0 (the maintainer's ruling). Lir's sketch, to put to the maintainer: agreed trees
    (a node setting, e.g. `stack/pis/#`) whose every write and clear goes
    through Dannan's agreement, the revision its log index, the minority
-   side refusing writes there; other trees stay multimaster.
+   side refusing writes there; other trees stay multimaster. The board
+   (2026-11-15): agreed tree `stack/pis/#` only, guards within one
+   `stack/pis/<host>/#` (an `as_of` per tree suits it), 503 on the
+   minority side read as a refused write, QoS 0 to an agreed tree refused.
+   The board moved it to its 0.5.0 or later.
 6. **lir::client** (the maintainer, 2026-11-15, asked by Louhi; Lugh's events and
    Mimir use it too). Done (`51381af`): `lir/client/client.h`, the codec
    alone as `lir::mqtt`, `LIR_BUILD_SERVER=OFF` for consumers (`tools/ci.sh
