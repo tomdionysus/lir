@@ -15,20 +15,12 @@ client` clean. `tools/ci.sh lugh` 343 at the 0.8.0 repin. Hosted CI green
 on every job from `e81e675`, CodeQL included. Unmerged:
 `feature/fuzz-targets`, for the release gate.
 
-**First, next session: finish the standing cluster's upgrade** (the maintainer's word,
-2026-11-15). node-d is the fourth node and runs `7db72d1`; node-a, node-b
-and node-c still run `a559b0a` (Dannan 0.7.0). Mixing is safe (Dannan: the
-0.7 and 0.8 wire is the same). Tell Louhi (it reboots node-a for cgroups)
-and the coordinating session before starting. Then, one node at
-a time, node-b, node-c, node-a last:
+**The standing cluster** runs `7db72d1` on all four nodes (2026-11-15
+22:33Z, `COMPLETED.md`). To upgrade it, tell Louhi and the coordinating session first, then one node at a time, node-a (the acting
+scheduler) last:
 `LIR_ONLY=<name> sh deploy/test-cluster/install.sh root@<node>:/root/lir-work/build-ci/release node-a=192.0.2.1 node-b=192.0.2.2 node-c=192.0.2.3 node-d=192.0.2.4`
-from a release build of `develop` (node-d has one at `7db72d1` in
-`/root/lir-work/build-ci/release`), then `python3 -I build/cluster-check.py`
-(untracked): every `lir-node` and `claim-board-scheduler` active, node-a's
-scheduler acting and the others standing by, `retained?filter=stack/%23`
-identical on all four, `$lir/cluster` 4 nodes. Its partition column reads
-None: match `$lir/nodes/<id>` by the node's id to show it. Record the
-upgrade in `COMPLETED.md` and below.
+from a release build of `develop`, then `python3 -I build/cluster-check.py`
+(untracked) after each node.
 
 **How work is done (the maintainer, 2026-11-14):**
 - No builds or test runs on the workstation; the build nodes only, in `/root/lir-work`,
@@ -42,19 +34,18 @@ upgrade in `COMPLETED.md` and below.
 
 ## Next, in order
 
-1. **The cluster upgrade** above.
-2. **At the release gate:** `feature/fuzz-targets` (`3af35be`): install
+1. **Before the release gate:** `feature/fuzz-targets` (`3af35be`): install
    `clang` and `libclang-rt-19-dev`, build with `CXX=clang++
    -DLIR_BUILD_FUZZING=ON`, run each target once for `-max_total_time=60`,
    fix what they find, merge. The release follows step 5.
-3. **Step 5, on Dagda**, by [`2026-11-13-step5-design.md`](2026-11-13-step5-design.md),
+2. **Step 5, on Dagda**, by [`2026-11-13-step5-design.md`](2026-11-13-step5-design.md),
    when Dagda's slices are tagged: paused by the maintainer until Macha runs on Dagda.
    Slice 1 is on Dagda's develop (`1065b18`), untagged. Lir needs a Dagda
    tag on Dannan 0.8 (one Dannan a process); its tests
    (`OnDagda.SeqNeverRepeatsAcrossARestart` first) come with the tag.
    Ship nothing before contract v2 freezes at slice 4. Use the named
    acknowledgement levels.
-4. **At Dannan 0.9.0:** repin; the MQTT-SN DTLS gateway
+3. **At Dannan 0.9.0:** repin; the MQTT-SN DTLS gateway
    (`lir/sn/gateway.cpp`) onto `DatagramListener`, then delete
    `edge::server_context` and `verified_certificate(SSL*)`; remove the TSan
    suppression of `RetainedMemoryLedger::release`
@@ -71,10 +62,10 @@ upgrade in `COMPLETED.md` and below.
      Dannan's design (`../dannan/TODO/2026-11-15-hlc-design.md`); adopting
      it needs the maintainer to reopen the 2026-11-04 ordering decision. Recommend it:
      the later write wins after a heal, and expiry gets an absolute time.
-5. **At Lugh's first release:** repin the plugin (`tools/ci.sh lugh`). The
+4. **At Lugh's first release:** repin the plugin (`tools/ci.sh lugh`). The
    hosted `lugh` job uses the secret `LUGH_READ_TOKEN`.
-6. **MQTT-SN 2.0** when OASIS approves a Committee Specification.
-7. **lir::client** users: Louhi (step 8), Lugh's principal-events publisher
+5. **MQTT-SN 2.0** when OASIS approves a Committee Specification.
+6. **lir::client** users: Louhi (step 8), Lugh's principal-events publisher
    and Mimir's Lugh plugin pin `6b23268` or later. QoS 2, aliases and user
    properties on request.
 
