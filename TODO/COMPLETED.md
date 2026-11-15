@@ -737,3 +737,582 @@ and claiming the machine on the board first.
   `HttpConfig::maximum_retained_bytes` (4 MiB) it is refused whole with 413.
 - `message_json` is the one JSON form of a delivered message, shared by the
   event stream and the snapshot.
+
+## 2026-11-14: hosted CI, fuzz targets, and the board's rule
+
+- Hosted CI as the stack has it, copied from Dannan's and renamed:
+  `tools/ci.sh` (check, release, clang, asan, tsan, coverage), the CI and
+  CodeQL workflows, Dependabot, Codecov and the README's badges. Dannan is
+  fetched from its public repository where there is no sibling checkout.
+  `tools/ci.sh check` passes on the whole tree; the build steps are not yet
+  run anywhere.
+- Four fuzz targets written (`feature/fuzz-targets`), not yet built: no build node
+  has clang yet.
+- The standing cluster upgraded to the build with `GET /retained`; claims
+  and statuses survived the rolling restart. The maintainer's rule that nobody
+  schedules the build nodes posted on the board (`stack/rules/scheduling`), in the
+  board's README, and to every session sharing the build nodes. Claims moved to one
+  topic per session per machine.
+
+## Archived from ACTIVE.md, 2026-11-14
+
+`ACTIVE.md` was rewritten to where things stand (the maintainer: "rationalise TODO and
+prep for clear"). Its text until then, word for word, with its headings
+pushed down one level:
+
+Last updated: 2026-11-13. Steps 1 to 4, session standbys, the system
+topics (all but `$lir/shards`, which follows step 5), HTTP and HTTPS,
+MQTT over TLS and over WebSocket, client certificates, the
+specification's MAYs, Dannan 0.4.0 (the config file, its percent
+decoder), topic scopes, the moderate default limits and memory pressure
+are on `develop`; gate `lir_tests` 248. `COMPLETED.md` is the record.
+Server Reference at CONNECT is done (248); memory thresholds and the
+ledger (251), the rules engine (270), MQTT-SN 1.2 (288) and over DTLS
+(291); close_notify on TLS closes and the HTTPS certificate subject (295);
+Dannan 0.4.1 (295); the Lugh token authenticator's own checks, behind a
+`TokenVerifier` seam (307).
+"Resume here" (2026-11-13): Dannan and Dagda now serve Macha, Lugh and
+Lir as first-class users (the maintainer, 2026-11-13; Decisions below). Lir's needs
+of both, and Lir's review of Dagda's design, are
+[`2026-11-13-lir-needs.md`](2026-11-13-lir-needs.md). The design the maintainer ruled
+on is `../dagda/TODO/2026-11-13-three-systems-design.md` ("Ruled",
+Dagda `a058df9`); Dannan's is `../dannan/TODO/2026-11-13-stack-needs.md`.
+Lir's work while they build, all of it chosen by the maintainer on 2026-11-13:
+1. Step 5's design rewritten onto the ruled nouns, with its tests written
+   first. No code against an unfrozen tag until (3).
+2. ~~Repin to Dannan 0.5.6~~ Done 2026-11-13, ahead of Dagda 0.1.5 at
+   The maintainer's word (Lir links no Dagda yet): `feature/dannan-0.5`, gate 307
+   (`COMPLETED.md`). Then, by the maintainer's ruling relayed by Dannan the same
+   day, the ABI promise ships as Dannan 0.6.0 (`libdannan.so.0.6`), since
+   0.5.4 had already changed 0.5's ABI, and Dagda 0.1.5 will be on 0.6.0.
+   So Lir repins once more, to 0.6.0, when it is tagged. The interface work
+   (deferred reply, partition reading, the listener) is Dannan 0.7.0.
+   ~~Repin to 0.6.0~~ Done 2026-11-13: `feature/dannan-0.6`, gate 323.
+2a. ~~Step 5's groundwork that needs no Dagda~~ Done 2026-11-13
+   (`feature/step5-groundwork`, 16 new tests): `session_shard_of`, the
+   sequence blocks behind `SequenceStore` (a node-local space fills it), and
+   the stored forms of inflight and queue entries, whose expiry is
+   wall-clock time because a log entry outlives the steady clock.
+2c. ~~Linux arm64~~ Done 2026-11-14 on node-c: GCC 14, Debian 13,
+   Boost 1.83, warnings as errors, all 323 tests (`COMPLETED.md`). The build nodes
+   are shared (node-a .169, node-b .170, node-c
+   .202; root over ssh): ask the session using a machine first, post a claim
+   on the standing cluster, modest -j, nice 19, one heavy job per build node.
+2d. The standing Lir cluster on the three build nodes (the maintainer, 2026-11-14: "install a
+   Lir cluster on these machines and use it to test lir, and coordinate
+   work"): `deploy/test-cluster/`, ports 7537, 1983 and 8183, the key kept in
+   `build/test-cluster/` on the workstation. Sessions post claims on
+   `stack/pis/<host>/claim` and status on `stack/sessions/<name>/status`.
+   Upgrade it with `deploy/test-cluster/install.sh` after each Lir change
+   worth trying on real machines.
+2f. ~~Hosted CI~~ Done 2026-11-14 (`tools/ci.sh`, `.github/`, `codecov.yml`,
+   badges): check, release, clang, asan, tsan and coverage on Debian 13
+   x86-64 and arm64, and macOS. `tools/ci.sh check` passes; the build steps
+   are first proven on a build node when one is free (`tools/ci.sh release`).
+2g. Fuzz targets for every parser of untrusted bytes, on
+   `feature/fuzz-targets` (MQTT-SN, the HTTP target, the cluster codec, the
+   stored entries), unmerged until built with clang on a build node and each run
+   for a bounded time.
+2e. The claim board plugin, specified at the maintainer's request for another session
+   to implement (`../coordination/TODO/2026-11-14-claim-board-plugin.md`).
+   Lir owes it two things:
+   - ~~`GET /retained?filter=F`~~ Done 2026-11-14: the retained messages
+     matching F as a JSON array, then close; 413 past
+     `maximum_retained_bytes`, never cut short. Gate 329 on node-b.
+   - Once the plugin lands: migrate the board to one topic per session per
+     machine (`stack/pis/<host>/claims/<session>`), clear the old
+     `stack/pis/<host>/claim` topics, and update `deploy/test-cluster/README.md`.
+     The first layout lets a second claim overwrite the first.
+2b. When Dannan lands its partition reading (the maintainer, 2026-11-13): wire it
+   into the interim, so a node on a minority side (an even split is one)
+   degrades or refuses QoS 1/2 per its setting, ahead of Dagda.
+3. Step 5 code against each Dagda slice tag as it lands, at Lir's own risk;
+   nothing ships before contract v2 freezes at slice 4.
+4. The stale plan text: the plan file's session and wildcard heads (the
+   layout of 2026-11-04 replaced them), and the stack document's "2-4
+   commits a shard", which is Dagda's file (asked of it).
+Still waiting elsewhere: MQTT-SN 2.0 on OASIS (only working drafts; the maintainer
+said continue); the Lugh plugin on Lugh's `lugh_client` (P10), which is
+the `TokenVerifier`, hides where Lugh's signing keys come from, and keeps
+HTTPS JWKS working for a node outside Lugh's cluster (agreed by Lugh,
+2026-11-13).
+
+The design is the maintainer's, 2026-11-03:
+[`2026-11-03-lir-plan.md`](2026-11-03-lir-plan.md), with the seven
+further sections in [`2026-11-04-lir-sections.md`](2026-11-04-lir-sections.md).
+These files are the source of truth; the Claude Doc it began as is a
+starter that will be deleted (the maintainer, 2026-11-04). How the projects divide the work is
+`../dagda/TODO/2026-11-03-stack.md`, the one copy, which has Lir in it
+("Lir on Dagda", and the maintainer's "Decided (the maintainer, 2026-11-04)").
+
+### What Lir is
+
+The maintainer, 2026-11-03 night: "It must expose a MQTT interface and support all
+MQTT functionality. But, it needs to be distributed, multimaster,
+clustered, using Dannan as the network layer." Then: "Create a MQTT event
+system that is clusterable and distributed based on Dannan." Lir is
+written new; Macha has no event system to extract (`COMPLETED.md`,
+2026-11-03 night).
+
+- All of MQTT 3.1, 3.1.1 and 5.0. A feature left out is a finding.
+- Distributed and clustered: a client connects, publishes, subscribes and
+  resumes its session at any node.
+- Multimaster: any node accepts any client operation; both sides of a
+  split serve and merge after.
+- Dannan is the network layer; what Lir persists lives in Dagda.
+
+### Decisions
+
+- (2026-11-14, the maintainer) No builds or test runs on the workstation: every Lir build is
+  on the shared build nodes. Nobody schedules the build nodes: a session claims a free
+  machine on the board (`deploy/test-cluster/README.md`) and has it, first
+  come, first served; one heavy job per build node. Hosted CI is added, as the
+  stack has it; it runs only when the maintainer pushes. Split joins (nodes added
+  during a partition can give two majorities) are a stated limit in
+  Dannan's partition reading, not prevented.
+- (2026-11-13, the maintainer) "You all need to discuss your needs and ensure the
+  the more fundamental projects, namely Dannan and Dagda, support Macha,
+  Lugh and Lir as first class citizens. This was the purpose of splitting
+  out the technologies." Then, on the designs that followed:
+  - Dagda (`../dagda/TODO/2026-11-13-three-systems-design.md`, "Ruled"):
+    the log is a Dagda noun, for Lir's inflight log, offline session
+    queues and message history; built-in register-map and counter-map
+    merges, with retained as a register-map space (expiry per key, and a
+    keys-changed notice for nodes that do not hold the space); head spaces
+    on `replicas(N, scheme, capability)` with per-space k; leases on head
+    spaces aligned with each shard's replicas; node-local spaces; adverts
+    aggregated, generations on channels. Contract v1 frozen at Dagda
+    `0.1.4`, v2 frozen at slice 4 (everything Lir needs), the catalogue as
+    v3. Order: slice 0 (0.1.5 on Dannan 0.5.6, then the measurement) first.
+  - A stated limit: a log keeps removed dots for 10 minutes, Lir's QoS 2
+    dedup window, so a split longer than that can deliver a QoS 2 message
+    twice.
+  - PUBACK at QoS 1 with k = 2: p99 under 50 ms over the whole path
+    (Lir's tick, the append, the group commit synced on k replicas), the
+    pass mark for Dagda's log prototype.
+  - Dannan (`../dannan/TODO/2026-11-13-stack-needs.md`): an ABI promise
+    (patch releases keep it, abidiff in CI, `libdannan.so.0.5`, CMake
+    `SameMinorVersion`); a hosted system pins one Dagda tag and takes its
+    Dannan minor. A partition reading, majority or minority of the roster
+    as last agreed (a join adds, only a retire removes); an even split is
+    a minority. A shared client listener below the framing, with stack
+    Decided 9 standing; Lir keeps its own listeners until it lands and Lir
+    has reviewed it. A small-message bench, here first, the build nodes at the maintainer's
+    later word.
+- (2026-11-04, the maintainer; stack document "Decided", and `../dannan/TODO/ACTIVE.md`)
+  - Dagda durability levels: Ephemeral (memory), Persisted (disk, one
+    node), Replicated (disk, k nodes per space, default 2), Durable (all
+    available replicas). Lir: QoS 0 Ephemeral, QoS 1/2 Replicated.
+  - No `lir.local`: other systems are ordinary MQTT clients of Lir.
+  - Multimaster as Lir described it: any node accepts any operation, "the
+    per-shard lease coordinates fan-out", both sides of a split serve and
+    merge. (Step 4's interim fans out without it: question 1 below.)
+  - Dagda's `open()` takes Lir's placement salt; Dagda reports each
+    space's replica set.
+  - Authentication is pluggable (`contract::Authenticator`); a Lugh plugin
+    depends on Lugh. Token verification does not move into Dannan.
+  - HTTP is each hosted system's own; Lir writes its own publish and SSE.
+  - Message types from 512, registered freely (Lir: `0x4C00`-`0x4C02`).
+  - One process per node: `lir-node` is a node and advertises `lir`.
+  - Process-level tests are GoogleTest only, no Python.
+  - Dannan `0.2.0` is cut; Lir builds against the tag.
+- (2026-11-03 night, the maintainer) Lir is its own project and agent, with
+  Dannan's styles, conventions and layout. Macha is not modified until
+  The maintainer says so.
+- From the stack: rules 1 to 4; dependencies point down; hosted systems
+  never address one another; the async shape; versioned contracts.
+
+### The plan
+
+1. **Wire and topics.** Done (73).
+2. **The broker on one node.** Done (125).
+3. **The edge.** Done (132; the mosquitto process test landed in step 4;
+   TLS on the MQTT port, 165; HTTPS, 170; WebSocket, 214; client
+   certificates, 227; close_notify on close, and the HTTPS certificate
+   subject, 295).
+4. **The cluster on Dannan.** Done as an interim (151): see
+   `COMPLETED.md`. Sessions mirrored to configurable standbys (answer
+   2): done (152).
+5. **On Dagda.** As ruled 2026-11-13: per shard, an inflight log and a
+   session-queue log (Dagda's log noun), a session-state head space with
+   Lir's merge, a retained register-map space and a lease space, all on
+   the shard's replicas; history as a log per topic filter; objects for
+   payloads over 64 KiB; the sequence counter in a node-local space; the
+   retained-topic index on every node from the keys-changed notice.
+   Builds on Dagda's slice tags 1 to 4 as they land; pins contract v2 at
+   slice 4. Its design is rewritten first (Resume here, 1).
+6. **System topics, HTTP, authentication.** System topics done (154);
+   HTTP publish and SSE done (163); the Lugh plugin waits on Lugh. `$dannan/` and `$lir/`
+   retained topics from the Context's status; HTTP publish and SSE; a
+   Lugh authentication plugin. No dependency but Lugh's tokens for the
+   last.
+
+### The maintainer's answers (2026-11-04, asked in turn)
+
+1. Fan-out: direct, on Dannan's channels. Per-shard leases only where
+   one writer matters: the inflight log and retained heads on Dagda
+   (step 5).
+2. Interim: sessions are replicated now, before Dagda: each persistent
+   session mirrored in memory to standby nodes chosen by Dannan's
+   placement, updated as it changes, taken from a standby when its node
+   is gone. The number of standbys is configurable (Lir's default: one,
+   two copies, as Dagda's k = 2). Retained everywhere and PUBACK on
+   acceptance stay interim until step 5.
+3. Retained ordering: the Lamport counter, then the node id, in the
+   design too.
+4. Load: up to about 10,000 messages a second across the cluster;
+   messages mostly under 1 KiB; 64 KiB inline limit kept.
+5. Header tagline: "Lir - The Message Broker".
+6. Storage layout on Dagda approved: per-shard spaces for retained,
+   inflight and sessions (3 x 256), writes batched per shard, the
+   wildcard index in memory.
+7. Namespaces kept: `mqtt`, `subs`, `shard`, `broker`, `edge`, `cluster`.
+8. Next: session replication, then step 6 (system topics, then HTTP
+   publish and SSE).
+9. The design doc's seven unwritten sections: answered in turn on
+   2026-11-04, recorded in
+   [`2026-11-04-lir-sections.md`](2026-11-04-lir-sections.md). New scope from them: MQTT over WebSockets, MQTT-SN
+   1.2 and 2.0, a declarative rules engine, opt-in message history,
+   Server Reference for load balancing. Order: Dannan 0.3.0 and scopes,
+   anonymous refused, WebSockets, configurable system topics, config
+   file (Dannan's), client certificates; first release after step 5.
+
+### What Lir waits on
+
+- Dagda: slices 0 to 4 of the three-systems design (about 18 sessions):
+  0.1.5 and the measurement, node-local spaces, replicated spaces with
+  per-space k, the merges and leases, the log; contract v2 at slice 4.
+- Lugh: `lugh_client` (its P10), whose offline token verification fills
+  the plugin's `TokenVerifier` (the maintainer, 2026-11-04); the tokens have landed (O7).
+- Dannan: the partition reading (Lir's minority behaviour), the shared
+  listener (optional for Lir until reviewed), the small-message bench.
+  Lir is on `0.5.6`; Dagda 0.1.5 will be on `0.6.0`, the first minor
+  with the ABI promise, and Lir follows it. The partition reading comes in
+  Dannan `0.7.0`.
+- Lugh: the grammar of scopes in its tokens.
+- OASIS: an approved MQTT-SN 2.0 Committee Specification.
+
+## 2026-11-14, early: Dannan 0.7.0 and the partition reading
+
+Gate: `lir_tests` 334 passed, 0 failed (329 before, five new), by one
+`tools/ci.sh release` run on node-b (arm64, Debian 13, GCC 14,
+Ninja, Release, warnings as errors, no warnings, `throttled=0x0`). That
+run is also the CI script's first real build on Debian. Merged to
+`develop` as `a559b0a`; nothing pushed.
+
+- Dannan repinned at `0.7.0` (`376bacc`).
+- The minority side (`bf7ec5d`): the cluster watches
+  `Nodes::watch_partition()` on the edge's strand and gives each reading
+  to the broker (`Broker::partition`). On a minority side QoS 1 and 2
+  from clients are accepted and counted (`Stats::under_replicated`,
+  `--minority degrade`, the default) or refused with 0x97
+  (`Stats::refused_minority_publishes`, `--minority refuse`; a 3.x client
+  is closed), in `Link::on_publish` beside the memory-pressure refusal,
+  so MQTT, MQTT-SN and HTTP publishes all pass it. QoS 0 always flows.
+  `$lir/nodes/<id>` carries `"partition"`: side, members, reachable, the
+  unreachable ids, the setting and both counts. Interim limits, stated:
+  `refuse` is at once (nothing to wait on before Dagda); session and
+  retained commits and server-made messages (wills) are not covered until
+  step 5. Tests: `BrokerTest.AMinoritySideDegradesByDefault`,
+  `BrokerRefusingOnMinority.QoS1And2AreRefusedWith0x97AndQoS0Flows`,
+  `BrokerRefusingOnMinority.NoReadingOrAMajorityRefusesNothingAndAHealEndsTheRefusal`,
+  `SystemJson.ANodeReportsItsSideOfASplitAndWhoItCannotReach`,
+  `ClusterTest.ANodeCutOffFromMostOfTheClusterReadsMinorityAndSaysSo`.
+- `tools/ci.sh` takes `LIR_CI_JOBS` (`3733552`).
+- `feature/fuzz-targets`: the whole build instrumented for fuzzing, not
+  only the harnesses, which left libFuzzer without coverage of the
+  parsers (`3af35be`); not built, it waits for the release gate under
+  The maintainer's rule against wasted runs (recorded in `ACTIVE.md`).
+- Recorded: Dagda's slice 0 verdict on the build node; the maintainer's P10 rulings for the
+  Lugh plugin; Lugh on Dannan 0.7.0 and building on Lir's Dannan.
+- The standing cluster upgraded to `a559b0a` at the maintainer's word (03:52Z): every
+  node's `$lir/nodes` reads majority, 3 of 3; the board's claims survived.
+
+## 2026-11-14, morning: a token's exp on the wall clock
+
+Gate: `lir_tests` 335 passed, 0 failed (one new), by one `tools/ci.sh
+release` run on node-c (warnings as errors, no warnings,
+`throttled=0x0`). Merged to `develop` as `8d78c95`; nothing pushed.
+
+- Found by the Lugh session: `TokenVerifier::verify(token, now)` passed
+  the steady clock, while a token's exp and nbf are wall-clock Unix
+  seconds, so no verifier could check a lifetime and the grant's end was
+  timed on the wrong clock. Now `verify(token)` (the verifier checks nbf
+  and exp on a WallClock of its own), `TokenClaims::expires_unix`, and a
+  `TokenAuthenticator` given a WallClock: it refuses an exp at or before
+  the wall's now (stricter than Lugh's 60 s skew, stated in
+  `lir/auth/tokens.h`) and ends the grant on the steady clock when the
+  time left on the wall runs out, capped at ten years (`3a9cd72`,
+  `0bb6be7`). Test: `TokenAuthenticatorTest.TheExpiryIsReadOnTheWallClockAndKeptOnTheSteadyOne`.
+- Reviewed Dannan's shared listener design (P3); Lir's requests all taken
+  in (`ACTIVE.md`, item 3).
+
+## 2026-11-14, afternoon: the shutdown DISCONNECT and the Lugh plugin
+
+Gate, one tree with both, on node-c (warnings as errors, no
+warnings, `throttled=0x0`): `tools/ci.sh release` 337 passed, 0 failed;
+`tools/ci.sh lugh` (the plugin on) 343 passed, 0 failed. A first run failed
+one test, `WebSocketTest.StopClosesWebSocketClients`, written before a
+stopping node told 5.0 clients why: it read the new DISCONNECT as the
+connection still open. Its expectation now follows the design
+(`867de45`); the run was repeated for that fix and nothing else. Merged to
+`develop` as `6fc0cc5` and `9452fd0`. `develop` pushed to `b5c9a65` at
+The maintainer's word (the maintainer, 2026-11-14), the hosted CI's first run.
+
+- The shutdown DISCONNECT (`039ac36`, `867de45`): `Broker::shutting_down()`
+  ends every link, a 5.0 client told 0x8B (Server shutting down) first;
+  `Edge::stop` calls it, waits for each connection's clean end within the
+  2 s bound, then closes what is left at once. Wills and sessions go as
+  before. Tests: `BrokerTest.ShuttingDownEndsEveryConnectionAndTellsA5ClientWhy`,
+  `EdgeTest.StoppingTellsA5ClientTheServerIsShuttingDown`. A stop can now
+  take up to the clean-end bound.
+- The Lugh plugin (`42db13f`): `LughVerifier`, Lir's `TokenVerifier` over
+  `lugh::client::Verifier`, `x5t` decoded with Lugh's base64url and refused
+  unless a SHA-256 thumbprint; `LughPlugin` owning the HTTPS client, the
+  Verifier and the key source; `LIR_BUILD_LUGH` fetching `lugh_client` at
+  `2b60b52` on Lir's Dannan, linked into `liblir` whole with Lir's own
+  Boost.JSON definitions left out; `lir-node --lugh-issuer --lugh-ca`;
+  `tools/ci.sh lugh`. Tests (real tokens, signed by Lugh's `jws_sign`):
+  `LughVerifierTest.AGenuineTokenGivesWhatLirReads`,
+  `.ACertificateBoundTokenCarriesItsThumbprint`,
+  `.AThumbprintThatIsNotSHA256IsRefused`, `.AKeyBoundTokenIsMarkedBound`,
+  `.AForgedTokenSaysWhy`, `.AClientSignsInWithALughToken`.
+- Reviewed Dannan's P3 code (`68c3cc5`): five findings, all fixed in
+  `0940e73` (`ACTIVE.md`, item 3).
+- Recorded: The maintainer's answers (push develop, tag Dagda 0.2.0, yes to P3's name
+  and phasing, fuzzing at the release); Dagda's pause for Macha's port;
+  node-d a claim host only; the board the only channel for the
+  build nodes (later reversed by the maintainer: a holder may be asked to make room; claim
+  board 0.2.0 claims cores and queues waits).
+
+## 2026-11-14, evening: the Lugh plugin repinned at the end of P10
+
+Gate: `tools/ci.sh lugh` 343 passed, 0 failed, on node-c (2 cores
+claimed, warnings as errors, no warnings, `throttled=0x0`); the release
+configuration is untouched by it. Merged to `develop` as `33b7c8b`;
+nothing pushed.
+
+- Lugh at develop `dbb0573` (P10 complete, on Dannan 0.7.0, `66e0509`):
+  `AccessToken::x5t` arrives decoded and a malformed one is refused by
+  Lugh, so `LughVerifier` copies it; the tests sign with Lugh's public
+  `lugh/client/testing.h` (`lt::sign_access_token`, `lt::jwks`). Lir no
+  longer includes Lugh's `jose.h` or `core/encoding.h`.
+
+## 2026-11-15: Dannan 0.8.0, and Lir's listeners on Dannan's
+
+Gates on node-c (2 cores claimed each time, warnings as errors,
+no warnings, `throttled=0x0`); merged to `develop`, nothing pushed:
+- The repin (`5ebc037`, merged `912d33f`): `tools/ci.sh release` 337
+  passed, `tools/ci.sh lugh` 343 passed, both linking `libdannan.so.0.8.0`.
+  Lugh's `dbb0573` builds and passes on 0.8.0 in Lir's build. The pin
+  `LIR_DANNAN_TAG` is no longer a cache variable: an existing build tree
+  kept the old tag before.
+- The edge (`139e204`, `33afc3a`, merged `ad65541`): 337 passed. MQTT over
+  TCP and TLS straight over a `listen::Stream` (`RawConnection`); over
+  WebSocket and WebSocket-over-TLS as `websocket::stream<Stream&>` with
+  Dannan's teardown (`WebSocketConnection`). A first run failed
+  `ClientCertificateTest.ACertificateFromAnotherCaIsRefused`: Dannan's
+  `optional` client certificates let an unverified one through, and the
+  edge read it as none, so an intruder came in anonymous. The edge now
+  refuses a stream that presented a certificate which did not verify; the
+  test was right and is unchanged; the run was repeated for that fix.
+- HTTP and HTTPS (`1381716`, merged `ce4bcd0`): 337 passed. `Exchange`
+  runs over a `listen::Stream`, Dannan's queue and draining close in place
+  of its own; HTTPS refuses an unverified certificate as MQTT over TLS
+  does.
+- Open with Dannan: TCP_NODELAY (`ACTIVE.md`, item 3).
+
+## 2026-11-15: Dannan 0.8.1
+
+- Lir reviewed Dannan's `feature/no-delay` (three points, all taken: the
+  io context found by type, the restart race stated, `no_delay()` on the
+  stream's executor only). 0.8.1 sets TCP_NODELAY on every accepted
+  socket and `stop_accepting` no longer hangs from an io thread or a
+  context that never ran.
+- The repin (`6254f0d`, merged `13553c0`), no code change: `tools/ci.sh
+  release` 337 passed on node-c (2 cores claimed,
+  `libdannan.so.0.8.1`, `throttled=0x0`).
+- Lugh is on 0.8.0 at `ab28e2d` with `lugh_client` unchanged since
+  `dbb0573`; Lir's Lugh pin stays until Lugh's first release.
+- Dannan 0.8.2 (placement copies only its answer; a listener key refused
+  for what is wrong with it), the repin (`dcb6b53`), no code change:
+  `tools/ci.sh release` 337 passed on node-c (2 cores,
+  `libdannan.so.0.8.2`, `throttled=0x0`).
+- Answered Louhi (the new compute project) on using Lir for its
+  lifecycle events: as any MQTT client, its own topic root, scopes from
+  Lugh tokens; durability waits on step 5.
+
+## 2026-11-15: lir::client
+
+The maintainer approved it and its interface in Lir's session (asked by Louhi, whose
+events step needs it; Lugh's principal-events publisher and Mimir's Lugh
+plugin will use it too).
+- `9fb4167`: the codec is `lir_mqtt` (`lir::mqtt`) alone; `lir` links it.
+  `LIR_BUILD_SERVER=OFF` builds only the codec and the client; Dannan is
+  fetched only when the consumer has no `dannan::dannan` already.
+- `a1b27e6`: `lir/client/client.h`: MQTT 5.0 or 3.1.1 over TCP or TLS
+  (trust bundle or system store, IP or name checked, no SNI for an IP),
+  password asked at each CONNECT, QoS 0 and 1 publish (queued while
+  down, bounded, resent until PUBACK) and receive, retained, a will,
+  wildcard and shared subscribe kept across reconnects (5.0 subscription
+  identifiers, 3.1.1 matched locally), keep alive, Server Reference
+  followed, jittered backoff. One strand; every callback posted there.
+  The outbound connection is a local seam (`lir/client/transport.cpp`)
+  until Dannan's StreamConnector, whose design Lir reviewed (executor
+  constructor, IP SANs and no SNI for literals, the stream on the
+  executor given: all taken).
+- Gate on node-c (2 cores, `throttled=0x0`): `tools/ci.sh release`
+  351 passed (337 and 14 new `ClientTest`, `ClientTlsTest`); `tools/ci.sh
+  client` builds with no warnings. Merged `51381af`; a `client` job in the
+  hosted CI.
+- `3a8ac66`: `LIR_DANNAN_REPOSITORY` and `LIR_LUGH_REPOSITORY` are CACHE
+  STRING, not PATH: a URL given with -D became a path under the source
+  tree, and every hosted CI job had failed at configure since the jobs
+  started (the logs of run 43632325244 show it). Found by Louhi. Proven
+  only by the hosted CI on the next push; no build node run, as the build nodes pass a
+  path. Dannan's public repository carries the 0.8.2 tag.
+
+## 2026-11-15: the first full hosted CI
+
+- After the repository URL fix, every job builds. TSan found a Dannan 0.8
+  use-after-free (a ledger Lease released by a call completion after its
+  Node was destroyed): reported, fixed by Dannan in 0.9.0, suppressed by one
+  line until the repin (`b24ab64`). CodeQL needed `actions: read`
+  (`008f5a0`) and code scanning, which came with the repository going
+  public at the maintainer's word.
+- Flaky, observed once: `ClusterTest.ASharedGroupAcrossNodesGetsEachMessageOnce`
+  timed out on asan (arm64) waiting 10 s for `shared_members == 2` (run
+  43749501256); the job passed when re-run once. Groups go on a stream
+  channel, so a lost publish is unlikely; slowness under ASan on the arm64
+  runner is the likely cause. Watch for a second occurrence before
+  changing the bound.
+- Dannan 0.8.3 and `lir::client` on its `StreamConnector` (`8664691`):
+  the transport seam deleted, a QoS 0 publish done once handed to the
+  connection. `tools/ci.sh release` 351 passed and `tools/ci.sh client`
+  clean on node-b (2 cores, `libdannan.so.0.8.3`,
+  `throttled=0x0`). Hosted CI all green from `e81e675` (CodeQL included,
+  the repository public).
+
+## 2026-11-15: lir::client finds Lir's nodes in Dannan's roster
+
+The maintainer: Lir keeps no node list of its own, "that's what Dannan is FOR". A
+configured broker list and a Lir topic of endpoints were both dropped.
+- `d84a92a`: `ClientConfig::nodes` (the process's `dannan::Nodes`): each
+  attempt reads the active nodes advertising `lir` with a `lir.endpoints`
+  for its transport, takes the next in turn from a random start, so a lost
+  node is passed over at once; the backoff waits only once each has failed
+  since the last connection. `host`/`port` remain for a process not on
+  Dannan. The advert's key and format are `lir/contract/endpoints.h`, one
+  copy for the cluster and the client.
+  `ClusterTest.AClientFindsLirsNodesInDannansRosterAndFailsOver`.
+- `acc36ea`: `install.sh` ships `liblir_mqtt.so` (lir-node links it now)
+  and takes `LIR_ONLY=<name>` for a node-by-node upgrade; the unit gets
+  `MemoryMin=192M` and `OOMScoreAdjust=-500`; node-d is the fourth node.
+- Gate on node-d (2 cores, `-j1`, `throttled=0x0`): `tools/ci.sh
+  release` 347 passed and 5 skipped (the process tests, without
+  mosquitto-clients there); mosquitto-clients installed and the 5 run:
+  passed. 352 in all. `tools/ci.sh client` clean.
+
+## Archived from ACTIVE.md, 2026-11-15
+
+Done items the plan carried in full until today, kept here verbatim.
+
+3. **Dannan's shared listener** (P3, `dannan::listen`). Done for TCP
+   (2026-11-15): Lir is on Dannan 0.8.0 (`912d33f`), MQTT over TCP, TLS,
+   WebSocket and WebSocket over TLS (`ad65541`) and HTTP and HTTPS
+   (`ce4bcd0`) run on `StreamListener`s on the edge's strand
+   (`strand_per_stream = false`); Lir's own acceptors, TLS handshakes and
+   write queues for MQTT and HTTP are gone. `edge::listener_config`,
+   `verified_certificate(Stream)` and `presented_unverified` are shared by
+   both. A client certificate that did not verify is refused, as Lir's
+   handshake refused it (Dannan's `optional` lets it through with the
+   verdict). TCP_NODELAY: Dannan 0.8.1 sets it on every accepted
+   socket (`Stream::set_no_delay` opts out), so small MQTT packets no
+   longer wait on Nagle; Lir repinned with no code change (`13553c0`,
+   337 passed), after reviewing the branch. Next: the MQTT-SN DTLS gateway (`lir/sn/gateway.cpp`) onto
+   `DatagramListener` at Dannan 0.9.0, then `edge::server_context` and
+   `verified_certificate(SSL*)` go. At the 0.9.0 repin, also remove the TSan suppression of
+   `RetainedMemoryLedger::release` (`lir/test/tsan-suppressions.txt`), a
+   Dannan 0.8 use-after-free fixed there.
+4. **The Lugh plugin.** Done and merged (`9452fd0`; `lir/auth/lugh.h`,
+   `LIR_BUILD_LUGH`, `--lugh-issuer`, `--lugh-ca`, `tools/ci.sh lugh`),
+   repinned (`33b7c8b`) at Lugh's develop `dbb0573`, the end of P10, on
+   Dannan 0.7.0: `AccessToken::x5t` comes decoded, so the adapter copies
+   it, and the tests sign with Lugh's public `lugh/client/testing.h`;
+   nothing internal to Lugh is included any more. Next: repin at Lugh's
+   first release (the maintainer paused Lugh after P10). The hosted CI has a `lugh`
+   job (the maintainer said yes, 2026-11-14): it checks out Lugh's private develop
+   with the repository secret `LUGH_READ_TOKEN` and runs `tools/ci.sh
+   lugh`; without the secret it says so and builds nothing. The maintainer adds the
+   secret. The record of how it was
+   shaped (`../lugh/TODO/2026-11-14-p10-plan.md`): The maintainer's rulings (2026-11-14): the
+   plugin is optional and Lir builds without Lugh when it is off; it is a
+   few-line adapter, `lir::auth::TokenVerifier` over
+   `lugh::client::Verifier(issuers, WallClock)`: `set_keys(issuer, jwks)`
+   from the key source, `verify_access(token, audience)` answering an
+   `AccessToken` (subject, audiences, scopes, expires in Unix seconds,
+   jkt, x5t as base64url text, decoded to 32 bytes) or a reason; headers
+   `lugh/client/verifier.h` and `lugh/client/tokens.h`. Lir's seam carries
+   exp as wall time since `8d78c95` (Lugh's finding), and Lir refuses a
+   token at or past exp despite Lugh's 60 s skew (`lir/auth/tokens.h`); `lugh_client` links Dannan, OpenSSL and Boost; Lir pins a
+   commit on Lugh's develop by FetchContent with `LUGH_BUILD_NODE=OFF`
+   until Lugh releases. Its Dannan must be the one Lir pins: Lugh is on
+   Dannan 0.7.0 (develop `7b0c717`), uses Lir's `dannan::dannan` when
+   fetched into Lir's build (one Dannan a process), and moves with Lir
+   when Lir moves past 0.7 (tell the Lugh session first). Boost.JSON
+   (the maintainer, 2026-11-14): `lugh_client` compiles `boost/json/src.hpp`
+   itself, and so does Lir, for the rules engine
+   (`lir/rules/boost_json.cpp`, listed at `lir/CMakeLists.txt:25`). With
+   the plugin on, Lir leaves that file out and takes the definitions from
+   `lugh::client`; with it off, Lir compiles its own. A test of both
+   configurations' link comes with the plugin. Lugh agreed: the
+   definitions live in the exported `lugh_client` library, its Boost.JSON
+   macros are PUBLIC on `lugh::client`, and its P10.6 tests a consumer
+   that links it and uses Boost.JSON.
+
+**The standing cluster** on the three build nodes (`deploy/test-cluster/`): one
+`lir-node` each, ports 7537 (Dannan), 1983 (MQTT) and 8183 (HTTP), a
+systemd unit as lir, the cluster key in `build/test-cluster/cluster.key` on
+the workstation and never in the repository. It carries the claim board. Upgrade it
+with `deploy/test-cluster/install.sh root@<node>:/root/lir-work/build
+node-a=192.0.2.1 node-b=192.0.2.2
+node-c=192.0.2.3` after a Lir change worth trying on real
+machines; the restart is rolling and the board survives it.
+
+The standing cluster runs `a559b0a` (Dannan 0.7.0) since 2026-11-14
+03:52Z, upgraded at the maintainer's word from the gate run's build; each node's
+`$lir/nodes` reads majority, 3 of 3, and the board's claims survived.
+
+## Handoff, 2026-11-15 (end of session)
+
+The session's work, each recorded above with its gate: Lir's listeners on
+`dannan::listen` (337); Dannan 0.8.1, 0.8.2 and 0.8.3 repins (337, 337,
+351); `lir::client` and the codec as `lir::mqtt` (351), on Dannan's
+`StreamConnector` (351), finding Lir's nodes in Dannan's roster (352 on
+node-d); the repository URL fix, CodeQL's permission, the repository made
+public, and the first all-green hosted CI; a Dannan TSan finding
+suppressed until 0.9.0; node-d joined the standing cluster as its fourth
+node. Reviews given: Dannan's no-delay patch, stream connector (design and
+code) and hybrid logical clock; Mimir's and Kvasir's designs; Louhi's,
+Lugh's and Mimir's use of `lir::client`. Corrected: the Dagda log rate
+given to Kvasir (8,000 a second was measured by Dagda's slice 0, not only
+computed). Open: the cluster upgrade of node-a, node-b and node-c, first
+next session (`ACTIVE.md`); Louhi's reboot of node-a is also deferred to
+its next session and will not overlap. No claims held. `develop` pushed.
+
+## 2026-11-15: the standing cluster on 7db72d1
+
+All four nodes run `7db72d1` (Dannan 0.8.3) since 22:33Z, the same binary
+on each (md5 `9ed89541c601`), installed from node-d's release build with
+`LIR_ONLY` one node at a time: node-b, node-c, then node-a. Louhi and the
+the coordinating session were told before and after. After each
+restart: `lir-node` and `claim-board-scheduler` active everywhere,
+node-a's scheduler acting and the others standing by, `$lir/cluster` 4
+nodes, each node's `$lir/nodes` partition majority 4 of 4, and retained
+`stack/#` identical on all four. The untracked `build/cluster-check.py`
+now fetches the four retained sets in parallel and retries, since a board
+write landing between sequential samples read as a false divergence, and
+it finds each node's `$lir/nodes` entry by the id in
+`state/node-id`, which fills the partition column. No build or test run;
+no cores claimed.
+

@@ -1,7 +1,8 @@
 # ThreadSanitizer suppressions for tools/ci.sh tsan:
 #   TSAN_OPTIONS=suppressions=$PWD/lir/test/tsan-suppressions.txt
 # The same two Asio internals Dannan suppresses (dannan/test/tsan-suppressions.txt),
-# since Lir runs on the same Asio. Nothing of Lir's own is suppressed.
+# since Lir runs on the same Asio, and one Dannan defect until its fix ships.
+# Nothing of Lir's own is suppressed.
 #
 # Asio's kqueue reactor publishes a descriptor's state to the reactor thread
 # through kevent(2), which orders the write and the read; TSan cannot see it.
@@ -11,3 +12,10 @@ race:boost::asio::detail::kqueue_reactor::allocate_descriptor_state
 # Asio's executor count is a release decrement and then an acquire fence
 # before the delete; g++'s TSan does not model atomic_thread_fence.
 race:boost::asio::execution::detail::shared_target_executor::~shared_target_executor
+
+# Dannan 0.8: a retained-memory Lease released by a call completion after its
+# Node was destroyed reads the freed ledger (Lir's hosted TSan run 43746546373,
+# ClusterTest.HeldMessagesAreLeasedInTheNodesLedger). Fixed in Dannan 0.9.0
+# ("Let a retained-memory lease outlive its ledger"); not a 0.8 patch, as the
+# Lease's layout changes. Remove this line at the 0.9.0 repin.
+race:dannan::sched::RetainedMemoryLedger::release

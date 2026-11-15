@@ -104,6 +104,22 @@ TEST_F(EdgeTest, StopClosesEveryClient) {
   EXPECT_TRUE(client.closed_by_server());
 }
 
+// A stopping node tells a 5.0 client why before it closes (DISCONNECT 0x8B,
+// Server shutting down, section 3.14.2.1), so the client can go elsewhere at
+// once; a 3.x client, which has no server DISCONNECT, is closed.
+TEST_F(EdgeTest, StoppingTellsA5ClientTheServerIsShuttingDown) {
+  MqttClient five(edge.port());
+  five.connect("five");
+  MqttClient old(edge.port(), Version::v3_1_1);
+  old.connect("old");
+  edge.stop();
+  const auto disconnect = five.receive_a<mqtt::Disconnect>();
+  ASSERT_TRUE(disconnect);
+  EXPECT_EQ(disconnect->reason, mqtt::reason::server_shutting_down);
+  EXPECT_TRUE(five.closed_by_server());
+  EXPECT_TRUE(old.closed_by_server());
+}
+
 class SlowEdgeTest : public EdgeTest {
  protected:
   SlowEdgeTest() : EdgeTest(small_queue()) {}

@@ -10,14 +10,18 @@
 #
 #   tools/ci.sh check      the header block on every source, and clang-format
 #   tools/ci.sh release    g++ release build, warnings as errors, and the tests
+#   tools/ci.sh lugh       the same with the Lugh plugin (LIR_BUILD_LUGH)
+#   tools/ci.sh client     only lir::mqtt and lir::client (LIR_BUILD_SERVER off), as a consumer builds them
 #   tools/ci.sh clang      the same with clang++ (and -Wthread-safety)
 #   tools/ci.sh asan       AddressSanitizer and UndefinedBehaviorSanitizer
 #   tools/ci.sh tsan       ThreadSanitizer, with lir/test/tsan-suppressions.txt
 #   tools/ci.sh coverage   a coverage build's tests; lcov report build-ci/coverage.info
 #
-# Builds go under build-ci/ (LIR_CI_OUT to move it). Dannan is fetched at the
+# Builds go under build-ci/ (LIR_CI_OUT to move it), one job per CPU
+# (LIR_CI_JOBS to set it: 2 on the shared build nodes). Dannan is fetched at the
 # pinned tag from the sibling checkout when there is one, else from its public
-# repository (LIR_DANNAN_REPOSITORY to name another). Needs g++ cmake
+# repository (LIR_DANNAN_REPOSITORY to name another), and Lugh, for the lugh
+# step, the same way (LIR_LUGH_REPOSITORY). Needs g++ cmake
 # ninja-build libboost-dev libssl-dev libyaml-cpp-dev libgtest-dev openssl
 # mosquitto-clients, and for its step clang, clang-format or lcov.
 
@@ -25,13 +29,20 @@ set -eu
 
 top=$(cd "$(dirname "$0")/.." && pwd)
 out=${LIR_CI_OUT:-$top/build-ci}
-jobs=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+jobs=${LIR_CI_JOBS:-$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)}
 step=${1:-}
 if [ -z "${LIR_DANNAN_REPOSITORY:-}" ]; then
   if [ -d "$top/../dannan/.git" ]; then
     LIR_DANNAN_REPOSITORY=$top/../dannan
   else
     LIR_DANNAN_REPOSITORY=https://github.com/tomdionysus/dannan.git
+  fi
+fi
+if [ -z "${LIR_LUGH_REPOSITORY:-}" ]; then
+  if [ -d "$top/../lugh/.git" ]; then
+    LIR_LUGH_REPOSITORY=$top/../lugh
+  else
+    LIR_LUGH_REPOSITORY=https://github.com/tomdionysus/lugh.git
   fi
 fi
 
@@ -62,6 +73,13 @@ case "$step" in
     configure release -DCMAKE_BUILD_TYPE=Release
     "$out/release/lir_tests"
     ;;
+  client)
+    configure client -DCMAKE_BUILD_TYPE=Release -DLIR_BUILD_SERVER=OFF
+    ;;
+  lugh)
+    configure lugh -DCMAKE_BUILD_TYPE=Release -DLIR_BUILD_LUGH=ON -DLIR_LUGH_REPOSITORY="$LIR_LUGH_REPOSITORY"
+    "$out/lugh/lir_tests"
+    ;;
   clang)
     CXX=clang++ configure clang -DCMAKE_BUILD_TYPE=Release
     "$out/clang/lir_tests"
@@ -88,7 +106,7 @@ case "$step" in
     lcov --summary "$out/coverage.info" --ignore-errors "$ignore"
     ;;
   *)
-    echo "usage: tools/ci.sh check|release|clang|asan|tsan|coverage" >&2
+    echo "usage: tools/ci.sh check|release|client|lugh|clang|asan|tsan|coverage" >&2
     exit 2
     ;;
 esac

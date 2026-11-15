@@ -36,7 +36,8 @@ struct TokenClaims {
   std::vector<std::string> audiences;
   // The scope claim, split on spaces.
   std::vector<std::string> scopes;
-  dannan::contract::TimePoint expires{};
+  // exp, as the token says it: wall-clock seconds since the Unix epoch.
+  uint64_t expires_unix = 0;
   // cnf.jkt: bound to a DPoP key (RFC 9449), which MQTT cannot prove.
   bool bound_to_key = false;
   // cnf x5t#S256, decoded (RFC 8705): good only from that certificate.
@@ -45,12 +46,14 @@ struct TokenClaims {
 
 // Says whether a token is genuine and current. Answers from what it holds
 // (keys fetched and cached before), on the broker's strand, and waits on
-// nothing.
+// nothing. A token's lifetime (nbf, exp) is wall-clock time, so the
+// verifier checks it on a WallClock of its own, injected; Lir's steady
+// TimeSource could not.
 class TokenVerifier {
  public:
   virtual ~TokenVerifier() = default;
   // The claims, or why the token is not good.
-  virtual std::variant<TokenClaims, std::string> verify(std::string_view token, dannan::contract::TimePoint now) const = 0;
+  virtual std::variant<TokenClaims, std::string> verify(std::string_view token) const = 0;
 };
 
 struct TokenConfig {
@@ -65,8 +68,14 @@ struct TokenConfig {
 
 class TokenAuthenticator final : public contract::Authenticator {
  public:
-  // The verifier and the time source outlive the authenticator.
-  TokenAuthenticator(const TokenVerifier& verifier, const dannan::contract::TimeSource& time, TokenConfig config, dannan::status::ScopedLogger logger);
+  // The verifier and both clocks outlive the authenticator. A grant ends on
+  // `time`, the steady clock the broker decides by, at the moment the wall
+  // clock says the token's exp comes. A token at or past its exp is refused
+  // here even when the verifier's clock skew (Lugh's is 60 s) passed it: a
+  // grant until exp would already have ended, and a refused CONNECT is
+  // plainer than an accepted one closed at once with 0x87.
+  TokenAuthenticator(const TokenVerifier& verifier, const dannan::contract::TimeSource& time, const dannan::contract::WallClock& wall, TokenConfig config,
+                     dannan::status::ScopedLogger logger);
   contract::AuthDecision connect(const mqtt::Connect& connect, const contract::Peer& peer) override;
   contract::AuthDecision auth(const std::string& client_id, const std::string& method, const mqtt::Bytes& data, const contract::Peer& peer) override;
 
@@ -75,6 +84,7 @@ class TokenAuthenticator final : public contract::Authenticator {
 
   const TokenVerifier& _verifier;
   const dannan::contract::TimeSource& _time;
+  const dannan::contract::WallClock& _wall;
   TokenConfig _config;
   dannan::status::ScopedLogger _logger;
   std::shared_ptr<const ScopeGrant> _anonymous;

@@ -19,15 +19,17 @@
 #include <string>
 
 #include "dannan/contract/time_source.h"
+#include "dannan/listen/listener.h"
 #include "dannan/status/log.h"
 #include "lir/broker/broker.h"
 #include "lir/contract/authenticator.h"
 
-// The edge: where MQTT clients connect. Listeners on the node's io context
-// (TCP, and TLS, WebSocket and WebSocket over TLS as configured), one
-// connection per socket, and the broker they share, all on one
-// strand, so the broker's confinement (broker.h) holds by construction. A
-// slow client is closed once what is queued for it passes a bound, never
+// The edge: where MQTT clients connect. Dannan's public listeners
+// (dannan::listen: accept, TLS and its deadline, the bounded close) on the
+// node's io context, for TCP, and TLS, WebSocket and WebSocket over TLS as
+// configured; one connection per stream, and the broker they share, all on
+// one strand, so the broker's confinement (broker.h) holds by construction.
+// A slow client is closed once what is queued for it passes a bound, never
 // waited for.
 struct ssl_st;
 
@@ -60,6 +62,22 @@ std::unique_ptr<boost::asio::ssl::context> server_context(const TlsConfig& tls, 
 // The verified certificate a TLS or DTLS peer presented; nothing without
 // one.
 std::optional<contract::ClientCertificate> verified_certificate(ssl_st* ssl);
+
+// The same for a stream of Dannan's public listeners: nothing for none, or
+// for one whose chain did not verify.
+std::optional<contract::ClientCertificate> verified_certificate(const dannan::listen::Stream& stream);
+// Whether the stream presented a certificate that did not verify: such a
+// client is refused, as a handshake that checked the chain refuses it.
+// Dannan's optional client certificates let it through with the verdict on
+// the stream; one with none, where none is required, may authenticate
+// otherwise.
+bool presented_unverified(const dannan::listen::Stream& stream);
+
+// A listener of Dannan's on the edge's strand (or the HTTP server's, the
+// same strand): `outbound` bytes queued before a slow reader is closed (zero:
+// no bound), the clean-end bound, and, with `tls`, its certificates, TLS 1.2
+// and up, and client certificates as `tls` asks.
+dannan::listen::ListenerConfig listener_config(std::string name, const std::string& host, uint16_t port, size_t outbound, const TlsConfig* tls);
 
 // MQTT over WebSocket (MQTT 5.0 and 3.1.1, section 6): one MQTT byte
 // stream carried in binary frames, the "mqtt" subprotocol ("mqttv3.1" for a
@@ -107,8 +125,11 @@ class Edge {
   // boost::system::system_error when an address cannot be bound or the
   // certificate or key cannot be loaded. Waits on the bind.
   void start();
-  // Closes the listener and every client, then waits for the strand to
-  // have done so. Never from one of the io context's threads.
+  // Closes the listeners and ends every client: a 5.0 client is told the
+  // server is shutting down (0x8B) and each connection ends cleanly, within
+  // the clean-end bound (2 s), before what is left is closed at once.
+  // Waits for that, on the strand. Never from one of the io context's
+  // threads.
   void stop();
   uint16_t port() const noexcept;
   // Zero without a TLS listener.
