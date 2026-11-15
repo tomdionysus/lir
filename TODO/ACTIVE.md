@@ -1,20 +1,22 @@
 # Lir - Active Work
 
-Last updated: 2026-11-14. `COMPLETED.md` is the record; the history this
+Last updated: 2026-11-15. `COMPLETED.md` is the record; the history this
 file carried until today is there, "Archived from ACTIVE.md, 2026-11-14".
 
 ## Resume here
 
-**State.** `develop` at `51381af` (lir::client);
-pushed to `488e89e` at the maintainer's word, the rest local. Gate on node-c
-(arm64, Debian 13, GCC 14, Boost 1.83, Ninja, Release, warnings as errors,
-no warnings, never throttled): `tools/ci.sh release` 351 passed at
-`51381af`; `tools/ci.sh lugh` (the plugin on) 343 passed at the 0.8.0
-repin (`912d33f`). Dannan pinned at `0.8.3`, Lugh at `dbb0573` (plugin
-only). Lugh is on 0.8.0 at `ab28e2d` (724 passed there) with `lugh_client`
-unchanged since `dbb0573`, so the pin stays until Lugh's first release
-(Lugh, 2026-11-15). Unmerged: `feature/fuzz-targets`,
-for the release gate.
+**State.** `develop` at `6b23268`, pushed (Lir commits and pushes on its
+own, the maintainer 2026-11-15); the repository is public. Gate on the build nodes (arm64,
+Debian 13, GCC 14, Boost 1.83, Ninja, Release, warnings as errors, no
+warnings, never throttled): `tools/ci.sh release` 351 passed and
+`tools/ci.sh client` clean at `8664691` on node-b; `tools/ci.sh
+lugh` (the plugin on) 343 passed at the 0.8.0 repin (`912d33f`). Hosted
+CI green on every job from `e81e675`, CodeQL included. Dannan pinned at
+`0.8.3`, Lugh at `dbb0573` (plugin only; `lugh_client` unchanged since,
+so the pin stays until Lugh's first release). Unmerged:
+`feature/fuzz-targets`, for the release gate. Flaky once, watched:
+`ClusterTest.ASharedGroupAcrossNodesGetsEachMessageOnce` (COMPLETED.md,
+"the first full hosted CI").
 
 **How work is done now (the maintainer, 2026-11-14):**
 - **No builds or test runs on the workstation.** Every build is on the shared arm64
@@ -297,7 +299,11 @@ Not reopened without asking the maintainer.
   in about 11 ms. Not yet measured: the notify channel's cost per space.
   Dagda's record: its `TODO/2026-11-13-three-systems-design.md`, "What
   slice 0 has measured (the build node)".
-- **Dannan:** `0.7.0`: the deferred reply, the partition reading, then the
-  shared listener; the small-message bench.
-- **Lugh:** `lugh_client` (P10); the grammar of scopes in its tokens.
+- **Dannan:** `0.9.0`: the agreement primitive (the maintainer: anything that can
+  use agreement waits for it), the hybrid logical clock (Lir reviewed its
+  design; adopting it for retained ordering needs the maintainer to reopen
+  2026-11-04), the DatagramListener for the MQTT-SN DTLS gateway, and the
+  ledger Lease fix that lets the TSan suppression go; the small-message
+  bench.
+- **Lugh:** its first release, for the plugin's repin.
 - **OASIS:** an approved MQTT-SN 2.0 Committee Specification.
