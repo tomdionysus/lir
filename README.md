@@ -128,7 +128,12 @@ lives in exactly one.
   scopes. Lir itself, and a build without the plugin, never link Lugh.
 
 Hosted systems never address one another. Other systems use Lir as any MQTT client
-would.
+would, and the stack's projects through Lir's own small client library, `lir::client`
+(`lir/client/client.h`): MQTT 5.0 or 3.1.1 over TCP or TLS, a token as the password,
+QoS 0 and 1 publish and receive, retained publish, a will, wildcard subscribe and
+reconnecting with backoff, on the caller's executor. A project fetches Lir with
+`-DLIR_BUILD_SERVER=OFF` and links `lir::client`; only the codec (`lir::mqtt`) and the
+client are built, against the project's own Dannan.
 
 ## How to use it
 
