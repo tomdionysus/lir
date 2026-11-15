@@ -10,7 +10,7 @@ pushed to `488e89e` at the maintainer's word, the rest local. Gate on node-c
 (arm64, Debian 13, GCC 14, Boost 1.83, Ninja, Release, warnings as errors,
 no warnings, never throttled): `tools/ci.sh release` 351 passed at
 `51381af`; `tools/ci.sh lugh` (the plugin on) 343 passed at the 0.8.0
-repin (`912d33f`). Dannan pinned at `0.8.2`, Lugh at `dbb0573` (plugin
+repin (`912d33f`). Dannan pinned at `0.8.3`, Lugh at `dbb0573` (plugin
 only). Lugh is on 0.8.0 at `ab28e2d` (724 passed there) with `lugh_client`
 unchanged since `dbb0573`, so the pin stays until Lugh's first release
 (Lugh, 2026-11-15). Unmerged: `feature/fuzz-targets`,
@@ -125,9 +125,9 @@ for the release gate.
 6. **lir::client** (the maintainer, 2026-11-15, asked by Louhi; Lugh's events and
    Mimir use it too). Done (`51381af`): `lir/client/client.h`, the codec
    alone as `lir::mqtt`, `LIR_BUILD_SERVER=OFF` for consumers (`tools/ci.sh
-   client`); 351 passed. Next: move `lir/client/transport.cpp` onto
-   Dannan's `StreamConnector` (a 0.8 patch, design reviewed 2026-11-15)
-   and delete the seam. QoS 2, aliases and user properties on request.
+   client`); 351 passed. On Dannan 0.8.3's `StreamConnector` since the
+   repin (Lir reviewed its design and code); the local seam is deleted.
+   QoS 2, aliases, user properties and a list of brokers on request.
 
 **The standing cluster** on the three build nodes (`deploy/test-cluster/`): one
 `lir-node` each, ports 7537 (Dannan), 1983 (MQTT) and 8183 (HTTP), a
@@ -211,6 +211,13 @@ Not reopened without asking the maintainer.
   today that needs a single agreed decision.
 - (2026-11-15, the maintainer) Lir commits and pushes `develop` on its own; tags,
   releases and any other publishing still wait for his word.
+- (2026-11-15, the maintainer, relayed by Kvasir) Acknowledgement levels are named,
+  not numbered, across the stack: ephemeral, persisted, decided,
+  replicated, in that order; a setting for it is `ack_level`
+  (`../kvasir/TODO/2026-11-15-ack-levels-standard.md`). Lir's words
+  already match (QoS 0 ephemeral, QoS 1/2 replicated, the minority side
+  persisted); step 5 uses the names, and `decided` once Dannan's
+  agreement lands.
 - (2026-11-15, the maintainer) The repository is public ("It's time"), so CodeQL's
   code scanning works as Dannan's does. Checked first: no keys or tokens
   in its history; the test cluster's LAN addresses are in the deploy docs.
