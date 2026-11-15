@@ -11,6 +11,7 @@
 #   tools/ci.sh check      the header block on every source, and clang-format
 #   tools/ci.sh release    g++ release build, warnings as errors, and the tests
 #   tools/ci.sh lugh       the same with the Lugh plugin (LIR_BUILD_LUGH)
+#   tools/ci.sh client     only lir::mqtt and lir::client (LIR_BUILD_SERVER off), as a consumer builds them
 #   tools/ci.sh clang      the same with clang++ (and -Wthread-safety)
 #   tools/ci.sh asan       AddressSanitizer and UndefinedBehaviorSanitizer
 #   tools/ci.sh tsan       ThreadSanitizer, with lir/test/tsan-suppressions.txt
@@ -72,6 +73,9 @@ case "$step" in
     configure release -DCMAKE_BUILD_TYPE=Release
     "$out/release/lir_tests"
     ;;
+  client)
+    configure client -DCMAKE_BUILD_TYPE=Release -DLIR_BUILD_SERVER=OFF
+    ;;
   lugh)
     configure lugh -DCMAKE_BUILD_TYPE=Release -DLIR_BUILD_LUGH=ON -DLIR_LUGH_REPOSITORY="$LIR_LUGH_REPOSITORY"
     "$out/lugh/lir_tests"
@@ -102,7 +106,7 @@ case "$step" in
     lcov --summary "$out/coverage.info" --ignore-errors "$ignore"
     ;;
   *)
-    echo "usage: tools/ci.sh check|release|lugh|clang|asan|tsan|coverage" >&2
+    echo "usage: tools/ci.sh check|release|client|lugh|clang|asan|tsan|coverage" >&2
     exit 2
     ;;
 esac

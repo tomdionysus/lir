@@ -31,6 +31,7 @@ jobs:
           - { step: check, arch: x86-64, runner: ubuntu-24.04 }
           - { step: release, arch: x86-64, runner: ubuntu-24.04 }
           - { step: release, arch: arm64, runner: ubuntu-24.04-arm }
+          - { step: client, arch: x86-64, runner: ubuntu-24.04 }
           - { step: clang, arch: x86-64, runner: ubuntu-24.04 }
           - { step: asan, arch: x86-64, runner: ubuntu-24.04 }
           - { step: asan, arch: arm64, runner: ubuntu-24.04-arm }

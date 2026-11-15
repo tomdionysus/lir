@@ -28,6 +28,19 @@ target_link_libraries(lir_mqtt
 )
 set_target_properties(lir_mqtt PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR})
 
+# The MQTT client library (the maintainer, 2026-11-15), for the stack's projects that
+# publish or subscribe on Lir: Louhi, Lugh's events, Mimir.
+add_library(lir_client SHARED
+  client/client.cpp
+  client/transport.cpp
+)
+add_library(lir::client ALIAS lir_client)
+target_link_libraries(lir_client
+  PUBLIC lir_mqtt dannan::dannan Boost::headers OpenSSL::SSL OpenSSL::Crypto Threads::Threads
+  PRIVATE lir_warnings
+)
+set_target_properties(lir_client PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR})
+
 if(NOT LIR_BUILD_SERVER)
   return()
 endif()
