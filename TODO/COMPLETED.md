@@ -1316,3 +1316,26 @@ it finds each node's `$lir/nodes` entry by the id in
 `state/node-id`, which fills the partition column. No build or test run;
 no cores claimed.
 
+## 2026-11-15: the fuzz targets, merged
+
+`feature/fuzz-targets` merged into `develop` after `develop` was merged
+into it: five libFuzzer targets (`mqtt_packet`, `sn_packet`,
+`http_target`, `cluster_codec`, `cluster_stored`), the whole build
+instrumented with ASan and UBSan under `-DLIR_BUILD_FUZZING=ON` (clang
+only). On corvus-saturn (clang 19 and `libclang-rt-19-dev` installed
+there; neptune and jupiter already had them): `CXX=clang++`,
+RelWithDebInfo, `-DLIR_BUILD_TESTING=OFF`, `-j2`; each target once for
+`-max_total_time=60`, between 520,000 and 730,000 runs each.
+
+One finding, fixed (`d9a0af3`): `sn_packet` found `03 1a 6d`, a
+WILLTOPICUPD with a flags byte and no topic. It decoded, but encoded back
+as the two-octet form that deletes the will, so the packet changed on the
+round trip. MQTT-SN 1.2 (5.4.7, 5.4.23) has only that form or flags with a
+topic name, so `lir/sn/packet.cpp` now refuses flags without a topic, for
+WILLTOPIC too; test `SnPacket.AWillTopicIsEmptyOrFlagsAndATopic`. The
+crash input then passed and a second 60 s run was clean. The other four
+targets found nothing.
+
+Gate, corvus-saturn: `tools/ci.sh release` 353 passed (352 and the new
+test), warnings as errors.
+

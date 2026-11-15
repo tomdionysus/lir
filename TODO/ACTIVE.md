@@ -9,11 +9,10 @@ and the detail this file no longer carries ("Archived from ACTIVE.md",
 **State.** `develop` at the record commit after `7db72d1`, pushed; the
 repository is public, and Lir commits and pushes on its own (Tom,
 2026-11-15). Dannan pinned at `0.8.3`, Lugh at `dbb0573` (plugin only).
-Last gate, corvus-uranus: 352 passed (347 in `tools/ci.sh release`, the 5
-process tests once mosquitto-clients was installed there), `tools/ci.sh
-client` clean. `tools/ci.sh lugh` 343 at the 0.8.0 repin. Hosted CI green
-on every job from `e81e675`, CodeQL included. Unmerged:
-`feature/fuzz-targets`, for the release gate.
+Last gate, corvus-saturn: `tools/ci.sh release` 353 passed, with the fuzz
+targets merged and their one finding fixed. `tools/ci.sh client` clean on
+uranus at `7db72d1`. `tools/ci.sh lugh` 343 at the 0.8.0 repin. Hosted CI
+green on every job from `e81e675`, CodeQL included. Nothing unmerged.
 
 **The standing cluster** runs `7db72d1` on all four nodes (2026-11-15
 22:33Z, `COMPLETED.md`). To upgrade it, tell Louhi and the Lir Development
@@ -35,10 +34,11 @@ from a release build of `develop`, then `python3 -I build/cluster-check.py`
 
 ## Next, in order
 
-1. **Before the release gate:** `feature/fuzz-targets` (`3af35be`): install
-   `clang` and `libclang-rt-19-dev`, build with `CXX=clang++
-   -DLIR_BUILD_FUZZING=ON`, run each target once for `-max_total_time=60`,
-   fix what they find, merge. The release follows step 5.
+1. **At the release gate:** the fuzz targets again (merged 2026-11-15,
+   `COMPLETED.md`; clang and the fuzzer runtime are on saturn, neptune and
+   jupiter): `CXX=clang++ -DLIR_BUILD_FUZZING=ON -DLIR_BUILD_TESTING=OFF`,
+   each target for `-max_total_time=60`, with the sanitizer runs. The
+   release follows step 5.
 2. **Step 5, on Dagda**, by [`2026-11-13-step5-design.md`](2026-11-13-step5-design.md),
    when Dagda's slices are tagged: paused by Tom until Macha runs on Dagda.
    Slice 1 is on Dagda's develop (`1065b18`), untagged. Lir needs a Dagda
