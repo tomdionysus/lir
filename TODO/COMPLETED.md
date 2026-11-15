@@ -1213,3 +1213,90 @@ configured broker list and a Lir topic of endpoints were both dropped.
   mosquitto-clients there); mosquitto-clients installed and the 5 run:
   passed. 352 in all. `tools/ci.sh client` clean.
 
+## Archived from ACTIVE.md, 2026-11-15
+
+Done items the plan carried in full until today, kept here verbatim.
+
+3. **Dannan's shared listener** (P3, `dannan::listen`). Done for TCP
+   (2026-11-15): Lir is on Dannan 0.8.0 (`912d33f`), MQTT over TCP, TLS,
+   WebSocket and WebSocket over TLS (`ad65541`) and HTTP and HTTPS
+   (`ce4bcd0`) run on `StreamListener`s on the edge's strand
+   (`strand_per_stream = false`); Lir's own acceptors, TLS handshakes and
+   write queues for MQTT and HTTP are gone. `edge::listener_config`,
+   `verified_certificate(Stream)` and `presented_unverified` are shared by
+   both. A client certificate that did not verify is refused, as Lir's
+   handshake refused it (Dannan's `optional` lets it through with the
+   verdict). TCP_NODELAY: Dannan 0.8.1 sets it on every accepted
+   socket (`Stream::set_no_delay` opts out), so small MQTT packets no
+   longer wait on Nagle; Lir repinned with no code change (`13553c0`,
+   337 passed), after reviewing the branch. Next: the MQTT-SN DTLS gateway (`lir/sn/gateway.cpp`) onto
+   `DatagramListener` at Dannan 0.9.0, then `edge::server_context` and
+   `verified_certificate(SSL*)` go. At the 0.9.0 repin, also remove the TSan suppression of
+   `RetainedMemoryLedger::release` (`lir/test/tsan-suppressions.txt`), a
+   Dannan 0.8 use-after-free fixed there.
+4. **The Lugh plugin.** Done and merged (`9452fd0`; `lir/auth/lugh.h`,
+   `LIR_BUILD_LUGH`, `--lugh-issuer`, `--lugh-ca`, `tools/ci.sh lugh`),
+   repinned (`33b7c8b`) at Lugh's develop `dbb0573`, the end of P10, on
+   Dannan 0.7.0: `AccessToken::x5t` comes decoded, so the adapter copies
+   it, and the tests sign with Lugh's public `lugh/client/testing.h`;
+   nothing internal to Lugh is included any more. Next: repin at Lugh's
+   first release (the maintainer paused Lugh after P10). The hosted CI has a `lugh`
+   job (the maintainer said yes, 2026-11-14): it checks out Lugh's private develop
+   with the repository secret `LUGH_READ_TOKEN` and runs `tools/ci.sh
+   lugh`; without the secret it says so and builds nothing. The maintainer adds the
+   secret. The record of how it was
+   shaped (`../lugh/TODO/2026-11-14-p10-plan.md`): The maintainer's rulings (2026-11-14): the
+   plugin is optional and Lir builds without Lugh when it is off; it is a
+   few-line adapter, `lir::auth::TokenVerifier` over
+   `lugh::client::Verifier(issuers, WallClock)`: `set_keys(issuer, jwks)`
+   from the key source, `verify_access(token, audience)` answering an
+   `AccessToken` (subject, audiences, scopes, expires in Unix seconds,
+   jkt, x5t as base64url text, decoded to 32 bytes) or a reason; headers
+   `lugh/client/verifier.h` and `lugh/client/tokens.h`. Lir's seam carries
+   exp as wall time since `8d78c95` (Lugh's finding), and Lir refuses a
+   token at or past exp despite Lugh's 60 s skew (`lir/auth/tokens.h`); `lugh_client` links Dannan, OpenSSL and Boost; Lir pins a
+   commit on Lugh's develop by FetchContent with `LUGH_BUILD_NODE=OFF`
+   until Lugh releases. Its Dannan must be the one Lir pins: Lugh is on
+   Dannan 0.7.0 (develop `7b0c717`), uses Lir's `dannan::dannan` when
+   fetched into Lir's build (one Dannan a process), and moves with Lir
+   when Lir moves past 0.7 (tell the Lugh session first). Boost.JSON
+   (the maintainer, 2026-11-14): `lugh_client` compiles `boost/json/src.hpp`
+   itself, and so does Lir, for the rules engine
+   (`lir/rules/boost_json.cpp`, listed at `lir/CMakeLists.txt:25`). With
+   the plugin on, Lir leaves that file out and takes the definitions from
+   `lugh::client`; with it off, Lir compiles its own. A test of both
+   configurations' link comes with the plugin. Lugh agreed: the
+   definitions live in the exported `lugh_client` library, its Boost.JSON
+   macros are PUBLIC on `lugh::client`, and its P10.6 tests a consumer
+   that links it and uses Boost.JSON.
+
+**The standing cluster** on the three build nodes (`deploy/test-cluster/`): one
+`lir-node` each, ports 7537 (Dannan), 1983 (MQTT) and 8183 (HTTP), a
+systemd unit as lir, the cluster key in `build/test-cluster/cluster.key` on
+the workstation and never in the repository. It carries the claim board. Upgrade it
+with `deploy/test-cluster/install.sh root@<node>:/root/lir-work/build
+node-a=192.0.2.1 node-b=192.0.2.2
+node-c=192.0.2.3` after a Lir change worth trying on real
+machines; the restart is rolling and the board survives it.
+
+The standing cluster runs `a559b0a` (Dannan 0.7.0) since 2026-11-14
+03:52Z, upgraded at the maintainer's word from the gate run's build; each node's
+`$lir/nodes` reads majority, 3 of 3, and the board's claims survived.
+
+## Handoff, 2026-11-15 (end of session)
+
+The session's work, each recorded above with its gate: Lir's listeners on
+`dannan::listen` (337); Dannan 0.8.1, 0.8.2 and 0.8.3 repins (337, 337,
+351); `lir::client` and the codec as `lir::mqtt` (351), on Dannan's
+`StreamConnector` (351), finding Lir's nodes in Dannan's roster (352 on
+node-d); the repository URL fix, CodeQL's permission, the repository made
+public, and the first all-green hosted CI; a Dannan TSan finding
+suppressed until 0.9.0; node-d joined the standing cluster as its fourth
+node. Reviews given: Dannan's no-delay patch, stream connector (design and
+code) and hybrid logical clock; Mimir's and Kvasir's designs; Louhi's,
+Lugh's and Mimir's use of `lir::client`. Corrected: the Dagda log rate
+given to Kvasir (8,000 a second was measured by Dagda's slice 0, not only
+computed). Open: the cluster upgrade of node-a, node-b and node-c, first
+next session (`ACTIVE.md`); Louhi's reboot of node-a is also deferred to
+its next session and will not overlap. No claims held. `develop` pushed.
+
