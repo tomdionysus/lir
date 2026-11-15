@@ -5,13 +5,13 @@ file carried until today is there, "Archived from ACTIVE.md, 2026-11-14".
 
 ## Resume here
 
-**State.** `develop` at `33b7c8b` (the Lugh repin merged); pushed to
-`b5c9a65` at the maintainer's word, the rest local. Gate on node-c (arm64,
-Debian 13, GCC 14, Boost 1.83, Ninja, Release, warnings as errors, no
-warnings, never throttled): `tools/ci.sh release` 337 passed (at
-`9452fd0`; the repin does not touch that configuration), `tools/ci.sh
-lugh` (the plugin on) 343 passed at `33b7c8b`. Dannan pinned at `0.7.0`,
-Lugh at `dbb0573` (plugin only). Unmerged: `feature/fuzz-targets`,
+**State.** `develop` at `ce4bcd0` (Lir's listeners on Dannan's);
+pushed to `488e89e` at the maintainer's word, the rest local. Gate on node-c
+(arm64, Debian 13, GCC 14, Boost 1.83, Ninja, Release, warnings as errors,
+no warnings, never throttled): `tools/ci.sh release` 337 passed at
+`ce4bcd0`; `tools/ci.sh lugh` (the plugin on) 343 passed at the 0.8.0
+repin (`912d33f`). Dannan pinned at `0.8.0`, Lugh at `dbb0573` (plugin
+only; Lugh tested it on 0.7, Lir on 0.8). Unmerged: `feature/fuzz-targets`,
 for the release gate.
 
 **How work is done now (the maintainer, 2026-11-14):**
@@ -67,30 +67,21 @@ for the release gate.
    ruled (2026-11-14 evening) that Macha's port to Dagda comes first: all
    slice work is paused until Macha runs on Dagda as well as on its own
    store, and 0.2.0 stays local and unpushed until the maintainer says. Step 5 waits.
-3. **Dannan's shared listener** (P3, `dannan::listen`): the design
-   (`../dannan/TODO/2026-11-14-p3-public-listener.md`) is reviewed
-   (2026-11-14): the stream side in Dannan 0.8.0, DTLS in 0.9.0, Lir's
-   DTLS gateway kept until then. Lir asked for: `listen::Stream` an Asio
-   AsyncRead/WriteStream with the SSL* reachable (Beast WebSocket and
-   HTTP run over it); one Certificates for several listeners; every limit
-   optional and off by default (Lir answers its cap with CONNACK 0x89);
-   the idle deadline off by default and settable per stream (keep alive,
-   SSE); writes queued in the Stream against a per-listener bound; a stop
-   in two steps, so Lir can end its clients first; plain UDP, DTLS,
-   cookies, client certificates and a broadcast send on the datagram
-   side. Dannan took all of them into the design (`e6bed42`; the stop is
-   `stop_accepting()` then `close_all()`). The maintainer answered yes to the name and
-   the phasing. Lir reviewed the code (`68c3cc5`); all five findings fixed
-   in `0940e73` and merged to Dannan's develop (`9973686`): `close()`
-   drains `send()`'s queue first; `dannan/listen/beast.h` has Beast's
-   teardown and `beast_close_socket`; `strand_per_stream = false` hands
-   streams up on Lir's strand; `close_all(executor, done)`; the read keeps
-   the handler's associators. Over TLS, `close()` cancels a pending read
-   (it ends `operation_aborted`, a normal end for Lir's read loop) before
-   close_notify. Ships in 0.8.0, which the maintainer holds until Dannan's P5
-   benchmarks. When it is tagged: move the TCP, TLS, WebSocket and HTTP
-   listeners onto it and delete Lir's own. (Lir's stop already sends MQTT 5
-   DISCONNECT 0x8B, since `6fc0cc5`.)
+3. **Dannan's shared listener** (P3, `dannan::listen`). Done for TCP
+   (2026-11-15): Lir is on Dannan 0.8.0 (`912d33f`), MQTT over TCP, TLS,
+   WebSocket and WebSocket over TLS (`ad65541`) and HTTP and HTTPS
+   (`ce4bcd0`) run on `StreamListener`s on the edge's strand
+   (`strand_per_stream = false`); Lir's own acceptors, TLS handshakes and
+   write queues for MQTT and HTTP are gone. `edge::listener_config`,
+   `verified_certificate(Stream)` and `presented_unverified` are shared by
+   both. A client certificate that did not verify is refused, as Lir's
+   handshake refused it (Dannan's `optional` lets it through with the
+   verdict). Open: Dannan sets no TCP_NODELAY and Lir cannot reach the
+   socket, so small MQTT packets may wait on Nagle and delayed ACK
+   (about 40 ms); asked of Dannan as `ListenerConfig::no_delay`, for a
+   0.8.1. Next: the MQTT-SN DTLS gateway (`lir/sn/gateway.cpp`) onto
+   `DatagramListener` at Dannan 0.9.0, then `edge::server_context` and
+   `verified_certificate(SSL*)` go.
 4. **The Lugh plugin.** Done and merged (`9452fd0`; `lir/auth/lugh.h`,
    `LIR_BUILD_LUGH`, `--lugh-issuer`, `--lugh-ca`, `tools/ci.sh lugh`),
    repinned (`33b7c8b`) at Lugh's develop `dbb0573`, the end of P10, on
