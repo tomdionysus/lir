@@ -28,6 +28,8 @@
 #include <stdexcept>
 
 #include "dannan/identity/crypto.h"
+#include "dannan/listen/beast.h"
+#include "dannan/listen/listener.h"
 
 namespace lir::edge {
 
@@ -40,64 +42,27 @@ namespace websocket = beast::websocket;
 using tcp = asio::ip::tcp;
 using namespace std::chrono_literals;
 
-// Writing one buffer whole: a byte stream, or one binary WebSocket message.
-template <typename Stream, typename Handler>
-void write_all(Stream& stream, asio::const_buffer buffer, Handler&& handler) {
-  asio::async_write(stream, buffer, std::forward<Handler>(handler));
-}
-template <typename Next, typename Handler>
-void write_all(websocket::stream<Next>& stream, asio::const_buffer buffer, Handler&& handler) {
-  stream.async_write(buffer, std::forward<Handler>(handler));
-}
+using dannan::listen::Stream;
 
-// Ending a stream cleanly: nothing for TCP, close_notify for TLS (RFC 8446,
-// section 6.1), a close frame for a WebSocket (RFC 6455, section 7), which
-// over TLS sends close_notify after it. False: nothing to send.
-template <typename Handler>
-bool end_cleanly(tcp::socket&, Handler&&) {
-  return false;
-}
-template <typename Handler>
-bool end_cleanly(asio::ssl::stream<tcp::socket>& stream, Handler&& handler) {
-  stream.async_shutdown(std::forward<Handler>(handler));
-  return true;
-}
-template <typename Next, typename Handler>
-bool end_cleanly(websocket::stream<Next>& stream, Handler&& handler) {
-  if (!stream.is_open()) return false;
-  stream.async_close(websocket::close_code::normal, std::forward<Handler>(handler));
-  return true;
-}
-
-// How long a clean end may take before the socket is closed regardless.
+// How long a clean end may take before the socket is closed regardless:
+// the listeners' close bound, and a WebSocket's close frame's.
 constexpr auto clean_end_deadline = std::chrono::seconds(2);
 
-// Whether what was just read may not carry MQTT: a text frame (section 6).
-template <typename Stream>
-bool wrong_frame(const Stream&) {
-  return false;
-}
-template <typename Next>
-bool wrong_frame(const websocket::stream<Next>& stream) {
-  return !stream.got_binary();
+std::string peer_of(const Stream& stream) {
+  const auto& endpoint = stream.peer();
+  return endpoint.address().to_string() + ":" + std::to_string(endpoint.port());
 }
 
-// The TLS session under a stream, if any.
-template <typename Stream>
-SSL* ssl_of(Stream&) {
-  return nullptr;
+// The client certificate the stream's TLS verified; nothing for one that
+// did not verify, or none. The authenticator binds tokens to it.
+std::optional<contract::ClientCertificate> verified_of(const Stream& stream) {
+  const auto& presented = stream.client_certificate();
+  if (!presented || !presented->verified) return std::nullopt;
+  contract::ClientCertificate out;
+  out.subject = presented->subject;
+  out.thumbprint = presented->thumbprint;
+  return out;
 }
-inline SSL* ssl_of(asio::ssl::stream<tcp::socket>& stream) { return stream.native_handle(); }
-template <typename Next>
-SSL* ssl_of(websocket::stream<Next>& stream) {
-  return ssl_of(stream.next_layer());
-}
-
-// How a client on this stream reached the node.
-inline std::string transport_of(const tcp::socket&) { return "tcp"; }
-inline std::string transport_of(const asio::ssl::stream<tcp::socket>&) { return "tls"; }
-inline std::string transport_of(const websocket::stream<tcp::socket>&) { return "ws"; }
-inline std::string transport_of(const websocket::stream<asio::ssl::stream<tcp::socket>>&) { return "wss"; }
 
 // The subprotocol to answer with, from the comma-separated list a client
 // offered: "mqtt", else "mqttv3.1" (a 3.1 client); "" when nothing was
@@ -131,17 +96,130 @@ class ClientConnection : public contract::Connection {
   virtual void terminate() = 0;
 };
 
-// One client over `Stream`: a TCP socket, or TLS over one. Every member is
-// touched only on the edge's strand.
-template <typename Stream>
-class StreamConnection final : public ClientConnection, public std::enable_shared_from_this<StreamConnection<Stream>> {
+// MQTT straight over a listener's stream, TCP or TLS. Every member is
+// touched on the edge's strand, which is the stream's executor. The stream
+// queues what is sent, closes a reader too slow for the listener's outbound
+// bound, and writes what is queued before its clean close.
+class RawConnection final : public ClientConnection, public std::enable_shared_from_this<RawConnection> {
  public:
-  StreamConnection(Stream stream, size_t maximum, dannan::status::ScopedLogger logger, std::function<void(ClientConnection*)> forget)
-      : _stream(std::move(stream)), _maximum(maximum), _logger(std::move(logger)), _forget(std::move(forget)) {
-    boost::system::error_code ec;
-    const auto remote = beast::get_lowest_layer(_stream).remote_endpoint(ec);
-    _peer = ec ? "unknown" : remote.address().to_string() + ":" + std::to_string(remote.port());
-    _certificate = verified_certificate(ssl_of(_stream));
+  RawConnection(std::shared_ptr<Stream> stream, std::function<void(ClientConnection*)> forget)
+      : _stream(std::move(stream)), _forget(std::move(forget)), _peer(peer_of(*_stream)), _certificate(verified_of(*_stream)) {}
+
+  void start(std::shared_ptr<broker::Link> link) {
+    _link = std::move(link);
+    read();
+  }
+
+  void send(mqtt::Bytes bytes) override {
+    if (_closing || _closed) return;
+    _stream->send(std::string(bytes.begin(), bytes.end()));
+  }
+
+  void close() override {
+    if (_closing || _closed) return;
+    _closing = true;
+    _stream->when_finished([self = shared_from_this()] { self->terminate(); });
+    _stream->close();
+  }
+
+  std::string peer() const override { return _peer; }
+  std::optional<contract::ClientCertificate> certificate() const override { return _certificate; }
+  std::string transport() const override { return _stream->transport(); }
+
+  void terminate() override {
+    if (_closed) return;
+    _closed = true;
+    _stream->abort();
+    // The link and this connection hold each other; the cycle ends here.
+    if (auto link = std::move(_link)) link->closed();
+    _forget(this);
+  }
+
+ private:
+  void read() {
+    _stream->async_read_some(asio::buffer(_buffer), [self = shared_from_this()](const boost::system::error_code& ec, size_t got) {
+      // A close the broker asked for ends the pending read: the stream's
+      // clean end, not this, finishes the connection.
+      if (self->_closing || self->_closed) return;
+      if (ec) return self->terminate();
+      if (self->_link) self->_link->receive(std::span<const uint8_t>(self->_buffer.data(), got));
+      if (!self->_closing && !self->_closed) self->read();
+    });
+  }
+
+  std::shared_ptr<Stream> _stream;
+  std::function<void(ClientConnection*)> _forget;
+  std::string _peer;
+  std::optional<contract::ClientCertificate> _certificate;
+  std::shared_ptr<broker::Link> _link;
+  std::array<uint8_t, 16384> _buffer{};
+  bool _closing = false;
+  bool _closed = false;
+};
+
+// MQTT over WebSocket (section 6) over a listener's stream, TCP or TLS: one
+// MQTT byte stream in binary frames, written one message at a time from a
+// queue of the edge's own under the same bound, and a close frame before
+// the stream's clean close (dannan/listen/beast.h). Every member is touched
+// on the edge's strand.
+class WebSocketConnection final : public ClientConnection, public std::enable_shared_from_this<WebSocketConnection> {
+ public:
+  WebSocketConnection(std::shared_ptr<Stream> stream, size_t maximum, dannan::status::ScopedLogger logger, std::function<void(ClientConnection*)> forget)
+      : _stream(std::move(stream)),
+        _ws(*_stream),
+        _maximum(maximum),
+        _logger(std::move(logger)),
+        _forget(std::move(forget)),
+        _peer(peer_of(*_stream)),
+        _certificate(verified_of(*_stream)) {}
+
+  // The upgrade, within `within`: read the request, choose the subprotocol,
+  // answer. A request that is not a WebSocket upgrade, or offers only
+  // subprotocols that are not MQTT's, gets 400 and is closed. `done` is told
+  // on the strand whether the client is upgraded.
+  void upgrade(std::chrono::milliseconds within, std::function<void(bool)> done) {
+    auto deadline = std::make_shared<asio::steady_timer>(_stream->get_executor(), within);
+    auto settled = std::make_shared<bool>(false);
+    deadline->async_wait([stream = _stream, settled](const boost::system::error_code& ec) {
+      if (ec || *settled) return;
+      *settled = true;
+      stream->abort();
+    });
+    auto settle = [deadline, settled] {
+      *settled = true;
+      deadline->cancel();
+    };
+    auto buffer = std::make_shared<beast::flat_buffer>();
+    auto request = std::make_shared<http::request<http::empty_body>>();
+    http::async_read(*_stream, *buffer, *request, [self = shared_from_this(), buffer, request, settle, done](const boost::system::error_code& ec, size_t) {
+      if (ec) {
+        settle();
+        self->_stream->abort();
+        return done(false);
+      }
+      const auto chosen = subprotocol(std::string_view((*request)[http::field::sec_websocket_protocol]));
+      if (!websocket::is_upgrade(*request) || !chosen) {
+        auto refusal = std::make_shared<http::response<http::string_body>>(http::status::bad_request, request->version());
+        refusal->set(http::field::connection, "close");
+        refusal->body() = "MQTT over WebSocket: an upgrade offering the mqtt subprotocol\n";
+        refusal->prepare_payload();
+        http::async_write(*self->_stream, *refusal, [self, refusal, settle, done](const boost::system::error_code&, size_t) {
+          settle();
+          self->_stream->close();
+          done(false);
+        });
+        return;
+      }
+      self->_ws.binary(true);
+      self->_ws.set_option(websocket::stream_base::decorator([protocol = *chosen](websocket::response_type& response) {
+        if (!protocol.empty()) response.set(http::field::sec_websocket_protocol, protocol);
+      }));
+      self->_ws.async_accept(*request, [self, settle, done](const boost::system::error_code& accept_ec) {
+        settle();
+        if (accept_ec) self->_stream->abort();
+        done(!accept_ec);
+      });
+    });
   }
 
   void start(std::shared_ptr<broker::Link> link) {
@@ -156,7 +234,7 @@ class StreamConnection final : public ClientConnection, public std::enable_share
       // the broker's current call has returned.
       _logger.info("closing " + _peer + ": over " + std::to_string(_maximum) + " bytes queued");
       _closing = true;
-      asio::post(_stream.get_executor(), [self = this->shared_from_this()] { self->terminate(); });
+      asio::post(_stream->get_executor(), [self = shared_from_this()] { self->terminate(); });
       return;
     }
     _queued += bytes.size();
@@ -172,15 +250,13 @@ class StreamConnection final : public ClientConnection, public std::enable_share
 
   std::string peer() const override { return _peer; }
   std::optional<contract::ClientCertificate> certificate() const override { return _certificate; }
-  std::string transport() const override { return transport_of(_stream); }
+  std::string transport() const override { return _stream->is_tls() ? "wss" : "ws"; }
 
   void terminate() override {
     if (_closed) return;
     _closed = true;
     if (_ending) _ending->cancel();
-    boost::system::error_code ignored;
-    beast::get_lowest_layer(_stream).shutdown(tcp::socket::shutdown_both, ignored);
-    beast::get_lowest_layer(_stream).close(ignored);
+    _stream->abort();
     // The link and this connection hold each other; the cycle ends here.
     if (auto link = std::move(_link)) link->closed();
     _forget(this);
@@ -188,22 +264,22 @@ class StreamConnection final : public ClientConnection, public std::enable_share
 
  private:
   // A close the broker asked for, once everything queued is written: the
-  // stream's clean end, bounded by a deadline, then the socket closes.
+  // close frame, then the stream's clean close, bounded, then the socket.
   void end() {
     if (_closed || _ending) return;
-    _ending.emplace(_stream.get_executor(), clean_end_deadline);
-    const bool started = end_cleanly(_stream, [self = this->shared_from_this()](const boost::system::error_code&) { self->terminate(); });
-    if (!started) return terminate();
-    _ending->async_wait([self = this->shared_from_this()](const boost::system::error_code& ec) {
+    if (!_ws.is_open()) return terminate();
+    _ending.emplace(_stream->get_executor(), clean_end_deadline);
+    _ws.async_close(websocket::close_code::normal, [self = shared_from_this()](const boost::system::error_code&) { self->terminate(); });
+    _ending->async_wait([self = shared_from_this()](const boost::system::error_code& ec) {
       if (!ec) self->terminate();
     });
   }
 
   void read() {
-    _stream.async_read_some(asio::buffer(_buffer), [self = this->shared_from_this()](const boost::system::error_code& ec, size_t got) {
+    _ws.async_read_some(asio::buffer(_buffer), [self = shared_from_this()](const boost::system::error_code& ec, size_t got) {
       if (ec) return self->terminate();
       if (self->_closing || self->_closed) return;
-      if (wrong_frame(self->_stream)) {
+      if (!self->_ws.got_binary()) {
         self->_logger.info("closing " + self->_peer + ": a WebSocket text frame");
         return self->terminate();
       }
@@ -214,7 +290,7 @@ class StreamConnection final : public ClientConnection, public std::enable_share
 
   void write() {
     _writing = true;
-    write_all(_stream, asio::buffer(_queue.front()), [self = this->shared_from_this()](const boost::system::error_code& ec, size_t) {
+    _ws.async_write(asio::buffer(_queue.front()), [self = shared_from_this()](const boost::system::error_code& ec, size_t) {
       self->_writing = false;
       if (ec) return self->terminate();
       self->_queued -= self->_queue.front().size();
@@ -225,7 +301,8 @@ class StreamConnection final : public ClientConnection, public std::enable_share
     });
   }
 
-  Stream _stream;
+  std::shared_ptr<Stream> _stream;
+  websocket::stream<Stream&> _ws;
   const size_t _maximum;
   dannan::status::ScopedLogger _logger;
   std::function<void(ClientConnection*)> _forget;
@@ -241,20 +318,27 @@ class StreamConnection final : public ClientConnection, public std::enable_share
   std::optional<asio::steady_timer> _ending;
 };
 
-using TcpConnection = StreamConnection<tcp::socket>;
-using TlsStream = asio::ssl::stream<tcp::socket>;
-using TlsConnection = StreamConnection<TlsStream>;
-using WebSocket = websocket::stream<tcp::socket>;
-using WebSocketConnection = StreamConnection<WebSocket>;
-using SecureWebSocket = websocket::stream<TlsStream>;
-using SecureWebSocketConnection = StreamConnection<SecureWebSocket>;
-
-void listen_on(tcp::acceptor& acceptor, const std::string& host, uint16_t port) {
-  const tcp::endpoint endpoint(asio::ip::make_address(host), port);
-  acceptor.open(endpoint.protocol());
-  acceptor.set_option(tcp::acceptor::reuse_address(true));
-  acceptor.bind(endpoint);
-  acceptor.listen();
+// A listener for the edge on its strand: the stream's executor is the
+// strand itself, so every connection is confined with the broker.
+dannan::listen::ListenerConfig listener_config(std::string name, const std::string& host, uint16_t port, size_t outbound, const TlsConfig* tls) {
+  dannan::listen::ListenerConfig config;
+  config.name = std::move(name);
+  config.host = host;
+  config.port = port;
+  config.outbound_bound = outbound;
+  config.close_bound = clean_end_deadline;
+  config.strand_per_stream = false;
+  if (tls) {
+    config.certificates =
+        std::make_shared<dannan::listen::Certificates>(dannan::listen::CertificatePaths{tls->certificate_chain, tls->private_key, tls->client_ca});
+    // TLS 1.2 and up, as before: MQTT's small devices do not all speak 1.3.
+    config.tls.minimum = dannan::listen::TlsVersion::tls12;
+    using dannan::listen::ClientCertificates;
+    config.tls.client_certificates =
+        tls->client_ca.empty() ? ClientCertificates::never : (tls->require_client_certificate ? ClientCertificates::required : ClientCertificates::optional);
+    config.handshake_timeout = tls->handshake_timeout;
+  }
+  return config;
 }
 
 }  // namespace
@@ -307,31 +391,14 @@ std::unique_ptr<asio::ssl::context> server_context(const TlsConfig& tls, bool da
 }
 
 struct Edge::State : std::enable_shared_from_this<Edge::State> {
-  State(asio::io_context& io, EdgeConfig edge_config, const dannan::contract::TimeSource& time, contract::Authenticator& authenticator,
+  State(asio::io_context& io_context, EdgeConfig edge_config, const dannan::contract::TimeSource& time, contract::Authenticator& authenticator,
         dannan::status::ScopedLogger edge_logger)
-      : strand(asio::make_strand(io)),
-        acceptor(strand),
-        tls_acceptor(strand),
-        ws_acceptor(strand),
-        wss_acceptor(strand),
+      : io(io_context),
+        strand(asio::make_strand(io_context)),
         timer(strand),
         config(std::move(edge_config)),
         logger(std::move(edge_logger)),
         broker(config.broker, time, authenticator, logger.child("broker")) {}
-
-  void accept() {
-    acceptor.async_accept(strand, [self = shared_from_this()](const boost::system::error_code& ec, tcp::socket socket) {
-      if (self->stopped) return;
-      if (ec) {
-        self->logger.warn("accept failed: " + ec.message());
-      } else {
-        boost::system::error_code ignored;
-        socket.set_option(tcp::no_delay(true), ignored);
-        self->adopt(std::make_shared<TcpConnection>(std::move(socket), self->config.maximum_outbound_bytes, self->logger, self->forgetter()));
-      }
-      self->accept();
-    });
-  }
 
   std::function<void(ClientConnection*)> forgetter() {
     return [weak = weak_from_this()](ClientConnection* gone) {
@@ -355,134 +422,40 @@ struct Edge::State : std::enable_shared_from_this<Edge::State> {
     connection->start(broker.accept(connection));
   }
 
-  // A TLS client becomes a connection once its handshake is done, within
-  // the handshake timeout.
-  void accept_tls() {
-    tls_acceptor.async_accept(strand, [self = shared_from_this()](const boost::system::error_code& ec, tcp::socket socket) {
-      if (self->stopped) return;
-      if (ec) {
-        self->logger.warn("TLS accept failed: " + ec.message());
-        return self->accept_tls();
-      }
-      boost::system::error_code ignored;
-      socket.set_option(tcp::no_delay(true), ignored);
-      auto stream = std::make_shared<TlsStream>(std::move(socket), *self->tls);
-      auto deadline = self->deadline_for(stream, self->config.tls->handshake_timeout);
-      stream->async_handshake(asio::ssl::stream_base::server, [self, stream, deadline](const boost::system::error_code& handshake_ec) {
-        deadline->settle();
-        if (handshake_ec || self->stopped) {
-          if (handshake_ec) self->logger.debug("TLS handshake failed: " + handshake_ec.message());
-          return;
-        }
-        self->adopt(std::make_shared<TlsConnection>(std::move(*stream), self->config.maximum_outbound_bytes, self->logger, self->forgetter()));
-      });
-      self->accept_tls();
+  // MQTT over TCP or TLS: a client once its stream is handed up (after its
+  // TLS handshake, within the listener's deadline). On the strand.
+  void serve(std::shared_ptr<Stream> stream) {
+    if (stopped) return stream->abort();
+    adopt(std::make_shared<RawConnection>(std::move(stream), forgetter()));
+  }
+
+  // MQTT over WebSocket: a client once its upgrade is done. On the strand.
+  void serve_websocket(std::shared_ptr<Stream> stream, std::chrono::milliseconds within) {
+    if (stopped) return stream->abort();
+    auto connection = std::make_shared<WebSocketConnection>(std::move(stream), config.maximum_outbound_bytes, logger, forgetter());
+    connection->upgrade(within, [self = shared_from_this(), connection](bool upgraded) {
+      if (!upgraded) return;
+      if (self->stopped) return connection->terminate();
+      self->adopt(connection);
     });
   }
 
-  // A socket still in its handshake is closed at the deadline, unless the
-  // handshake settled first. The flag, not the cancel, decides: a timer
-  // already due cannot be cancelled, and by then the stream may have moved
-  // into its connection.
-  struct Handshake {
-    explicit Handshake(Strand& strand) : timer(strand) {}
-    void settle() {
-      settled = true;
-      timer.cancel();
+  // A listener handing its streams to `serve` on the strand.
+  std::unique_ptr<dannan::listen::StreamListener> listen(dannan::listen::ListenerConfig settings, std::function<void(std::shared_ptr<Stream>)> serve) {
+    auto listener = std::make_unique<dannan::listen::StreamListener>(io, std::move(settings));
+    listener->start(strand, [weak = weak_from_this(), serve = std::move(serve)](std::shared_ptr<Stream> stream) {
+      if (weak.lock()) return serve(std::move(stream));
+      stream->abort();
+    });
+    return listener;
+  }
+
+  std::vector<dannan::listen::StreamListener*> listeners() {
+    std::vector<dannan::listen::StreamListener*> out;
+    for (auto* each : {plain.get(), tls.get(), ws.get(), wss.get()}) {
+      if (each) out.push_back(each);
     }
-    asio::steady_timer timer;
-    bool settled = false;
-  };
-
-  template <typename Stream>
-  std::shared_ptr<Handshake> deadline_for(std::shared_ptr<Stream> stream, std::chrono::milliseconds after) {
-    auto handshake = std::make_shared<Handshake>(strand);
-    handshake->timer.expires_after(after);
-    handshake->timer.async_wait([stream, handshake](const boost::system::error_code& ec) {
-      if (ec || handshake->settled) return;
-      handshake->settled = true;
-      boost::system::error_code closing;
-      beast::get_lowest_layer(*stream).close(closing);
-    });
-    return handshake;
-  }
-
-  // The upgrade: read the request, choose the subprotocol, answer; a
-  // request that is not a WebSocket upgrade, or offers only subprotocols
-  // that are not MQTT, gets 400 and is closed.
-  template <typename Next>
-  void upgrade(std::shared_ptr<websocket::stream<Next>> ws, std::shared_ptr<Handshake> deadline) {
-    auto buffer = std::make_shared<beast::flat_buffer>();
-    auto request = std::make_shared<http::request<http::empty_body>>();
-    http::async_read(ws->next_layer(), *buffer, *request,
-                     [self = shared_from_this(), ws, deadline, buffer, request](const boost::system::error_code& ec, size_t) {
-                       if (ec || self->stopped) {
-                         deadline->settle();
-                         return;
-                       }
-                       const auto chosen = subprotocol(std::string_view((*request)[http::field::sec_websocket_protocol]));
-                       if (!websocket::is_upgrade(*request) || !chosen) {
-                         auto refusal = std::make_shared<http::response<http::string_body>>(http::status::bad_request, request->version());
-                         refusal->set(http::field::connection, "close");
-                         refusal->body() = "MQTT over WebSocket: an upgrade offering the mqtt subprotocol\n";
-                         refusal->prepare_payload();
-                         http::async_write(ws->next_layer(), *refusal, [ws, deadline, refusal](const boost::system::error_code&, size_t) {
-                           deadline->settle();
-                           boost::system::error_code ignored;
-                           beast::get_lowest_layer(*ws).close(ignored);
-                         });
-                         return;
-                       }
-                       ws->binary(true);
-                       ws->set_option(websocket::stream_base::decorator([protocol = *chosen](websocket::response_type& response) {
-                         if (!protocol.empty()) response.set(http::field::sec_websocket_protocol, protocol);
-                       }));
-                       ws->async_accept(*request, [self, ws, deadline](const boost::system::error_code& accept_ec) {
-                         deadline->settle();
-                         if (accept_ec || self->stopped) return;
-                         self->adopt(std::make_shared<StreamConnection<websocket::stream<Next>>>(std::move(*ws), self->config.maximum_outbound_bytes,
-                                                                                                 self->logger, self->forgetter()));
-                       });
-                     });
-  }
-
-  void accept_websocket() {
-    ws_acceptor.async_accept(strand, [self = shared_from_this()](const boost::system::error_code& ec, tcp::socket socket) {
-      if (self->stopped) return;
-      if (ec) {
-        self->logger.warn("WebSocket accept failed: " + ec.message());
-        return self->accept_websocket();
-      }
-      boost::system::error_code ignored;
-      socket.set_option(tcp::no_delay(true), ignored);
-      auto ws = std::make_shared<WebSocket>(std::move(socket));
-      self->upgrade(ws, self->deadline_for(ws, self->config.websocket->handshake_timeout));
-      self->accept_websocket();
-    });
-  }
-
-  void accept_secure_websocket() {
-    wss_acceptor.async_accept(strand, [self = shared_from_this()](const boost::system::error_code& ec, tcp::socket socket) {
-      if (self->stopped) return;
-      if (ec) {
-        self->logger.warn("WebSocket TLS accept failed: " + ec.message());
-        return self->accept_secure_websocket();
-      }
-      boost::system::error_code ignored;
-      socket.set_option(tcp::no_delay(true), ignored);
-      auto ws = std::make_shared<SecureWebSocket>(std::move(socket), *self->wss);
-      // One deadline for the TLS handshake and the upgrade together.
-      auto deadline = self->deadline_for(ws, self->config.secure_websocket->handshake_timeout);
-      ws->next_layer().async_handshake(asio::ssl::stream_base::server, [self, ws, deadline](const boost::system::error_code& handshake_ec) {
-        if (handshake_ec || self->stopped) {
-          if (handshake_ec) self->logger.debug("WebSocket TLS handshake failed: " + handshake_ec.message());
-          deadline->settle();
-          return;
-        }
-        self->upgrade(ws, deadline);
-      });
-      self->accept_secure_websocket();
-    });
+    return out;
   }
 
   void poll() {
@@ -494,13 +467,14 @@ struct Edge::State : std::enable_shared_from_this<Edge::State> {
     });
   }
 
+  asio::io_context& io;
   Strand strand;
-  tcp::acceptor acceptor;
-  tcp::acceptor tls_acceptor;
-  tcp::acceptor ws_acceptor;
-  tcp::acceptor wss_acceptor;
-  std::unique_ptr<asio::ssl::context> tls;
-  std::unique_ptr<asio::ssl::context> wss;
+  // Dannan's public listeners (dannan::listen): accept, TLS, its deadline and
+  // the close bound are theirs; what flows over a stream is the edge's.
+  std::unique_ptr<dannan::listen::StreamListener> plain;
+  std::unique_ptr<dannan::listen::StreamListener> tls;
+  std::unique_ptr<dannan::listen::StreamListener> ws;
+  std::unique_ptr<dannan::listen::StreamListener> wss;
   asio::steady_timer timer;
   EdgeConfig config;
   dannan::status::ScopedLogger logger;
@@ -530,51 +504,57 @@ Edge::~Edge() {
 
 void Edge::start() {
   auto& state = *_state;
-  listen_on(state.acceptor, state.config.listen_host, state.config.port);
-  state.port = state.acceptor.local_endpoint().port();
-  if (const auto& tls = state.config.tls) {
-    state.tls = server_context(*tls);
-    listen_on(state.tls_acceptor, tls->listen_host, tls->port);
-    state.tls_port = state.tls_acceptor.local_endpoint().port();
+  const auto& config = state.config;
+  const auto serve = [weak = std::weak_ptr<State>(_state)](std::shared_ptr<Stream> stream) {
+    if (const auto s = weak.lock()) s->serve(std::move(stream));
+  };
+  state.plain = state.listen(listener_config("mqtt", config.listen_host, config.port, config.maximum_outbound_bytes, nullptr), serve);
+  state.port = state.plain->port();
+  if (const auto& tls = config.tls) {
+    state.tls = state.listen(listener_config("mqtt-tls", tls->listen_host, tls->port, config.maximum_outbound_bytes, &*tls), serve);
+    state.tls_port = state.tls->port();
     state.logger.info("MQTT over TLS listening on " + tls->listen_host + ":" + std::to_string(state.tls_port.load()));
   }
-  if (const auto& ws = state.config.websocket) {
-    listen_on(state.ws_acceptor, ws->listen_host, ws->port);
-    state.ws_port = state.ws_acceptor.local_endpoint().port();
+  // A WebSocket writes through its own queue, so the stream's bound is unused.
+  if (const auto& ws = config.websocket) {
+    state.ws = state.listen(listener_config("mqtt-ws", ws->listen_host, ws->port, 0, nullptr),
+                            [weak = std::weak_ptr<State>(_state), within = ws->handshake_timeout](std::shared_ptr<Stream> stream) {
+                              if (const auto s = weak.lock()) s->serve_websocket(std::move(stream), within);
+                            });
+    state.ws_port = state.ws->port();
     state.logger.info("MQTT over WebSocket listening on " + ws->listen_host + ":" + std::to_string(state.ws_port.load()));
   }
-  if (const auto& wss = state.config.secure_websocket) {
-    state.wss = server_context(*wss);
-    listen_on(state.wss_acceptor, wss->listen_host, wss->port);
-    state.wss_port = state.wss_acceptor.local_endpoint().port();
+  if (const auto& wss = config.secure_websocket) {
+    // The TLS handshake has the listener's deadline, the upgrade its own.
+    state.wss = state.listen(listener_config("mqtt-wss", wss->listen_host, wss->port, 0, &*wss),
+                             [weak = std::weak_ptr<State>(_state), within = wss->handshake_timeout](std::shared_ptr<Stream> stream) {
+                               if (const auto s = weak.lock()) s->serve_websocket(std::move(stream), within);
+                             });
+    state.wss_port = state.wss->port();
     state.logger.info("MQTT over WebSocket and TLS listening on " + wss->listen_host + ":" + std::to_string(state.wss_port.load()));
   }
   state.started = true;
-  state.logger.info("MQTT listening on " + state.config.listen_host + ":" + std::to_string(state.port.load()));
-  asio::post(state.strand, [self = _state] {
-    self->accept();
-    if (self->tls) self->accept_tls();
-    if (self->config.websocket) self->accept_websocket();
-    if (self->wss) self->accept_secure_websocket();
-    self->poll();
-  });
+  state.logger.info("MQTT listening on " + config.listen_host + ":" + std::to_string(state.port.load()));
+  asio::post(state.strand, [self = _state] { self->poll(); });
 }
 
 void Edge::stop() {
   if (!_state->started) return;
-  // First every client is told and its connection ended cleanly, each
-  // within its own bound; then whatever is left is closed at once.
+  const bool first = call<bool>([state = _state](broker::Broker&) {
+    if (state->stopped) return false;
+    state->stopped = true;
+    state->timer.cancel();
+    return true;
+  });
+  if (!first) return;
+  // No new client from here. Waits on each listener's own strand, so it is
+  // made from this thread, never the edge's strand.
+  for (auto* listener : _state->listeners()) listener->stop_accepting();
+  // Then every client is told and its connection ended cleanly, each within
+  // its own bound; whatever is left after it is closed at once.
   auto drained = std::make_shared<std::promise<void>>();
   auto all_gone = drained->get_future();
   wait([state = _state, drained](broker::Broker& broker) {
-    if (state->stopped) return drained->set_value();
-    state->stopped = true;
-    boost::system::error_code ignored;
-    state->acceptor.close(ignored);
-    state->tls_acceptor.close(ignored);
-    state->ws_acceptor.close(ignored);
-    state->wss_acceptor.close(ignored);
-    state->timer.cancel();
     state->drained = drained;
     broker.shutting_down();
     state->settle();
@@ -588,6 +568,8 @@ void Edge::stop() {
     }
     for (const auto& connection : open) connection->terminate();
   });
+  // Streams no connection held (an upgrade under way) go too.
+  for (auto* listener : _state->listeners()) listener->close_all();
 }
 
 uint16_t Edge::port() const noexcept { return _state->port.load(); }
