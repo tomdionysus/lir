@@ -23,6 +23,9 @@ option(LIR_BUILD_TESTING "Build lir_tests (GoogleTest)" OFF)
 option(LIR_BUILD_FUZZING "Build the libFuzzer targets in lir/fuzz; needs a clang that ships libFuzzer" OFF)
 option(LIR_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 option(LIR_BUILD_LUGH "Build the Lugh plugin: clients sign in with a Lugh access token (fetches Lugh's lugh_client)" OFF)
+# Off: only the MQTT codec (lir::mqtt) and the client library (lir::client),
+# for another project that fetches Lir to talk to it (Louhi, Lugh, Mimir).
+option(LIR_BUILD_SERVER "Build the broker, lir-node and the tests; off builds only lir::mqtt and lir::client" ON)
 
 find_package(Boost 1.83 CONFIG REQUIRED COMPONENTS headers)
 find_package(OpenSSL 3 REQUIRED COMPONENTS Crypto SSL)
@@ -35,16 +38,19 @@ set(LIR_DANNAN_REPOSITORY "${CMAKE_CURRENT_SOURCE_DIR}/../dannan" CACHE PATH "Da
 # already exists.
 set(LIR_DANNAN_TAG "0.8.2")
 include(FetchContent)
-FetchContent_Declare(dannan GIT_REPOSITORY "${LIR_DANNAN_REPOSITORY}" GIT_TAG "${LIR_DANNAN_TAG}")
-set(DANNAN_BUILD_TESTING OFF CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(dannan)
+# A project that fetches Lir has its own Dannan already: one Dannan a process.
+if(NOT TARGET dannan::dannan)
+  FetchContent_Declare(dannan GIT_REPOSITORY "${LIR_DANNAN_REPOSITORY}" GIT_TAG "${LIR_DANNAN_TAG}")
+  set(DANNAN_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+  FetchContent_MakeAvailable(dannan)
+endif()
 
 # Lugh's lugh_client, for the optional Lugh plugin (the maintainer, 2026-11-14): a
 # commit on Lugh's develop until Lugh releases, tested there on the Dannan
 # pinned above, which it takes rather than fetching its own. Only the
 # library is built. It carries Boost.JSON's definitions, so Lir's own
 # (lir/rules/boost_json.cpp) is left out when it is linked.
-if(LIR_BUILD_LUGH)
+if(LIR_BUILD_LUGH AND LIR_BUILD_SERVER)
   set(LIR_LUGH_REPOSITORY "${CMAKE_CURRENT_SOURCE_DIR}/../lugh" CACHE PATH "Lugh's repository")
   set(LIR_LUGH_REF "dbb0573420952336ede86d8db3e86640e48dddb3")
   FetchContent_Declare(lugh GIT_REPOSITORY "${LIR_LUGH_REPOSITORY}" GIT_TAG "${LIR_LUGH_REF}")
@@ -64,13 +70,15 @@ endif()
 configure_file(lir/include/lir/version.h.in ${PROJECT_BINARY_DIR}/generated/lir/version.h @ONLY)
 
 add_subdirectory(lir)
-add_subdirectory(tools)
+if(LIR_BUILD_SERVER)
+  add_subdirectory(tools)
+endif()
 
-if(LIR_BUILD_TESTING)
+if(LIR_BUILD_TESTING AND LIR_BUILD_SERVER)
   find_package(GTest 1.14 CONFIG REQUIRED)
   add_subdirectory(lir/test)
 endif()
 
-if(LIR_BUILD_FUZZING)
+if(LIR_BUILD_FUZZING AND LIR_BUILD_SERVER)
   add_subdirectory(lir/fuzz)
 endif()
