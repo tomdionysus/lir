@@ -55,6 +55,15 @@ std::string peer_of(const Stream& stream) {
 
 // The client certificate the stream's TLS verified; nothing for one that
 // did not verify, or none. The authenticator binds tokens to it.
+// A client that presented a certificate which did not verify is refused, as
+// a TLS handshake that checked the chain refuses it; one that presented
+// none, where none is required, is let in to authenticate otherwise.
+// Dannan's `optional` lets both through with the verdict on the stream.
+bool presented_unverified(const Stream& stream) {
+  const auto& presented = stream.client_certificate();
+  return presented && !presented->verified;
+}
+
 std::optional<contract::ClientCertificate> verified_of(const Stream& stream) {
   const auto& presented = stream.client_certificate();
   if (!presented || !presented->verified) return std::nullopt;
@@ -425,13 +434,13 @@ struct Edge::State : std::enable_shared_from_this<Edge::State> {
   // MQTT over TCP or TLS: a client once its stream is handed up (after its
   // TLS handshake, within the listener's deadline). On the strand.
   void serve(std::shared_ptr<Stream> stream) {
-    if (stopped) return stream->abort();
+    if (stopped || presented_unverified(*stream)) return stream->abort();
     adopt(std::make_shared<RawConnection>(std::move(stream), forgetter()));
   }
 
   // MQTT over WebSocket: a client once its upgrade is done. On the strand.
   void serve_websocket(std::shared_ptr<Stream> stream, std::chrono::milliseconds within) {
-    if (stopped) return stream->abort();
+    if (stopped || presented_unverified(*stream)) return stream->abort();
     auto connection = std::make_shared<WebSocketConnection>(std::move(stream), config.maximum_outbound_bytes, logger, forgetter());
     connection->upgrade(within, [self = shared_from_this(), connection](bool upgraded) {
       if (!upgraded) return;
