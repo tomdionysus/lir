@@ -31,7 +31,9 @@ find_package(Threads REQUIRED)
 # Dannan, the network layer, at its tag, cloned from the sibling checkout
 # into the build tree, so building Lir never touches ../dannan.
 set(LIR_DANNAN_REPOSITORY "${CMAKE_CURRENT_SOURCE_DIR}/../dannan" CACHE PATH "Dannan's repository")
-set(LIR_DANNAN_TAG "0.7.0" CACHE STRING "The Dannan tag Lir builds against")
+# Not a cache variable: a moved pin must take effect in a build tree that
+# already exists.
+set(LIR_DANNAN_TAG "0.8.0")
 include(FetchContent)
 FetchContent_Declare(dannan GIT_REPOSITORY "${LIR_DANNAN_REPOSITORY}" GIT_TAG "${LIR_DANNAN_TAG}")
 set(DANNAN_BUILD_TESTING OFF CACHE BOOL "" FORCE)
