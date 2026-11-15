@@ -134,7 +134,13 @@ The standing cluster runs `a559b0a` (Dannan 0.7.0) since 2026-11-14
 03:52Z, upgraded at the maintainer's word from the gate run's build; each node's
 `$lir/nodes` reads majority, 3 of 3, and the board's claims survived.
 
-**Waiting on the maintainer:** nothing open.
+**Waiting on the maintainer:** one thing to schedule. Louhi reports (2026-11-15)
+that the maintainer chose for Lir to export a small MQTT client library, as Lugh
+exports `lugh_client`, so the stack keeps one MQTT codec. Louhi needs:
+TCP or TLS with a Lugh token, QoS 0 and 1 publish, retained publish, a
+will, wildcard subscribe, reconnect with backoff, on Dannan's executor
+and callback conventions; topics under `louhi/`. Louhi reaches events at
+its step 6. Nothing starts until the maintainer says so himself.
 
 ## The documents
 
