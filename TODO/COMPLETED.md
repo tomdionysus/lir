@@ -1165,3 +1165,9 @@ plugin will use it too).
   351 passed (337 and 14 new `ClientTest`, `ClientTlsTest`); `tools/ci.sh
   client` builds with no warnings. Merged `51381af`; a `client` job in the
   hosted CI.
+- `3a8ac66`: `LIR_DANNAN_REPOSITORY` and `LIR_LUGH_REPOSITORY` are CACHE
+  STRING, not PATH: a URL given with -D became a path under the source
+  tree, and every hosted CI job had failed at configure since the jobs
+  started (the logs of run 43632325244 show it). Found by Louhi. Proven
+  only by the hosted CI on the next push; no build node run, as the build nodes pass a
+  path. Dannan's public repository carries the 0.8.2 tag.
