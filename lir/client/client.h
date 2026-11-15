@@ -16,6 +16,7 @@
 #include <optional>
 #include <string>
 
+#include "dannan/context.h"
 #include "dannan/contract/time_source.h"
 #include "dannan/status/log.h"
 #include "lir/mqtt/packet.h"
@@ -55,6 +56,14 @@ struct Message {
 };
 
 struct ClientConfig {
+  // The process's Dannan roster, the one list of Lir's nodes (Tom,
+  // 2026-11-15): each attempt connects to a node advertising Lir, at its
+  // "tcp" endpoint ("tls" with `tls`), in turn, so a lost node is passed over
+  // at once; the backoff applies once each has failed since the last
+  // connection. Nothing: `host` and `port`, for a process not on Dannan.
+  // Outlives the client.
+  const dannan::Nodes* nodes = nullptr;
+  // Without `nodes`, or while the roster shows no Lir node.
   std::string host;
   uint16_t port = 1883;
   // Nothing: plain TCP.

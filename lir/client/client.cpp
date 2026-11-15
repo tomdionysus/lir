@@ -17,10 +17,13 @@
 #include <map>
 #include <random>
 #include <set>
+#include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "dannan/listen/connector.h"
+#include "lir/contract/endpoints.h"
 #include "lir/mqtt/topic.h"
 
 namespace lir::client {
@@ -56,6 +59,22 @@ std::optional<std::pair<std::string, uint16_t>> parse_reference(const std::strin
   const auto [end, error] = std::from_chars(first, last, port);
   if (error != std::errc{} || end != last || port == 0) return std::nullopt;
   return std::pair{reference.substr(0, colon), port};
+}
+
+// The Lir nodes Dannan's roster shows serving `transport`, as host:port, in
+// node order; read at each attempt, never kept.
+std::vector<std::pair<std::string, uint16_t>> roster_brokers(const dannan::Nodes& nodes, const std::string& transport) {
+  std::vector<std::pair<std::string, uint16_t>> out;
+  for (const auto& node : nodes.active()) {
+    if (!node.advert(std::string(contract::lir_advert))) continue;
+    const auto advert = node.advert(std::string(contract::endpoints_advert_key));
+    if (!advert) continue;
+    const auto endpoints = contract::parse_endpoints(std::string_view(reinterpret_cast<const char*>(advert->data()), advert->size()));
+    const auto it = endpoints.find(transport);
+    if (it == endpoints.end()) continue;
+    if (auto address = parse_reference(it->second)) out.push_back(std::move(*address));
+  }
+  return out;
 }
 
 // The connector's settings: the client's streams on the executor it is given
@@ -110,6 +129,7 @@ struct Client::State : std::enable_shared_from_this<State> {
         tls(client_tls(config.tls)),
         connector(executor, connector_config(config), &clock) {
     backoff = config.backoff_first;
+    rotation = static_cast<size_t>(random());
   }
 
   // ---- posted callbacks, in order, on the strand
@@ -136,6 +156,16 @@ struct Client::State : std::enable_shared_from_this<State> {
     connect_deadline = time.now() + config.connect_timeout;
     auto host = config.host;
     auto port = config.port;
+    round_size = 1;
+    if (config.nodes) {
+      const auto brokers = roster_brokers(*config.nodes, config.tls ? "tls" : "tcp");
+      if (!brokers.empty()) {
+        round_size = brokers.size();
+        std::tie(host, port) = brokers[rotation % brokers.size()];
+      } else if (host.empty()) {
+        return lost("no node in Dannan's roster serves Lir", reason::success);
+      }
+    }
     if (redirect) {
       host = redirect->first;
       port = redirect->second;
@@ -187,6 +217,7 @@ struct Client::State : std::enable_shared_from_this<State> {
     phase = Phase::connected;
     ever_connected = true;
     backoff = config.backoff_first;
+    failed_in_round = 0;
     const auto& p = connack.properties;
     receive_maximum = p.receive_maximum.value_or(UINT16_MAX);
     maximum_packet_size = p.maximum_packet_size.value_or(0);
@@ -222,9 +253,12 @@ struct Client::State : std::enable_shared_from_this<State> {
     logger.info("disconnected from the broker: " + why);
     tell_state({ConnectionState::disconnected, false, broker_reason, std::move(why)});
     phase = Phase::waiting;
-    if (redirect) {
+    // The roster's next node at once; the backoff only once each has failed.
+    if (!redirect) ++rotation;
+    if (redirect || ++failed_in_round < round_size) {
       retry_at = time.now();
     } else {
+      failed_in_round = 0;
       const auto most = backoff.count();
       std::uniform_int_distribution<int64_t> part(most / 2, std::max<int64_t>(most, 1));
       retry_at = time.now() + std::chrono::milliseconds(part(random));
@@ -578,6 +612,12 @@ struct Client::State : std::enable_shared_from_this<State> {
   std::function<void(const StateChange&)> on_state;
 
   bool ever_connected = false;
+  // Which of the roster's Lir nodes the next attempt takes, from a random
+  // start so clients spread; and the attempts failed since the last
+  // connection, against how many nodes the roster showed.
+  size_t rotation = 0;
+  size_t failed_in_round = 0;
+  size_t round_size = 1;
   std::optional<std::pair<std::string, uint16_t>> redirect;
   std::chrono::milliseconds backoff{0};
   TimePoint connect_deadline{};

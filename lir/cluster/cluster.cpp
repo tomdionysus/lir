@@ -31,10 +31,10 @@ const std::string notify_channel = "lir.notify";
 const std::string seq_channel = "lir.seq";
 const std::string retained_channel = "lir.retained";
 const std::string groups_channel = "lir.groups";
-const std::string advert = "lir";
+const std::string advert(contract::lir_advert);
 // Where this node serves clients (balance.h), and how many it has (the
 // system topics advertise it).
-const std::string endpoints_key = "lir.endpoints";
+const std::string endpoints_key(contract::endpoints_advert_key);
 const std::string clients_advert = "lir.connections";
 
 // The part of a filter before its first wildcard: every topic it matches

@@ -13,6 +13,8 @@
 #include <string>
 #include <vector>
 
+#include "lir/contract/endpoints.h"
+
 // Balancing clients at CONNECT (design, section 7; Tom 2026-11-04): a node
 // with clearly more clients than the cluster's average tells a new MQTT 5.0
 // client to use the least-loaded node instead (CONNACK 0x9C with Server
@@ -21,11 +23,11 @@
 // the figures each node advertises.
 namespace lir::cluster {
 
-// Where a node serves clients, by transport ("tcp", "tls", "ws", "wss"):
-// "host:port". Carried in the node's Dannan record as one advert.
-using Endpoints = std::map<std::string, std::string>;
-std::string endpoints_advert(const Endpoints& endpoints);
-Endpoints parse_endpoints(const std::string& advert);
+// Where a node serves clients, carried in its Dannan record
+// (lir/contract/endpoints.h, shared with lir::client).
+using contract::Endpoints;
+using contract::endpoints_advert;
+using contract::parse_endpoints;
 
 struct Load {
   std::string node;
