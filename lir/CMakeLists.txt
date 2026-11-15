@@ -32,7 +32,6 @@ set_target_properties(lir_mqtt PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION $
 # publish or subscribe on Lir: Louhi, Lugh's events, Mimir.
 add_library(lir_client SHARED
   client/client.cpp
-  client/transport.cpp
 )
 add_library(lir::client ALIAS lir_client)
 target_link_libraries(lir_client

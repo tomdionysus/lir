@@ -38,7 +38,7 @@ find_package(Threads REQUIRED)
 set(LIR_DANNAN_REPOSITORY "${CMAKE_CURRENT_SOURCE_DIR}/../dannan" CACHE STRING "Dannan's repository, a path or a URL")
 # Not a cache variable: a moved pin must take effect in a build tree that
 # already exists.
-set(LIR_DANNAN_TAG "0.8.2")
+set(LIR_DANNAN_TAG "0.8.3")
 include(FetchContent)
 # A project that fetches Lir has its own Dannan already: one Dannan a process.
 if(NOT TARGET dannan::dannan)
