@@ -145,6 +145,35 @@ class ClusterTest : public ::testing::Test {
   std::unique_ptr<LirNode> c;
 };
 
+// Dannan sends a stream publish only to the nodes whose interest it
+// already sees, and a joining node's snapshot is fetched when it is first
+// seen serving Lir. So a node that serves Lir must already be subscribed
+// to the retained and groups channels in every record that says so, or a
+// retained value or a group published in between never reaches it.
+TEST_F(ClusterTest, ANodeIsSeenServingLirOnlyWithItsChannelsSubscribed) {
+  struct Seen {
+    std::mutex mutex;
+    size_t serving = 0;
+    size_t without_interest = 0;
+  };
+  // Shared: a change already posted may still run after the unwatch.
+  const auto seen = std::make_shared<Seen>();
+  const auto watch = a->node->context().nodes().watch(boost::asio::make_strand(io.context), [seen](dannan::RosterChange change) {
+    if (!change.node.advert("lir")) return;
+    const bool retained = change.node.advert(dannan::net::interest_advert("lir.retained")).has_value();
+    const bool groups = change.node.advert(dannan::net::interest_advert("lir.groups")).has_value();
+    const std::lock_guard lock(seen->mutex);
+    ++seen->serving;
+    if (!retained || !groups) ++seen->without_interest;
+  });
+  auto d = start("d", {{"127.0.0.1", a->node->port()}});
+  EXPECT_TRUE(eventually([&] { return a->sees(*d); }));
+  a->node->context().nodes().unwatch(watch);
+  const std::lock_guard lock(seen->mutex);
+  EXPECT_GT(seen->serving, 0u);
+  EXPECT_EQ(seen->without_interest, 0u);
+}
+
 TEST_F(ClusterTest, QoS1PublishReachesASubscriberOnAnotherNode) {
   MqttClient sub(b->port());
   sub.connect("sub");
