@@ -5,12 +5,12 @@ file carried until today is there, "Archived from ACTIVE.md, 2026-11-14".
 
 ## Resume here
 
-**State.** `develop` at `ce4bcd0` (Lir's listeners on Dannan's);
+**State.** `develop` at `13553c0` (Dannan 0.8.1);
 pushed to `488e89e` at Tom's word, the rest local. Gate on corvus-neptune
 (Pi 5, Debian 13, GCC 14, Boost 1.83, Ninja, Release, warnings as errors,
 no warnings, never throttled): `tools/ci.sh release` 337 passed at
-`ce4bcd0`; `tools/ci.sh lugh` (the plugin on) 343 passed at the 0.8.0
-repin (`912d33f`). Dannan pinned at `0.8.0`, Lugh at `dbb0573` (plugin
+`13553c0` (Dannan 0.8.1); `tools/ci.sh lugh` (the plugin on) 343 passed at the 0.8.0
+repin (`912d33f`). Dannan pinned at `0.8.1`, Lugh at `dbb0573` (plugin
 only). Lugh is on 0.8.0 at `ab28e2d` (724 passed there) with `lugh_client`
 unchanged since `dbb0573`, so the pin stays until Lugh's first release
 (Lugh, 2026-11-15). Unmerged: `feature/fuzz-targets`,
@@ -79,10 +79,10 @@ for the release gate.
    `verified_certificate(Stream)` and `presented_unverified` are shared by
    both. A client certificate that did not verify is refused, as Lir's
    handshake refused it (Dannan's `optional` lets it through with the
-   verdict). Open: Dannan sets no TCP_NODELAY and Lir cannot reach the
-   socket, so small MQTT packets may wait on Nagle and delayed ACK
-   (about 40 ms); asked of Dannan as `ListenerConfig::no_delay`, for a
-   0.8.1. Next: the MQTT-SN DTLS gateway (`lir/sn/gateway.cpp`) onto
+   verdict). TCP_NODELAY: Dannan 0.8.1 sets it on every accepted
+   socket (`Stream::set_no_delay` opts out), so small MQTT packets no
+   longer wait on Nagle; Lir repinned with no code change (`13553c0`,
+   337 passed), after reviewing the branch. Next: the MQTT-SN DTLS gateway (`lir/sn/gateway.cpp`) onto
    `DatagramListener` at Dannan 0.9.0, then `edge::server_context` and
    `verified_certificate(SSL*)` go.
 4. **The Lugh plugin.** Done and merged (`9452fd0`; `lir/auth/lugh.h`,
