@@ -551,7 +551,6 @@ void Cluster::start() {
   channels.open(seq_channel, dannan::net::Delivery::stream, _state->config.replay_bytes);
   channels.open(retained_channel, dannan::net::Delivery::stream, _state->config.replay_bytes);
   channels.open(groups_channel, dannan::net::Delivery::stream, 64u << 10);
-  _state->context.nodes().advertise(advert, {});
   _state->edge.call<bool>([s = _state](broker::Broker& b) {
     s->running = true;
     s->subscribe_fixed();
@@ -590,6 +589,10 @@ void Cluster::start() {
     s->mirror();
     return true;
   });
+  // Last: a peer that sees this node serve Lir sends it streams only by the
+  // interest it sees, and takes its snapshot now, so the retained and
+  // groups subscriptions must already be in the same record.
+  _state->context.nodes().advertise(advert, {});
 }
 
 void Cluster::stop() {
