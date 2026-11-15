@@ -55,8 +55,8 @@ so the pin stays until Lugh's first release). Unmerged:
 2. **Dagda's slices** (the Dagda session tells Lir as each lands): step 5,
    by [`2026-11-13-step5-design.md`](2026-11-13-step5-design.md), its tests
    written as each slice's tag lands. Ship nothing before contract v2
-   freezes at slice 4. Lir is now on Dannan 0.7.0 and Dagda 0.1.5 on
-   0.6.0: Lir needs a Dagda tag built on 0.7.0 before it links Dagda.
+   freezes at slice 4. Lir is on Dannan 0.8.3: it needs a Dagda tag built
+   on the same Dannan minor before it links Dagda (one Dannan a process).
    There the minority choice extends to session and retained commits, and
    `refuse` waits to the deadline as the design says.
    Slice 1 is proven and on Dagda's develop (`1065b18`, 2026-11-14), not
