@@ -1186,4 +1186,10 @@ plugin will use it too).
   channel, so a lost publish is unlikely; slowness under ASan on the arm64
   runner is the likely cause. Watch for a second occurrence before
   changing the bound.
+- Dannan 0.8.3 and `lir::client` on its `StreamConnector` (`8664691`):
+  the transport seam deleted, a QoS 0 publish done once handed to the
+  connection. `tools/ci.sh release` 351 passed and `tools/ci.sh client`
+  clean on corvus-saturn (2 cores, `libdannan.so.0.8.3`,
+  `throttled=0x0`). Hosted CI all green from `e81e675` (CodeQL included,
+  the repository public).
 
