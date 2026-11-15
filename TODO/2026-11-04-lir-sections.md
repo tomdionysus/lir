@@ -9,6 +9,10 @@ will be deleted.
 - Topic permissions are scopes carried in the Lugh token (publish and subscribe topic
   filters), checked on each PUBLISH and SUBSCRIBE through Dannan `Identity::verify`. Lir
   keeps no ACL state.
+  *Note (later decisions win):* Lir checks the scopes itself (`lir/auth/scopes.h`, Tom
+  2026-11-04), and the token is verified by Lugh's `lugh_client` through Lir's
+  optional Lugh plugin, not through Dannan `Identity::verify` (Tom, 2026-11-04 and
+  2026-11-14, P10).
 - Credential: the token as the CONNECT password (username the principal) for every
   version; MQTT 5.0 clients may also use enhanced authentication, method `lugh`, to
   re-authenticate a long-lived connection with a fresh token.

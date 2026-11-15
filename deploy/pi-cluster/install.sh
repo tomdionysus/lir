@@ -12,7 +12,12 @@
 # from the others.
 #
 #   deploy/pi-cluster/install.sh root@10.44.1.202:/root/lir-work/build \
-#     corvus-jupiter=10.44.1.169 corvus-saturn=10.44.1.170 corvus-neptune=10.44.1.202
+#     corvus-jupiter=10.44.1.169 corvus-saturn=10.44.1.170 corvus-neptune=10.44.1.202 \
+#     corvus-uranus=10.44.1.228
+#
+# Every node is named each time, so each bootstraps from all the others;
+# LIR_ONLY=<name> installs and restarts that one node alone, for a rolling
+# upgrade with a check between nodes.
 #
 # The cluster key is made once and kept in build/pi-cluster/cluster.key in
 # this checkout, never in the repository. Each node runs as tom from
@@ -28,7 +33,7 @@ shift
 rm -rf "$stage/bin" "$stage/lib"
 mkdir -p "$stage/bin" "$stage/lib"
 rsync -a "$build/lir-node" "$stage/bin/"
-rsync -a --include='liblir.so*' --exclude='*' "$build/lir/" "$stage/lib/"
+rsync -a --include='liblir.so*' --include='liblir_mqtt.so*' --exclude='*' "$build/lir/" "$stage/lib/"
 rsync -a --include='libdannan.so*' --exclude='*' "$build/_deps/dannan-build/dannan/" "$stage/lib/"
 [ -s "$stage/bin/lir-node" ] || { echo "no lir-node in $build" >&2; exit 1; }
 
@@ -42,6 +47,7 @@ for node in "$@"; do addresses="$addresses ${node#*=}"; done
 for node in "$@"; do
   name=${node%%=*}
   address=${node#*=}
+  [ -n "${LIR_ONLY:-}" ] && [ "$LIR_ONLY" != "$name" ] && continue
   bootstrap=""
   for other in $addresses; do
     [ "$other" = "$address" ] && continue

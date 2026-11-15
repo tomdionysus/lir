@@ -31,10 +31,10 @@ const std::string notify_channel = "lir.notify";
 const std::string seq_channel = "lir.seq";
 const std::string retained_channel = "lir.retained";
 const std::string groups_channel = "lir.groups";
-const std::string advert = "lir";
+const std::string advert(contract::lir_advert);
 // Where this node serves clients (balance.h), and how many it has (the
 // system topics advertise it).
-const std::string endpoints_key = "lir.endpoints";
+const std::string endpoints_key(contract::endpoints_advert_key);
 const std::string clients_advert = "lir.connections";
 
 // The part of a filter before its first wildcard: every topic it matches
@@ -82,6 +82,7 @@ struct Cluster::State : std::enable_shared_from_this<Cluster::State> {
   // On the strand from here on.
   bool running = false;
   uint64_t watch_id = 0;
+  uint64_t partition_watch_id = 0;
   std::vector<uint64_t> fixed_subscriptions;
   // Prefix -> (lir.notify id, lir.seq id).
   std::map<std::string, std::pair<uint64_t, uint64_t>> prefixes;
@@ -576,6 +577,15 @@ void Cluster::start() {
     s->watch_id = s->context.nodes().watch(s->edge.strand(), [weak](dannan::RosterChange change) {
       if (const auto st = weak.lock()) st->on_roster(change);
     });
+    // Which side of a split this node is on, for the broker's QoS 1 and 2.
+    s->partition_watch_id = s->context.nodes().watch_partition(s->edge.strand(), [weak](dannan::membership::Partition reading) {
+      const auto st = weak.lock();
+      if (!st || !st->running) return;
+      if (!reading.majority) {
+        st->logger.warn("on a minority side: " + std::to_string(reading.reachable) + " of " + std::to_string(reading.members) + " nodes reachable");
+      }
+      st->edge.broker().partition(std::move(reading));
+    });
     s->resync();
     s->mirror();
     return true;
@@ -589,6 +599,7 @@ void Cluster::stop() {
     s->running = false;
     b.attach({});
     s->context.nodes().unwatch(s->watch_id);
+    s->context.nodes().unwatch_partition(s->partition_watch_id);
     auto& channels = s->context.channels();
     for (const auto id : s->fixed_subscriptions) channels.unsubscribe(id);
     for (const auto& [prefix, ids] : s->prefixes) {

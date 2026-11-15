@@ -9,6 +9,7 @@ add_executable(lir_tests
   auth_scopes_test.cpp
   auth_tokens_test.cpp
   broker_test.cpp
+  client_test.cpp
   client_certificate_test.cpp
   cluster_balance_test.cpp
   cluster_test.cpp
@@ -32,7 +33,10 @@ add_executable(lir_tests
   version_test.cpp
   websocket_test.cpp
 )
-target_link_libraries(lir_tests PRIVATE lir GTest::gtest_main lir_warnings)
+target_link_libraries(lir_tests PRIVATE lir lir_client GTest::gtest_main lir_warnings)
+if(LIR_BUILD_LUGH)
+  target_sources(lir_tests PRIVATE auth_lugh_test.cpp)
+endif()
 # Dannan's fixtures (temp_dir.h) write only inside Lir's build tree.
 target_compile_definitions(lir_tests PRIVATE DANNAN_TEST_TEMP_ROOT="${PROJECT_BINARY_DIR}/test-tmp")
 

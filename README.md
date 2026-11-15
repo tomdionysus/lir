@@ -122,19 +122,25 @@ lives in exactly one.
 - **[Dagda](https://github.com/tomdionysus/dagda)** is the store: objects, claims, leases
   and heads with merges their owner supplies, at a durability level each write chooses.
   Lir keeps its retained messages, in-flight messages and sessions there.
-- **[Lugh](https://github.com/tomdionysus/lugh)** is the directory and sign-on. Lir never
-  links it; to Lir it is an identity provider, and a Lugh authenticator plugin turns a
-  Lugh token into a client's topic scopes.
+- **[Lugh](https://github.com/tomdionysus/lugh)** is the directory and sign-on. To Lir it
+  is one possible identity provider: an optional Lugh plugin, built only when enabled,
+  links Lugh's client library to verify a Lugh token and turn it into a client's topic
+  scopes. Lir itself, and a build without the plugin, never link Lugh.
 
 Hosted systems never address one another. Other systems use Lir as any MQTT client
-would.
+would, and the stack's projects through Lir's own small client library, `lir::client`
+(`lir/client/client.h`): MQTT 5.0 or 3.1.1 over TCP or TLS, a token as the password,
+QoS 0 and 1 publish and receive, retained publish, a will, wildcard subscribe and
+reconnecting with backoff, on the caller's executor. A project fetches Lir with
+`-DLIR_BUILD_SERVER=OFF` and links `lir::client`; only the codec (`lir::mqtt`) and the
+client are built, against the project's own Dannan.
 
 ## How to use it
 
 ### Build
 
 A C++20 compiler, CMake 3.24 or later, Boost 1.83 or later (Asio and Beast; Debian 13's is 1.83), OpenSSL 3, and
-GoogleTest for the tests. Dannan is fetched from `../dannan` at the pinned release (0.6.0),
+GoogleTest for the tests. Dannan is fetched from `../dannan` at the pinned release (0.8.3),
 so clone it beside this repository; building Dannan needs yaml-cpp.
 
 ```
@@ -147,6 +153,10 @@ Pass `-DCMAKE_PREFIX_PATH` where Boost and OpenSSL are not on the default path (
 with MacPorts: `"/opt/local/libexec/boost/1.88;/opt/local"`). The process tests use
 `mosquitto_pub` and `mosquitto_sub` when they are installed.
 
+`-DLIR_BUILD_LUGH=ON` adds the optional Lugh plugin, so clients can sign in with a Lugh
+access token. It fetches Lugh's `lugh_client` from `../lugh` at a pinned commit, built on
+the same Dannan. Lir builds and runs without it.
+
 ### Run a node
 
 `lir-node` is one node of a cluster: a Dannan node that advertises `lir` and serves MQTT.
@@ -158,8 +168,11 @@ printf '%s' 'a long shared secret' > cluster.key
 #   {"event":"listening","id":"...","port":7437,"mqtt_port":1883,"http_port":8083,...}
 ```
 
-Clients are refused unless `--allow-anonymous` is given; until the Lugh
-authenticator there is nothing to check a credential against. An anonymous client
+Clients are refused unless `--allow-anonymous` is given, or, with the Lugh plugin built
+and `--lugh-issuer URL` given (once for each trusted Lugh; `--lugh-ca PEM` for its roots),
+they sign in with a Lugh access token as the CONNECT password or by the MQTT 5 method
+`lugh`. The token's `lir:` scopes are what the client may do, until its expiry. Without
+the plugin, a client presenting a credential is refused. An anonymous client
 may publish, retain and subscribe anywhere and read the system topics, or only
 what `--anonymous-scope` allows, repeated:
 
@@ -355,6 +368,15 @@ ledger; the rules engine; MQTT-SN 1.2 over UDP and DTLS; the Lugh token authenti
 The cluster is an interim one until Dagda: retained messages are held in memory on every
 node, sessions are mirrored in memory, and a QoS 1 or 2 publish is acknowledged on
 acceptance, not on replication.
+
+A node knows which side of a split it is on: Dannan reads it against the cluster's agreed
+roster, a majority only with more than half of it reachable, so an even split is a
+minority on both sides. On a minority side a node takes QoS 1 and 2 publishes and counts
+them as under-replicated (`--minority degrade`, the default), or refuses them with 0x97
+(`--minority refuse`; a 3.x client is closed and resends when it returns). QoS 0 always
+flows. `$lir/nodes/<id>` reports the side, the nodes it cannot reach, and both counts.
+One limit is Dannan's, stated: nodes joined during a split can give both sides a
+majority, so join new nodes to a whole cluster.
 
 Next, persistence on Dagda (`TODO/2026-11-13-step5-design.md`). A QoS 1 or 2 publish is
 written to its shard's replicated log and acknowledged once two replicas hold it, with

@@ -21,8 +21,12 @@ ExecStart=/home/tom/lir-cluster/bin/lir-node --config /home/tom/lir-cluster/node
 Nice=10
 Restart=on-failure
 RestartSec=5
-# A light service on machines shared with heavy builds.
+# A light service on machines shared with heavy builds: capped, and kept
+# from the reclaim and the OOM killer a build that runs out of memory sets
+# off (cgroup_enable=memory on every Pi since 2026-11-15).
 MemoryMax=1G
+MemoryMin=192M
+OOMScoreAdjust=-500
 
 [Install]
 WantedBy=multi-user.target

@@ -1353,6 +1353,108 @@ TEST_F(BrokerScopesAtReconnect, AResumedThreeOneOneSessionKeepsOnlyWhatTheNewGra
   EXPECT_EQ(got[0].topic, "a/1");
 }
 
+TEST_F(BrokerTest, ShuttingDownEndsEveryConnectionAndTellsA5ClientWhy) {
+  std::vector<ClientEvent> events;
+  broker.observe([&](const ClientEvent& e) { events.push_back(e); });
+  auto five = connect("five");
+  auto old = connect("old", Version::v3_1_1);
+  auto waiting = open();
+  broker.shutting_down();
+  EXPECT_EQ(five.take_one<mqtt::Disconnect>().reason, reason::server_shutting_down);
+  EXPECT_TRUE(five.closed());
+  EXPECT_TRUE(old.take().empty());
+  EXPECT_TRUE(old.closed());
+  EXPECT_TRUE(waiting.closed());
+  EXPECT_EQ(broker.connections(), 0u);
+  size_t ended = 0;
+  for (const auto& e : events) {
+    if (e.kind != ClientEvent::Kind::disconnected) continue;
+    ++ended;
+    EXPECT_EQ(e.by, ClientEvent::By::server);
+    EXPECT_EQ(e.reason, reason::server_shutting_down);
+  }
+  EXPECT_EQ(ended, 2u);
+}
+
+// ---- a minority side (Dannan's partition reading; step 5 design, "On a
+// minority side", as the interim has it)
+
+dannan::membership::Partition reading(bool majority) {
+  dannan::membership::Partition p;
+  p.majority = majority;
+  p.members = 3;
+  p.reachable = majority ? 3 : 1;
+  return p;
+}
+
+TEST_F(BrokerTest, AMinoritySideDegradesByDefault) {
+  EXPECT_EQ(broker.config().minority, Minority::degrade);
+  auto sub = connect("sub");
+  subscribe(sub, "t", QoS::exactly_once);
+  broker.partition(reading(false));
+  auto pub = connect("pub");
+  pub.send(message("t", "one", QoS::at_least_once, false, 1));
+  EXPECT_EQ(pub.take_one<mqtt::Ack>().reason, reason::success);
+  pub.send(message("t", "two", QoS::exactly_once, false, 2));
+  EXPECT_EQ(pub.take_one<mqtt::Ack>().reason, reason::success);
+  pub.send(message("t", "zero"));
+  EXPECT_EQ(sub.take_all<mqtt::Publish>().size(), 3u);
+  // QoS 1 and 2 accepted on the minority side are counted; QoS 0 is not.
+  EXPECT_EQ(broker.stats().under_replicated, 2u);
+  EXPECT_EQ(broker.stats().refused_minority_publishes, 0u);
+}
+
+class BrokerRefusingOnMinority : public BrokerTest {
+ protected:
+  static Config refusing() {
+    Config c;
+    c.minority = Minority::refuse;
+    return c;
+  }
+  BrokerRefusingOnMinority() : BrokerTest(refusing()) {}
+};
+
+TEST_F(BrokerRefusingOnMinority, QoS1And2AreRefusedWith0x97AndQoS0Flows) {
+  auto sub = connect("sub");
+  subscribe(sub, "t", QoS::exactly_once);
+  broker.partition(reading(false));
+  auto pub = connect("pub");
+  pub.send(message("t", "x", QoS::at_least_once, false, 1));
+  EXPECT_EQ(pub.take_one<mqtt::Ack>().reason, reason::quota_exceeded);
+  pub.send(message("t", "x", QoS::exactly_once, false, 2));
+  EXPECT_EQ(pub.take_one<mqtt::Ack>().reason, reason::quota_exceeded);
+  pub.send(message("t", "fine"));
+  const auto got = sub.take_all<mqtt::Publish>();
+  ASSERT_EQ(got.size(), 1u);
+  EXPECT_EQ(text(got[0]), "fine");
+  // A 3.x publisher cannot be told: it is closed, and resends when it returns.
+  auto old = connect("old", Version::v3_1_1);
+  old.send(message("t", "x", QoS::at_least_once, false, 3));
+  EXPECT_TRUE(old.closed());
+  EXPECT_EQ(broker.stats().refused_minority_publishes, 3u);
+  EXPECT_EQ(broker.stats().under_replicated, 0u);
+}
+
+TEST_F(BrokerRefusingOnMinority, NoReadingOrAMajorityRefusesNothingAndAHealEndsTheRefusal) {
+  auto sub = connect("sub");
+  subscribe(sub, "t");
+  auto pub = connect("pub");
+  // A broker no cluster has told of a split (a single node) serves.
+  EXPECT_FALSE(broker.partition().has_value());
+  pub.send(message("t", "x", QoS::at_least_once, false, 1));
+  EXPECT_EQ(pub.take_one<mqtt::Ack>().reason, reason::success);
+  broker.partition(reading(false));
+  pub.send(message("t", "x", QoS::at_least_once, false, 2));
+  EXPECT_EQ(pub.take_one<mqtt::Ack>().reason, reason::quota_exceeded);
+  broker.partition(reading(true));
+  ASSERT_TRUE(broker.partition().has_value());
+  EXPECT_TRUE(broker.partition()->majority);
+  pub.send(message("t", "x", QoS::at_least_once, false, 3));
+  EXPECT_EQ(pub.take_one<mqtt::Ack>().reason, reason::success);
+  EXPECT_EQ(sub.take_all<mqtt::Publish>().size(), 2u);
+  EXPECT_EQ(broker.stats().refused_minority_publishes, 1u);
+}
+
 TEST_F(BrokerScopes, WritingRulesNeedsARetainGrantThere) {
   auto client = open();
   connect(client, "c");
