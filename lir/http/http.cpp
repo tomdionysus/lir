@@ -115,13 +115,6 @@ class VirtualClient final : public contract::Connection {
   bool _closed = false;
 };
 
-// The verified client certificate on an HTTPS connection.
-std::optional<contract::ClientCertificate> certificate_of(tcp::socket&) { return std::nullopt; }
-std::optional<contract::ClientCertificate> certificate_of(asio::ssl::stream<tcp::socket>& stream) { return edge::verified_certificate(stream.native_handle()); }
-
-// How long a clean TLS end may take before the socket is closed regardless.
-constexpr auto clean_end_deadline = std::chrono::seconds(2);
-
 std::optional<std::string> bearer(const bhttp::request<bhttp::string_body>& request) {
   const auto field = request[bhttp::field::authorization];
   if (!field.starts_with("Bearer ")) return std::nullopt;
@@ -178,17 +171,19 @@ class ExchangeBase {
   virtual void terminate() = 0;
 };
 
-// One HTTP connection over `Stream` (TCP, or TLS over it): a request, then
-// a response or an event stream. Everything on the edge's strand.
-template <typename Stream>
-class Exchange final : public ExchangeBase, public std::enable_shared_from_this<Exchange<Stream>> {
+// One HTTP connection over a stream of Dannan's listeners (TCP, or TLS
+// over it): a request, then a response or an event stream. The stream
+// queues what is written, closes a reader too slow for the outbound bound,
+// and writes what is queued before its clean close. Everything on the
+// edge's strand.
+class Exchange final : public ExchangeBase, public std::enable_shared_from_this<Exchange> {
  public:
-  Exchange(Stream socket, edge::Edge& edge, const HttpConfig& config, dannan::status::ScopedLogger logger, std::function<void(ExchangeBase*)> forget)
-      : _socket(std::move(socket)), _edge(edge), _config(config), _logger(std::move(logger)), _timer(_socket.get_executor()), _forget(std::move(forget)) {
-    boost::system::error_code ec;
-    const auto remote = _socket.lowest_layer().remote_endpoint(ec);
-    _peer = ec ? "http" : "http " + remote.address().to_string() + ":" + std::to_string(remote.port());
-    _certificate = certificate_of(_socket);
+  Exchange(std::shared_ptr<dannan::listen::Stream> stream, edge::Edge& edge, const HttpConfig& config, dannan::status::ScopedLogger logger,
+           std::function<void(ExchangeBase*)> forget)
+      : _stream(std::move(stream)), _edge(edge), _config(config), _logger(std::move(logger)), _timer(_stream->get_executor()), _forget(std::move(forget)) {
+    const auto& remote = _stream->peer();
+    _peer = "http " + remote.address().to_string() + ":" + std::to_string(remote.port());
+    _certificate = edge::verified_certificate(*_stream);
   }
 
   void start() {
@@ -198,7 +193,7 @@ class Exchange final : public ExchangeBase, public std::enable_shared_from_this<
     _timer.async_wait([weak = this->weak_from_this()](const boost::system::error_code& ec) {
       if (const auto self = weak.lock(); self && !ec && !self->_streaming) self->terminate();
     });
-    bhttp::async_read(_socket, _buffer, *_parser, [self = this->shared_from_this()](const boost::system::error_code& ec, size_t) {
+    bhttp::async_read(*_stream, _buffer, *_parser, [self = this->shared_from_this()](const boost::system::error_code& ec, size_t) {
       self->_timer.cancel();
       if (ec == bhttp::error::body_limit) return self->respond(413, json_error("body over the limit"));
       if (ec) return self->terminate();
@@ -210,9 +205,7 @@ class Exchange final : public ExchangeBase, public std::enable_shared_from_this<
     if (_done) return;
     _done = true;
     _timer.cancel();
-    boost::system::error_code ignored;
-    _socket.lowest_layer().shutdown(tcp::socket::shutdown_both, ignored);
-    _socket.lowest_layer().close(ignored);
+    _stream->abort();
     if (_client) _client->on_packet = nullptr;
     if (auto link = std::move(_link)) link->closed();
     _forget(this);
@@ -322,7 +315,7 @@ class Exchange final : public ExchangeBase, public std::enable_shared_from_this<
     _client->on_packet = [weak = this->weak_from_this()](mqtt::Packet p) {
       if (const auto self = weak.lock()) self->on_stream_packet(std::move(p));
     };
-    _client->on_close = [weak = this->weak_from_this(), executor = _socket.get_executor()] {
+    _client->on_close = [weak = this->weak_from_this(), executor = _stream->get_executor()] {
       asio::post(executor, [weak] {
         if (const auto self = weak.lock()) self->terminate();
       });
@@ -424,8 +417,10 @@ class Exchange final : public ExchangeBase, public std::enable_shared_from_this<
   // The pending read is what keeps a stream's exchange alive: it ends
   // when the client goes or terminate() closes the socket.
   void watch_close() {
-    _socket.async_read_some(asio::buffer(_scratch), [self = this->shared_from_this()](const boost::system::error_code& ec, size_t) {
-      if (self->_done) return;
+    _stream->async_read_some(asio::buffer(_scratch), [self = this->shared_from_this()](const boost::system::error_code& ec, size_t) {
+      // The clean end, once begun, finishes the exchange; the read it
+      // aborts must not.
+      if (self->_done || self->_ending) return;
       if (ec) return self->terminate();
       self->watch_close();
     });
@@ -434,47 +429,26 @@ class Exchange final : public ExchangeBase, public std::enable_shared_from_this<
   void respond(unsigned status, const std::string& body) {
     write("HTTP/1.1 " + std::to_string(status) + " " + status_text(status) +
           "\r\nContent-Type: application/json\r\nContent-Length: " + std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body);
-    _close_after_write = true;
+    end();
   }
 
   void write(std::string bytes) {
-    if (_done) return;
-    if (_queued + bytes.size() > _config.maximum_outbound_bytes) {
-      _logger.info("closing " + _peer + ": the event stream is not being read");
-      return terminate();
-    }
-    _queued += bytes.size();
-    _queue.push_back(std::move(bytes));
-    if (!_writing) write_next();
+    if (_done || _ending) return;
+    _stream->send(std::move(bytes));
   }
 
-  void write_next() {
-    _writing = true;
-    asio::async_write(_socket, asio::buffer(_queue.front()), [self = this->shared_from_this()](const boost::system::error_code& ec, size_t) {
-      self->_writing = false;
-      if (ec) return self->terminate();
-      self->_queued -= self->_queue.front().size();
-      self->_queue.pop_front();
-      if (!self->_queue.empty()) return self->write_next();
-      if (self->_close_after_write) self->end();
-    });
-  }
-
-  // The response is written: over TLS, close_notify first (RFC 8446,
-  // section 6.1), bounded by a deadline; then the socket closes.
+  // The response is queued: the stream writes it, then over TLS sends
+  // close_notify (RFC 8446, section 6.1), within its close bound; then the
+  // exchange ends.
   void end() {
-    if constexpr (std::is_same_v<Stream, tcp::socket>) {
-      terminate();
-    } else {
-      _timer.expires_after(clean_end_deadline);
-      _timer.async_wait([weak = this->weak_from_this()](const boost::system::error_code& ec) {
-        if (const auto self = weak.lock(); self && !ec) self->terminate();
-      });
-      _socket.async_shutdown([self = this->shared_from_this()](const boost::system::error_code&) { self->terminate(); });
-    }
+    if (_done || _ending) return;
+    _ending = true;
+    _timer.cancel();
+    _stream->when_finished([self = this->shared_from_this()] { self->terminate(); });
+    _stream->close();
   }
 
-  Stream _socket;
+  std::shared_ptr<dannan::listen::Stream> _stream;
   edge::Edge& _edge;
   const HttpConfig _config;
   dannan::status::ScopedLogger _logger;
@@ -488,18 +462,15 @@ class Exchange final : public ExchangeBase, public std::enable_shared_from_this<
   std::shared_ptr<broker::Link> _link;
   std::optional<mqtt::Suback> _suback;
   std::vector<std::string> _pending;
-  std::deque<std::string> _queue;
   std::array<uint8_t, 512> _scratch{};
-  size_t _queued = 0;
-  bool _writing = false;
   bool _streaming = false;
-  bool _close_after_write = false;
+  bool _ending = false;
   bool _done = false;
 };
 
 struct HttpServer::State : std::enable_shared_from_this<HttpServer::State> {
-  State(edge::Edge& e, HttpConfig cfg, dannan::status::ScopedLogger log)
-      : edge(e), config(std::move(cfg)), logger(std::move(log)), acceptor(e.strand()), tls_acceptor(e.strand()) {}
+  State(asio::io_context& io_context, edge::Edge& e, HttpConfig cfg, dannan::status::ScopedLogger log)
+      : io(io_context), edge(e), config(std::move(cfg)), logger(std::move(log)) {}
 
   std::function<void(ExchangeBase*)> forgetter() {
     return [weak = weak_from_this()](ExchangeBase* gone) {
@@ -507,55 +478,39 @@ struct HttpServer::State : std::enable_shared_from_this<HttpServer::State> {
     };
   }
 
-  template <typename Stream>
-  void begin(Stream stream) {
-    auto exchange = std::make_shared<Exchange<Stream>>(std::move(stream), edge, config, logger, forgetter());
+  // A connection handed up by a listener, after its TLS handshake when it
+  // has one. On the edge's strand.
+  void begin(std::shared_ptr<dannan::listen::Stream> stream) {
+    if (stopped || edge::presented_unverified(*stream)) return stream->abort();
+    auto exchange = std::make_shared<Exchange>(std::move(stream), edge, config, logger, forgetter());
     exchanges.emplace(exchange.get(), exchange);
     exchange->start();
   }
 
-  void accept_tls() {
-    tls_acceptor.async_accept(edge.strand(), [self = shared_from_this()](const boost::system::error_code& ec, tcp::socket socket) {
-      if (self->stopped) return;
-      if (ec) {
-        self->logger.warn("HTTPS accept failed: " + ec.message());
-        return self->accept_tls();
-      }
-      auto stream = std::make_shared<asio::ssl::stream<tcp::socket>>(std::move(socket), *self->tls);
-      auto deadline = std::make_shared<asio::steady_timer>(self->edge.strand());
-      deadline->expires_after(self->config.tls->handshake_timeout);
-      deadline->async_wait([stream](const boost::system::error_code& timer_ec) {
-        if (timer_ec) return;
-        boost::system::error_code closing;
-        stream->lowest_layer().close(closing);
-      });
-      stream->async_handshake(asio::ssl::stream_base::server, [self, stream, deadline](const boost::system::error_code& handshake_ec) {
-        deadline->cancel();
-        if (handshake_ec || self->stopped) return;
-        self->begin(std::move(*stream));
-      });
-      self->accept_tls();
+  std::unique_ptr<dannan::listen::StreamListener> listen(dannan::listen::ListenerConfig settings) {
+    auto listener = std::make_unique<dannan::listen::StreamListener>(io, std::move(settings));
+    listener->start(edge.strand(), [weak = weak_from_this()](std::shared_ptr<dannan::listen::Stream> stream) {
+      if (const auto s = weak.lock()) return s->begin(std::move(stream));
+      stream->abort();
     });
+    return listener;
   }
 
-  void accept() {
-    acceptor.async_accept(edge.strand(), [self = this->shared_from_this()](const boost::system::error_code& ec, tcp::socket socket) {
-      if (self->stopped) return;
-      if (ec) {
-        self->logger.warn("accept failed: " + ec.message());
-      } else {
-        self->begin(std::move(socket));
-      }
-      self->accept();
-    });
+  std::vector<dannan::listen::StreamListener*> listeners() {
+    std::vector<dannan::listen::StreamListener*> out;
+    for (auto* each : {plain.get(), tls.get()}) {
+      if (each) out.push_back(each);
+    }
+    return out;
   }
 
+  asio::io_context& io;
   edge::Edge& edge;
   HttpConfig config;
   dannan::status::ScopedLogger logger;
-  tcp::acceptor acceptor;
-  tcp::acceptor tls_acceptor;
-  std::unique_ptr<asio::ssl::context> tls;
+  // Dannan's public listeners, on the edge's strand.
+  std::unique_ptr<dannan::listen::StreamListener> plain;
+  std::unique_ptr<dannan::listen::StreamListener> tls;
   std::map<ExchangeBase*, std::weak_ptr<ExchangeBase>> exchanges;
   bool started = false;
   bool stopped = false;
@@ -563,8 +518,8 @@ struct HttpServer::State : std::enable_shared_from_this<HttpServer::State> {
   std::atomic<uint16_t> tls_port{0};
 };
 
-HttpServer::HttpServer(asio::io_context&, edge::Edge& edge, HttpConfig config, dannan::status::ScopedLogger logger)
-    : _state(std::make_shared<State>(edge, std::move(config), std::move(logger))) {}
+HttpServer::HttpServer(asio::io_context& io, edge::Edge& edge, HttpConfig config, dannan::status::ScopedLogger logger)
+    : _state(std::make_shared<State>(io, edge, std::move(config), std::move(logger))) {}
 
 HttpServer::~HttpServer() {
   try {
@@ -576,38 +531,28 @@ HttpServer::~HttpServer() {
 
 void HttpServer::start() {
   auto& s = *_state;
-  const tcp::endpoint endpoint(asio::ip::make_address(s.config.listen_host), s.config.port);
-  s.acceptor.open(endpoint.protocol());
-  s.acceptor.set_option(tcp::acceptor::reuse_address(true));
-  s.acceptor.bind(endpoint);
-  s.acceptor.listen();
-  s.port = s.acceptor.local_endpoint().port();
+  s.plain = s.listen(edge::listener_config("http", s.config.listen_host, s.config.port, s.config.maximum_outbound_bytes, nullptr));
+  s.port = s.plain->port();
   if (const auto& tls = s.config.tls) {
-    s.tls = edge::server_context(*tls);
-    const tcp::endpoint tls_endpoint(asio::ip::make_address(tls->listen_host), tls->port);
-    s.tls_acceptor.open(tls_endpoint.protocol());
-    s.tls_acceptor.set_option(tcp::acceptor::reuse_address(true));
-    s.tls_acceptor.bind(tls_endpoint);
-    s.tls_acceptor.listen();
-    s.tls_port = s.tls_acceptor.local_endpoint().port();
+    s.tls = s.listen(edge::listener_config("https", tls->listen_host, tls->port, s.config.maximum_outbound_bytes, &*tls));
+    s.tls_port = s.tls->port();
     s.logger.info("HTTPS listening on " + tls->listen_host + ":" + std::to_string(s.tls_port.load()));
   }
   s.started = true;
   s.logger.info("HTTP listening on " + s.config.listen_host + ":" + std::to_string(s.port.load()));
-  asio::post(s.edge.strand(), [self = _state] {
-    self->accept();
-    if (self->tls) self->accept_tls();
-  });
 }
 
 void HttpServer::stop() {
   if (!_state->started) return;
-  _state->edge.call<bool>([s = _state](broker::Broker&) {
+  const bool first = _state->edge.call<bool>([s = _state](broker::Broker&) {
     if (s->stopped) return false;
     s->stopped = true;
-    boost::system::error_code ignored;
-    s->acceptor.close(ignored);
-    s->tls_acceptor.close(ignored);
+    return true;
+  });
+  if (!first) return;
+  // Waits on each listener's own strand: from this thread, never the edge's.
+  for (auto* listener : _state->listeners()) listener->stop_accepting();
+  _state->edge.call<bool>([s = _state](broker::Broker&) {
     std::vector<std::shared_ptr<ExchangeBase>> open;
     for (const auto& [raw, weak] : s->exchanges) {
       if (auto e = weak.lock()) open.push_back(std::move(e));
@@ -615,6 +560,7 @@ void HttpServer::stop() {
     for (const auto& e : open) e->terminate();
     return true;
   });
+  for (auto* listener : _state->listeners()) listener->close_all();
 }
 
 uint16_t HttpServer::port() const noexcept { return _state->port.load(); }

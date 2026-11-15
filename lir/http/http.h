@@ -85,7 +85,8 @@ class HttpServer {
   HttpServer(const HttpServer&) = delete;
   HttpServer& operator=(const HttpServer&) = delete;
 
-  // Binds and listens; throws boost::system::system_error when it cannot.
+  // Binds and listens, on Dannan's public listeners; throws std::system_error
+  // when it cannot bind, std::runtime_error for certificates it cannot load.
   void start();
   // Closes the listener and every stream. Never from an io thread.
   void stop();
