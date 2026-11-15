@@ -312,7 +312,7 @@ TEST_F(ClientTest, ABrokerThatIsNotThereIsTriedAgainWithAReason) {
   start(std::move(config), seen);
   ASSERT_TRUE(eventually([&] { return seen.disconnections() >= 2; }));
   std::lock_guard lock(seen->mutex);
-  EXPECT_NE(seen->states.front().why.find("cannot connect"), std::string::npos) << seen->states.front().why;
+  EXPECT_NE(seen->states.front().why.find("did not connect"), std::string::npos) << seen->states.front().why;
 }
 
 TEST_F(ClientTest, AnInvalidTopicFailsAtOnce) {
@@ -399,7 +399,7 @@ TEST_F(ClientTlsTest, AnUntrustedServerIsRefusedAtTheHandshake) {
   ASSERT_TRUE(eventually([&] { return seen.disconnections() >= 1; }));
   EXPECT_EQ(seen.connections(), 0u);
   std::lock_guard lock(seen->mutex);
-  EXPECT_NE(seen->states.front().why.find("TLS handshake"), std::string::npos) << seen->states.front().why;
+  EXPECT_NE(seen->states.front().why.find("certificate"), std::string::npos) << seen->states.front().why;
 }
 
 }  // namespace
