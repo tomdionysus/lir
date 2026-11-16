@@ -32,6 +32,10 @@ from a release build of `develop`, then `python3 -I build/cluster-check.py`
   when the job ends; `claim-board wait` in the background when none are free.
 - No wasted runs: sanitizers at the release gate; a repeat only for a
   stated reason (a flaky test, odd behaviour, a fix).
+- Sanitizers run on the Pis since the 4K-page kernels (2026-11-16): TSan
+  with g++ anywhere, or clang++-19 on jupiter, saturn and neptune; never a
+  sanitizer build on uranus (4 GB). Prefer saturn or neptune, and check
+  `free -m` first.
 - Never keep a node list: Dannan's roster and adverts are the one list of
   Lir's nodes (Tom, 2026-11-15).
 
