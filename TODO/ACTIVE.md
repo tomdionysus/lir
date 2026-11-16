@@ -33,10 +33,10 @@ from a release build of `develop`, then `python3 -I build/cluster-check.py`
   when the job ends; `claim-board wait` in the background when none are free.
 - No wasted runs: sanitizers at the release gate; a repeat only for a
   stated reason (a flaky test, odd behaviour, a fix).
-- Sanitizers run on the build nodes since the 4K-page kernels (2026-11-16): TSan
-  with g++ anywhere, or clang++-19 on node-a, node-b and node-c; never a
-  sanitizer build on node-d (4 GB). Prefer node-b or node-c, and check
-  `free -m` first.
+- Sanitizers run on every build node since the 4K-page, 48-bit-VA kernels
+  (2026-11-16): ASan, UBSan and TSan, with g++ anywhere or clang++-19 on
+  node-a, node-b and node-c. node-d has 4 GB and ran out of memory on
+  one, so use the 16 GB build nodes and check `free -m` first.
 - Never keep a node list: Dannan's roster and adverts are the one list of
   Lir's nodes (the maintainer, 2026-11-15).
 
