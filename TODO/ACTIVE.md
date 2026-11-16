@@ -180,6 +180,17 @@ hosted CI, Linux arm64.
 
 Not reopened without asking the maintainer.
 
+- (2026-11-16, the maintainer, asked in turn) Step 5's payloads over 64 KiB are
+  never shared between messages. Dagda names an object by its content's
+  SHA-256, and a remove releases every claim the passed clock dominates. So
+  retiring one message would delete the payload of another message with the
+  same content. Each object starts with its message's dot, so its id is
+  unique. There is no reference count in Lir and nothing new from Dagda.
+  Details: `2026-11-13-step5-design.md`, "Large payloads".
+
+- (2026-11-16, the maintainer, asked in turn) Dannan's ledger fix: wait for the 0.9.0
+  tag rather than pin a Dannan develop commit.
+
 - (2026-11-16, the maintainer, asked in turn) The window after SUBACK: a subscription
   reaches other nodes at Dannan's heartbeat pace (5 s), so a message
   published elsewhere in that time was lost for the new subscriber
