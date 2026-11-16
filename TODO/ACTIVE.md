@@ -77,7 +77,10 @@ from a release build of `develop`, then `python3 -I build/cluster-check.py`
      it needs Tom to reopen the 2026-11-04 ordering decision. Recommend it:
      the later write wins after a heal, and expiry gets an absolute time.
 4. **At Lugh's first release:** repin the plugin (`tools/ci.sh lugh`). The
-   hosted `lugh` job uses the secret `LUGH_READ_TOKEN`.
+   hosted `lugh` job uses the secret `LUGH_READ_TOKEN`. Lugh after `2d75176`
+   pins Dannan 0.8.5, the same as Lir, and `lugh_client`'s interface hasn't
+   changed (Lugh, 2026-11-16). Since `2d75176`, Lugh percent-encodes a scope
+   level that holds '"' or '\'. Lir's usual topics never contain either.
 5. **MQTT-SN 2.0** when OASIS approves a Committee Specification.
 6. **lir::client** users: Louhi (step 8), Lugh's principal-events publisher
    and Mimir's Lugh plugin pin `6b23268` or later. QoS 2, aliases and user
