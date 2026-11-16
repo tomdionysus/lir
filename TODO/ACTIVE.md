@@ -18,7 +18,11 @@ cluster's join window"), with Dannan and left unsuppressed, so the tsan job
 may still fail on it. Nothing unmerged.
 
 **The standing cluster** runs `7db72d1` on all four nodes (2026-11-15
-22:33Z, `COMPLETED.md`). To upgrade it, tell Louhi and the Lir Development
+22:33Z, `COMPLETED.md`). `louhi/#` is open to anonymous clients (Tom,
+2026-11-16, kept open). jupiter, saturn and neptune have the config; uranus
+was down. When it is back:
+`LIR_CONFIG_ONLY=1 LIR_ONLY=corvus-uranus sh deploy/pi-cluster/install.sh - <the four NAME=ADDRESS>`,
+then the check. To upgrade it, tell Louhi and the Lir Development
 Cluster session first, then one node at a time, jupiter (the acting
 scheduler) last:
 `LIR_ONLY=<name> sh deploy/pi-cluster/install.sh root@<pi>:/root/lir-work/build-ci/release corvus-jupiter=10.44.1.169 corvus-saturn=10.44.1.170 corvus-neptune=10.44.1.202 corvus-uranus=10.44.1.228`
