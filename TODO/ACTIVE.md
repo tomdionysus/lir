@@ -92,10 +92,21 @@ It recurred in `ARuleWrittenOnOneNodeAppliesOnEvery` (run 43802763961), on
 one thread: `SystemTopics::on_roster` takes `nodes().snapshot()`
 (`system.cpp:356`) and publishes (`system.cpp:358`), and
 `Fanout::destinations`' roster copies free a node the snapshot's records
-still point at. That is a use-after-free that happens deterministically on
-some interleaving, and the first item in Dannan's plan for its next
-session. Not suppressed; the tsan job may fail on it until Dannan's fix is
-tagged. Send Dannan any new report. If a cluster test times out again, it is a new cause:
+still point at. Dannan's explanation (2026-11-16): the ledger defect whose
+TSan report is suppressed here (`RetainedMemoryLedger::release` on a
+destroyed ledger) frees memory it no longer owns and corrupts the heap. That
+explanation comes from reading the code; nobody has reproduced the link. On
+neptune, Lir `5f68295` on Dannan 0.8.5:
+- ASan: `HeldMessagesAreLeasedInTheNodesLedger` failed in 1 of 30 runs of
+  `ClusterTest.*` with a use-after-free in `release`. The call path is from a
+  `Fanout::ask_replay` completion after `~LirNode`; the log is
+  `build/ci-logs/neptune-asan-ledger-uaf.log`.
+- TSan, with `print_suppressions`: none of 30 runs reported anything, and
+  the ledger suppression never matched.
+Dannan's fix is on its develop branch (`79dfa2e`). Tom, 2026-11-16: wait
+for the 0.9.0 tag rather than pin develop. Until then, the tsan job may fail
+on it. If the NodeRecord report ever appears on a Dannan build that has the
+fix, tell Dannan at once: it would mean the explanation is wrong. If a cluster test times out again, it is a new cause:
 the join window is closed.
 
 **Waiting on Tom:** nothing open.
