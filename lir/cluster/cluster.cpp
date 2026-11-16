@@ -11,6 +11,8 @@
 #include <boost/asio/post.hpp>
 #include <boost/asio/steady_timer.hpp>
 #include <map>
+#include <memory>
+#include <set>
 #include <tuple>
 
 #include "dannan/placement/placement.h"
@@ -93,6 +95,23 @@ struct Cluster::State : std::enable_shared_from_this<Cluster::State> {
   std::map<std::pair<std::string, std::string>, size_t> turn;
   std::map<std::tuple<NodeId, NodeId, std::string>, uint64_t> last_sequence;
   bool interest_pending = false;
+  // SUBACKs held on the interest (ClusterHooks::interest_held): a waiter is
+  // registered, then, at the next refresh, waits for every push still
+  // unanswered then, its own subscriptions' among them.
+  struct Waiter {
+    size_t left = 0;
+    size_t missed = 0;
+    std::function<void(size_t)> held;
+  };
+  // One prefix's interest pushed on lir.notify and lir.seq: two answers.
+  struct Push {
+    std::string prefix;
+    size_t left = 2;
+    size_t missed = 0;
+    std::vector<std::shared_ptr<Waiter>> waiters;
+  };
+  std::vector<std::shared_ptr<Waiter>> waiting;
+  std::set<std::shared_ptr<Push>> pushing;
   std::map<std::string, Held> mirrors;
   // Balancing: per node, the client count it last advertised and how many
   // clients this node has sent it since, so a burst is not all sent to one
@@ -245,9 +264,42 @@ struct Cluster::State : std::enable_shared_from_this<Cluster::State> {
     });
   }
 
+  void await_interest(std::function<void(size_t)> held) {
+    auto waiter = std::make_shared<Waiter>();
+    waiter->held = std::move(held);
+    waiting.push_back(std::move(waiter));
+    interest_changed();
+  }
+
+  void on_pushed(const std::shared_ptr<Push>& push, const dannan::membership::Pushed& pushed) {
+    push->missed = std::max(push->missed, pushed.missed.size());
+    for (const auto& [peer, why] : pushed.missed) {
+      logger.info("interest in '" + push->prefix + "' not held by " + dannan::identity::to_string(peer) + " in time: " + why);
+    }
+    if (--push->left > 0) return;
+    pushing.erase(push);
+    for (const auto& waiter : push->waiters) {
+      waiter->missed = std::max(waiter->missed, push->missed);
+      if (--waiter->left == 0) waiter->held(waiter->missed);
+    }
+  }
+
+  // Each waiter registered so far waits for every push unanswered now.
+  void attach_waiters() {
+    auto now_waiting = std::move(waiting);
+    waiting.clear();
+    for (const auto& waiter : now_waiting) {
+      for (const auto& push : pushing) {
+        push->waiters.push_back(waiter);
+        ++waiter->left;
+      }
+      if (waiter->left == 0) waiter->held(0);
+    }
+  }
+
   void refresh_interest() {
     interest_pending = false;
-    if (!running) return;
+    if (!running) return attach_waiters();
     std::set<std::string> wanted;
     for (const auto& filter : broker().local_filters()) wanted.insert(literal_prefix(filter));
     wanted = minimal(wanted);
@@ -267,8 +319,17 @@ struct Cluster::State : std::enable_shared_from_this<Cluster::State> {
     };
     for (const auto& prefix : wanted) {
       if (prefixes.contains(prefix)) continue;
-      prefixes[prefix] = {channels.subscribe(notify_channel, prefix, edge.strand(), handler), channels.subscribe(seq_channel, prefix, edge.strand(), handler)};
+      auto push = std::make_shared<Push>();
+      push->prefix = prefix;
+      pushing.insert(push);
+      const auto done = [weak, push](dannan::membership::Pushed pushed) {
+        if (const auto s = weak.lock()) s->on_pushed(push, pushed);
+      };
+      const auto deadline = config.subscribe_deadline;
+      prefixes[prefix] = {channels.subscribe(notify_channel, prefix, edge.strand(), handler, deadline, edge.strand(), done),
+                          channels.subscribe(seq_channel, prefix, edge.strand(), handler, deadline, edge.strand(), done)};
     }
+    attach_waiters();
     publish_groups(false);
   }
 
@@ -564,6 +625,10 @@ void Cluster::start() {
     hooks.interest_changed = [weak] {
       if (const auto st = weak.lock()) st->interest_changed();
     };
+    hooks.interest_held = [weak](std::function<void(size_t)> held) {
+      if (const auto st = weak.lock(); st && st->running) return st->await_interest(std::move(held));
+      held(0);
+    };
     hooks.redirect = [weak](const std::string& transport) -> std::optional<std::string> {
       const auto st = weak.lock();
       return st && st->running ? st->redirect(transport) : std::nullopt;
@@ -591,8 +656,17 @@ void Cluster::start() {
   });
   // Last: a peer that sees this node serve Lir sends it streams only by the
   // interest it sees, and takes its snapshot now, so the retained and
-  // groups subscriptions must already be in the same record.
-  _state->context.nodes().advertise(advert, {});
+  // groups subscriptions must already be in the same record. Pushed, so
+  // the peers see it now rather than at their next heartbeat.
+  std::weak_ptr<State> weak = _state;
+  _state->context.nodes().advertise(advert, dannan::net::Bytes{}, _state->config.subscribe_deadline, _state->edge.strand(),
+                                    [weak](dannan::membership::Pushed pushed) {
+                                      const auto s = weak.lock();
+                                      if (!s) return;
+                                      for (const auto& [peer, why] : pushed.missed) {
+                                        s->logger.info("\"lir\" not held by " + dannan::identity::to_string(peer) + " in time: " + why);
+                                      }
+                                    });
 }
 
 void Cluster::stop() {
