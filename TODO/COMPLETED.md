@@ -1373,3 +1373,15 @@ not suppressed in Lir. The build's flags match across both libraries
 
 Gate, node-b: `lir_tests` release 354 passed.
 
+The hunt for Dannan (2026-11-16): node-c, g++ 14 TSan with `tools/ci.sh`'s
+flags, Lir at `82352e6` (the CI run's commit, without the join fix). Results:
+`ConnectingOnAnotherNodeTakesTheClientOver` alone 40 of 40 clean,
+`ClusterTest.*` 9 of 10 clean, the full suite 3 of 3 clean. The one failure
+was the join window (`RetainedValuesAreEverywhereAndClearedEverywhere`),
+which reproduces that bug on a build node. That is 0 TSan reports in 53 processes.
+Dannan's own reproduction, `Node.NodesJoinWhileAdvertsChangeAndNothingIsShared`,
+was also clean. It stays open as unexplained, not suppressed. Lir's audit:
+it keeps no NodeRecord across threads. It does pass `routes().call` a
+short-lived record (`cluster.cpp:361`, `446`), so Dannan was asked to
+confirm that `call` copies it before returning.
+
