@@ -8,7 +8,7 @@ and the detail this file no longer carries ("Archived from ACTIVE.md",
 
 **State.** `develop` at the record commit after `7db72d1`, pushed; the
 repository is public, and Lir commits and pushes on its own (the maintainer,
-2026-11-15). Dannan pinned at `0.8.4`, Lugh at `dbb0573` (plugin only).
+2026-11-15). Dannan pinned at `0.8.5`, Lugh at `dbb0573` (plugin only).
 Last gate, node-b: `lir_tests` release 354 passed, with the fuzz
 targets merged and the cluster's join window fixed. `tools/ci.sh client`
 clean on node-d at `7db72d1`. `tools/ci.sh lugh` 343 at the 0.8.0 repin.
@@ -58,13 +58,10 @@ from a release build of `develop`, then `python3 -I build/cluster-check.py`
    (`lir/sn/gateway.cpp`) onto `DatagramListener`, then delete
    `edge::server_context` and `verified_certificate(SSL*)`; remove the TSan
    suppression of `RetainedMemoryLedger::release`
-   (`lir/test/tsan-suppressions.txt`). Hold SUBACK on Dannan's
-   `Fanout::subscribe` with a deadline (Decisions, 2026-11-16): a new prefix
-   on `lir.seq` and `lir.notify` waits until peers hold the interest or the
-   deadline passes. Then SUBACK goes anyway, the missed peers counted in
-   `$lir/nodes` and logged. Test first: a QoS 1 message published on
-   another node right after SUBACK is delivered (`build/suback-probe.py`
-   has the shape). Remove the README's stated limit. Then, with agreement
+   (`lir/test/tsan-suppressions.txt`). Merge `feature/suback-hold`
+   (`f35526d`, local, built and gated on Dannan's develop: `COMPLETED.md`,
+   2026-11-16): set its pin to the 0.9.0 tag, gate, merge, and remove the
+   README's stated limit on the window after SUBACK. Then, with agreement
    there:
    - **Guarded publish** for the claim board (its 0.5.0 or later;
      `../coordination/TODO/2026-11-15-claim-board-0.4.0.md`, part 1):
