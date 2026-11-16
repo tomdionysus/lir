@@ -83,11 +83,16 @@ from a release build of `develop`, then `python3 -I build/cluster-check.py`
    and Mimir's Lugh plugin pin `6b23268` or later. QoS 2, aliases and user
    properties on request.
 
-**Watch:** the Dannan TSan finding (a `NodeRecord` map node freed from two
-threads, in `ConnectingOnAnotherNodeTakesTheClientOver`). Neither side
-reproduced it (Lir: 0 TSan reports in 53 processes). It is open in Dannan's
-plan as unexplained and not suppressed. If the tsan job reports it again,
-send Dannan the new frames. If a cluster test times out again, it is a new cause:
+**Watch:** the Dannan TSan finding: two `~NodeRecord` free one map node.
+First seen in `ConnectingOnAnotherNodeTakesTheClientOver` (run 43773090610).
+It recurred in `ARuleWrittenOnOneNodeAppliesOnEvery` (run 43802763961), on
+one thread: `SystemTopics::on_roster` takes `nodes().snapshot()`
+(`system.cpp:356`) and publishes (`system.cpp:358`), and
+`Fanout::destinations`' roster copies free a node the snapshot's records
+still point at. That is a use-after-free that happens deterministically on
+some interleaving, and the first item in Dannan's plan for its next
+session. Not suppressed; the tsan job may fail on it until Dannan's fix is
+tagged. Send Dannan any new report. If a cluster test times out again, it is a new cause:
 the join window is closed.
 
 **Waiting on Tom:** nothing open.
