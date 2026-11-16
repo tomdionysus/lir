@@ -378,6 +378,13 @@ flows. `$lir/nodes/<id>` reports the side, the nodes it cannot reach, and both c
 One limit is Dannan's, stated: nodes joined during a split can give both sides a
 majority, so join new nodes to a whole cluster.
 
+A second limit, stated until Dannan 0.9: a subscription reaches the other nodes at
+Dannan's heartbeat pace (5 s by default). A message published on another node in that
+time is lost for the new subscriber, at any QoS. Retained values are not affected: a
+subscriber gets them at SUBSCRIBE. With 0.9, a node holds SUBACK until the other nodes
+hold the subscription, under a short deadline. A node that misses it is counted and
+logged, and the subscription is granted anyway.
+
 Next, persistence on Dagda (`TODO/2026-11-13-step5-design.md`). A QoS 1 or 2 publish is
 written to its shard's replicated log and acknowledged once two replicas hold it, with
 p99 under 50 ms as the target. Sessions and retained messages move to replicated spaces.
