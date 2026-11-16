@@ -52,7 +52,14 @@ from a release build of `develop`, then `python3 -I build/cluster-check.py`
    (`lir/sn/gateway.cpp`) onto `DatagramListener`, then delete
    `edge::server_context` and `verified_certificate(SSL*)`; remove the TSan
    suppression of `RetainedMemoryLedger::release`
-   (`lir/test/tsan-suppressions.txt`). Then, with agreement there:
+   (`lir/test/tsan-suppressions.txt`). Hold SUBACK on Dannan's
+   `Fanout::subscribe` with a deadline (Decisions, 2026-11-16): a new prefix
+   on `lir.seq` and `lir.notify` waits until peers hold the interest or the
+   deadline passes. Then SUBACK goes anyway, the missed peers counted in
+   `$lir/nodes` and logged. Test first: a QoS 1 message published on
+   another node right after SUBACK is delivered (`build/suback-probe.py`
+   has the shape). Remove the README's stated limit. Then, with agreement
+   there:
    - **Guarded publish** for the claim board (its 0.5.0 or later;
      `../coordination/TODO/2026-11-15-claim-board-0.4.0.md`, part 1):
      agreed trees, a node setting (the board needs `stack/pis/#` only),
@@ -78,18 +85,7 @@ reproducing it. When its fix is tagged, repin, and the tsan job should
 then hold green. If a cluster test times out again, it is a new cause:
 the join window is closed.
 
-**Waiting on the maintainer:** the window after SUBACK (found 2026-11-15). A client
-subscribes on X and gets SUBACK. A QoS 1 message then published on Y
-reaches it only once X's new interest advert has gossiped to Y, at Dannan's
-heartbeat pace (5 s default; `dannan/net/fanout.h:29`). Until then it is
-lost for that subscriber, with no gap recorded and PUBACK already given.
-Measured on the standing cluster with `build/suback-probe.py` (untracked):
-0 of 20 delivered at 0 ms after SUBACK, 5 of 20 at 1 s, 5 of 8 at 3 s,
-8 of 8 at 5 s; the same node, 20 of 20. Not a stated limit anywhere. The
-design held SUBACK until the holders had the subscription (plan,
-"Lifecycle" 1); fan-out on Dannan's channels (2026-11-04) lost that.
-Asked Dannan for a pushed advert with evidence, to hold SUBACK on; the maintainer to
-decide once Dannan answers.
+**Waiting on the maintainer:** nothing open.
 
 ## The standing cluster
 
@@ -160,6 +156,16 @@ hosted CI, Linux arm64.
 ## Decisions
 
 Not reopened without asking the maintainer.
+
+- (2026-11-16, the maintainer, asked in turn) The window after SUBACK: a subscription
+  reaches other nodes at Dannan's heartbeat pace (5 s), so a message
+  published elsewhere in that time was lost for the new subscriber
+  (measured on the standing cluster: 0 of 20 at 0 ms, 8 of 8 at 5 s).
+  Dannan adds `Nodes::advertise` with a deadline and evidence (held,
+  missed), and `Fanout::subscribe` completing when the interest is held,
+  in 0.9, with no 0.8.x stopgap. Lir holds SUBACK on it. On a miss, SUBACK
+  anyway, with the missed peers counted and logged. A stated limit in the
+  README until then.
 
 - (2026-11-15, the maintainer, to Dannan, relayed by Dannan) Anything that can use
   consensus or agreement waits for Dannan's agreement primitive, which
