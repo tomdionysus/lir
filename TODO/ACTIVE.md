@@ -8,7 +8,7 @@ and the detail this file no longer carries ("Archived from ACTIVE.md",
 
 **State.** `develop` at the record commit after `7db72d1`, pushed; the
 repository is public, and Lir commits and pushes on its own (the maintainer,
-2026-11-15). Dannan pinned at `0.8.3`, Lugh at `dbb0573` (plugin only).
+2026-11-15). Dannan pinned at `0.8.4`, Lugh at `dbb0573` (plugin only).
 Last gate, node-b: `lir_tests` release 354 passed, with the fuzz
 targets merged and the cluster's join window fixed. `tools/ci.sh client`
 clean on node-d at `7db72d1`. `tools/ci.sh lugh` 343 at the 0.8.0 repin.

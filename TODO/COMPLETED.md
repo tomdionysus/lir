@@ -1388,3 +1388,20 @@ by value, `dannan/node.cpp:211`), so it is safe as written. The report is
 open in Dannan's plan as unexplained. If it recurs, send Dannan the new
 frames.
 
+## 2026-11-16: louhi/# on the standing cluster, and Dannan 0.8.4
+
+`louhi/#` opened to anonymous clients (publish, retain, subscribe) on every
+node, kept open (the maintainer). It went out with the new `LIR_CONFIG_ONLY=1` mode of
+`install.sh`, which installs only `node.yaml` and restarts: node-b, node-c
+and node-a at 01:29-01:32Z, and node-d at 02:55Z once it was back from a
+power cycle. The check passed after each node. Each node granted
+`louhi/#`, delivered on it, and refused other trees (0x80). Louhi's first
+live test node joined at 01:34Z, giving majority 4 of 5, and left at 01:35Z.
+Its retained topic was cleared. A departed member stays in the count until
+Dannan's horizon, so the reading stayed at 5 members afterwards.
+
+Repinned Dannan `0.8.3` to `0.8.4` (ABI kept: StartTLS without an answer,
+a stop token on `wait_for_change`, and a deferred Answer giving back its
+place before replying). Gate, node-d `-j1`: `tools/ci.sh release`
+354 passed, `tools/ci.sh client` clean.
+
