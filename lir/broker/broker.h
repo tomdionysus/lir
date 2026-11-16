@@ -209,6 +209,9 @@ struct Stats {
   uint64_t rules_skipped = 0;
   uint64_t rules_too_deep = 0;
   uint64_t rules_invalid = 0;
+  // Peers that did not hold a new subscription by its SUBACK's deadline
+  // (ClusterHooks::interest_held), summed over SUBSCRIBEs.
+  uint64_t subscribe_missed = 0;
 };
 
 // A client connected here, or its connection here ended: for the
@@ -243,6 +246,12 @@ struct ClusterHooks {
   std::function<size_t(const Message&)> published;
   // This node's subscriptions changed (filters or shared groups).
   std::function<void()> interest_changed;
+  // After a SUBSCRIBE: `held` once every other node holds this node's
+  // interest in the subscriptions made so far, or the deadline passed, with
+  // how many peers missed it. The broker holds the SUBACK on it (Tom,
+  // 2026-11-16), so a message published anywhere after the SUBACK arrives.
+  // Empty: the SUBACK goes at once.
+  std::function<void(std::function<void(size_t missed)> held)> interest_held;
   // A client is connecting here: every other node must close its
   // connection, and hand over its session when `want_state`. `done` gets
   // the session, if any node had one.
