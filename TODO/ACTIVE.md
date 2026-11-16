@@ -18,7 +18,11 @@ cluster's join window"), with Dannan and left unsuppressed, so the tsan job
 may still fail on it. Nothing unmerged.
 
 **The standing cluster** runs `7db72d1` on all four nodes (2026-11-15
-22:33Z, `COMPLETED.md`). To upgrade it, tell Louhi and the coordinating session first, then one node at a time, node-a (the acting
+22:33Z, `COMPLETED.md`). `louhi/#` is open to anonymous clients (the maintainer,
+2026-11-16, kept open). node-a, node-b and node-c have the config; node-d
+was down. When it is back:
+`LIR_CONFIG_ONLY=1 LIR_ONLY=node-d sh deploy/test-cluster/install.sh - <the four NAME=ADDRESS>`,
+then the check. To upgrade it, tell Louhi and the coordinating session first, then one node at a time, node-a (the acting
 scheduler) last:
 `LIR_ONLY=<name> sh deploy/test-cluster/install.sh root@<node>:/root/lir-work/build-ci/release node-a=192.0.2.1 node-b=192.0.2.2 node-c=192.0.2.3 node-d=192.0.2.4`
 from a release build of `develop`, then `python3 -I build/cluster-check.py`
