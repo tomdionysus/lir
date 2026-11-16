@@ -31,6 +31,10 @@ auth:
     - "lir:pub:test/#"
     - "lir:retain:test/#"
     - "lir:sub:test/#"
+    # Louhi's events (the maintainer, 2026-11-16): kept open for Louhi's use.
+    - "lir:pub:louhi/#"
+    - "lir:retain:louhi/#"
+    - "lir:sub:louhi/#"
     - "lir:sub:$lir/#"
     - "lir:sub:$dannan/#"
 limits:

@@ -17,7 +17,9 @@
 #
 # Every node is named each time, so each bootstraps from all the others;
 # LIR_ONLY=<name> installs and restarts that one node alone, for a rolling
-# upgrade with a check between nodes.
+# upgrade with a check between nodes. LIR_CONFIG_ONLY=1, with "-" for the
+# build, installs only node.yaml and restarts: a configuration change that
+# keeps the binaries each node has.
 #
 # The cluster key is made once and kept in build/test-cluster/cluster.key in
 # this checkout, never in the repository. Each node runs as lir from
@@ -30,12 +32,15 @@ stage="$repo/build/test-cluster"
 build=$1
 shift
 
-rm -rf "$stage/bin" "$stage/lib"
-mkdir -p "$stage/bin" "$stage/lib"
-rsync -a "$build/lir-node" "$stage/bin/"
-rsync -a --include='liblir.so*' --include='liblir_mqtt.so*' --exclude='*' "$build/lir/" "$stage/lib/"
-rsync -a --include='libdannan.so*' --exclude='*' "$build/_deps/dannan-build/dannan/" "$stage/lib/"
-[ -s "$stage/bin/lir-node" ] || { echo "no lir-node in $build" >&2; exit 1; }
+config_only=${LIR_CONFIG_ONLY:-}
+if [ -z "$config_only" ]; then
+  rm -rf "$stage/bin" "$stage/lib"
+  mkdir -p "$stage/bin" "$stage/lib"
+  rsync -a "$build/lir-node" "$stage/bin/"
+  rsync -a --include='liblir.so*' --include='liblir_mqtt.so*' --exclude='*' "$build/lir/" "$stage/lib/"
+  rsync -a --include='libdannan.so*' --exclude='*' "$build/_deps/dannan-build/dannan/" "$stage/lib/"
+  [ -s "$stage/bin/lir-node" ] || { echo "no lir-node in $build" >&2; exit 1; }
+fi
 
 if [ ! -s "$stage/cluster.key" ]; then
   (umask 077 && openssl rand -base64 48 > "$stage/cluster.key")
@@ -57,8 +62,10 @@ for node in "$@"; do
 
   echo "== $name ($address)"
   ssh root@"$address" 'install -d -o lir -g lir -m 0750 /opt/lir-cluster /opt/lir-cluster/bin /opt/lir-cluster/lib /opt/lir-cluster/state'
-  rsync -a --delete "$stage/bin/" root@"$address":/opt/lir-cluster/bin/
-  rsync -a --delete "$stage/lib/" root@"$address":/opt/lir-cluster/lib/
+  if [ -z "$config_only" ]; then
+    rsync -a --delete "$stage/bin/" root@"$address":/opt/lir-cluster/bin/
+    rsync -a --delete "$stage/lib/" root@"$address":/opt/lir-cluster/lib/
+  fi
   rsync -a "$stage/cluster.key" root@"$address":/opt/lir-cluster/cluster.key
   rsync -a "$stage/node-$name.yaml" root@"$address":/opt/lir-cluster/node.yaml
   rsync -a "$here/lir-node.service" root@"$address":/etc/systemd/system/lir-node.service

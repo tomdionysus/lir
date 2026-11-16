@@ -44,7 +44,8 @@ reads and writes the board.
 
 
 Anonymous clients on the lab LAN may publish, retain and subscribe under
-`stack/` and `test/`, and read `$lir/` and `$dannan/`. Nothing else.
+`stack/`, `test/` and `louhi/` (Louhi's events, the maintainer, 2026-11-16), and read
+`$lir/` and `$dannan/`. Nothing else.
 
 - `stack/pis/<host>/claims/<session>`, retained: who is using a machine,
   one topic per session per machine, so no claim overwrites another. JSON,
@@ -81,6 +82,8 @@ With an MQTT client: `mosquitto_sub -h 192.0.2.1 -p 1983 -t 'stack/#' -v`.
 ## Running it
 
 `install.sh` (beside this file) installs or upgrades every node from a Linux
-build. On a node, `systemctl status lir-node` and `journalctl -u lir-node`.
+build: `LIR_ONLY=<name>` does one node, for a rolling upgrade, and
+`LIR_CONFIG_ONLY=1` with `-` for the build installs only `node.yaml` (from
+`node.yaml.in`) and restarts. On a node, `systemctl status lir-node` and `journalctl -u lir-node`.
 `$lir/cluster` says how many nodes are joined:
 `curl -sN -m 3 'http://192.0.2.1:8183/subscribe?filter=%24lir/cluster'`.
