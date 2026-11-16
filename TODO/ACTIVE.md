@@ -84,9 +84,10 @@ from a release build of `develop`, then `python3 -I build/cluster-check.py`
    properties on request.
 
 **Watch:** the Dannan TSan finding (a `NodeRecord` map node freed from two
-threads, in `ConnectingOnAnotherNodeTakesTheClientOver`). Dannan is
-reproducing it. When its fix is tagged, repin, and the tsan job should
-then hold green. If a cluster test times out again, it is a new cause:
+threads, in `ConnectingOnAnotherNodeTakesTheClientOver`). Neither side
+reproduced it (Lir: 0 TSan reports in 53 processes). It is open in Dannan's
+plan as unexplained and not suppressed. If the tsan job reports it again,
+send Dannan the new frames. If a cluster test times out again, it is a new cause:
 the join window is closed.
 
 **Waiting on the maintainer:** nothing open.

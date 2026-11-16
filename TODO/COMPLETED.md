@@ -1382,6 +1382,9 @@ which reproduces that bug on a build node. That is 0 TSan reports in 53 processe
 Dannan's own reproduction, `Node.NodesJoinWhileAdvertsChangeAndNothingIsShared`,
 was also clean. It stays open as unexplained, not suppressed. Lir's audit:
 it keeps no NodeRecord across threads. It does pass `routes().call` a
-short-lived record (`cluster.cpp:361`, `446`), so Dannan was asked to
-confirm that `call` copies it before returning.
+short-lived record (`cluster.cpp:361`, `446`). Dannan confirmed it is
+copied before `call` returns (`place_call` takes `std::optional<NodeRecord>`
+by value, `dannan/node.cpp:211`), so it is safe as written. The report is
+open in Dannan's plan as unexplained. If it recurs, send Dannan the new
+frames.
 
