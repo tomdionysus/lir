@@ -15,9 +15,11 @@ the held SUBACK (`82088a2`), and the ledger suppression gone. `tools/ci.sh clien
 `tools/ci.sh lugh` 343 at the 0.8.0 repin. Hosted CI's tsan job now runs
 without the ledger suppression (the Watch below). Nothing unmerged.
 
-**The standing cluster** runs `285c7e1` on Dannan 0.9.0 on all four nodes
-(2026-11-17 21:30Z, rolling, `COMPLETED.md`), majority 4 of 4 since the
-stale louhi-node was retired (`lir-node --retire`, the deploy README). After each node, check
+**The standing cluster** runs `401adde` on Dannan 0.9.1 on all four nodes
+(2026-11-17 22:35Z, rolling, `COMPLETED.md`), majority 4 of 4 since the
+stale louhi-node was retired (`lir-node --retire`, the deploy README).
+uranus dropped off the network at about 22:36Z (no ping, no ssh) and needs
+someone at the machine; the other three hold the majority, 3 of 4. After each node, check
 `GET /retained` on that node as well as `cluster-check.py`: an HTTP failure
 shows only as "unreachable" there. `louhi/#` is open to anonymous clients on all
 four (Tom, 2026-11-16, kept open). A configuration change goes out with
@@ -111,7 +113,14 @@ the ledger suppression is gone. If the NodeRecord report, or any report in
 the explanation is wrong. If a cluster test times out again, it is a new
 cause: the join window is closed.
 
-**Watch: misses of the SUBACK hold on 0.9.0.** With all four nodes on
+**Watch: the SUBACK hold.** On 0.9.1 the probe delivered 20/20 at every
+delay across three nodes with no misses (2026-11-17 22:38Z). One gap
+remains: a peer that connects while a node's start-up push is going out
+keeps the older record, without "lir", until a heartbeat. That times out
+`SlowGossipClusterTest`'s fixture (6 of 30 on saturn). Dannan confirmed it
+and will fix it in 0.9.2: a node pushes its current record to a peer at
+first direct contact. At 0.9.2: repin, and gate with that fixture repeated
+20 times. History, on 0.9.0: With all four nodes on
 0.9.0, peers are still reported missed ("the peer holds an older record of
 this node"). saturn's count rose 6 in a minute, mostly the claim board's
 short-lived `stack/` subscriptions. The probe (`build/suback-probe.py`,
