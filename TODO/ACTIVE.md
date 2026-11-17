@@ -123,6 +123,11 @@ claim board's frequent `/retained` reads make those ties common. Fixed on
 Dannan's `feature/advert-stamp`, to ship as 0.9.1 at Tom's word, with no
 ABI change. At 0.9.1: repin, gate, upgrade the cluster, and rerun the probe
 (expect 20/20 at every delay and no misses). No stopgap in Lir meanwhile.
+The same tie times out `SlowGossipClusterTest`'s fixture: in 3 of 10 runs
+on a loaded saturn, the start-up "lir" push lost to the handshake's stamp
+(`cluster_test.cpp:192`). It passed on jupiter and hosted CI. Gate 0.9.1
+with that fixture repeated 20 times. The upgrade also carries `98861e8`,
+which logs the return to a majority.
 
 **Waiting on Tom:** nothing open.
 
