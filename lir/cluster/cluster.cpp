@@ -95,6 +95,9 @@ struct Cluster::State : std::enable_shared_from_this<Cluster::State> {
   std::map<std::pair<std::string, std::string>, size_t> turn;
   std::map<std::tuple<NodeId, NodeId, std::string>, uint64_t> last_sequence;
   bool interest_pending = false;
+  // Whether the last partition reading was a minority, so the log says when
+  // the majority returns (a node starts on a minority until its peers connect).
+  bool on_minority = false;
   // SUBACKs held on the interest (ClusterHooks::interest_held): a waiter is
   // registered, then, at the next refresh, waits for every push still
   // unanswered then, its own subscriptions' among them.
@@ -645,9 +648,13 @@ void Cluster::start() {
     s->partition_watch_id = s->context.nodes().watch_partition(s->edge.strand(), [weak](dannan::membership::Partition reading) {
       const auto st = weak.lock();
       if (!st || !st->running) return;
+      const auto counts = std::to_string(reading.reachable) + " of " + std::to_string(reading.members) + " nodes reachable";
       if (!reading.majority) {
-        st->logger.warn("on a minority side: " + std::to_string(reading.reachable) + " of " + std::to_string(reading.members) + " nodes reachable");
+        st->logger.warn("on a minority side: " + counts);
+      } else if (st->on_minority) {
+        st->logger.info("on the majority side again: " + counts);
       }
+      st->on_minority = !reading.majority;
       st->edge.broker().partition(std::move(reading));
     });
     s->resync();
