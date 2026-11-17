@@ -1405,3 +1405,24 @@ a stop token on `wait_for_change`, and a deferred Answer giving back its
 place before replying). Gate, corvus-uranus `-j1`: `tools/ci.sh release`
 354 passed, `tools/ci.sh client` clean.
 
+Repinned `0.8.4` to `0.8.5` (ABI kept: `dannan::listen::Backoff`, and a fix
+for a node destroyed after its io stopped hanging in its second stop, which
+Louhi's test node hit). Gate, corvus-jupiter: `tools/ci.sh release` 354
+passed, `tools/ci.sh client` clean. `mosquitto-clients` installed on jupiter
+for the process tests (CMake finds them at configure time).
+
+## 2026-11-16: the SUBACK hold, on a branch until Dannan 0.9.0
+
+`feature/suback-hold` (`f35526d`, local) pins Dannan's develop (`e78b66c`)
+for its advert push. Each new interest prefix is subscribed with
+`Channels::subscribe` with a deadline (`subscribe_deadline`, 1 s), and
+`Link::on_subscribe` holds the SUBACK and its retained messages on the new
+`ClusterHooks::interest_held`. On a miss the SUBACK goes anyway, counted in
+`subscribe_missed` (`$lir/nodes`) and logged. The "lir" advert is pushed too.
+Test `SlowGossipClusterTest.AMessagePublishedElsewhereRightAfterSubackArrives`
+uses a 30 s heartbeat. Before the change, the behaviour it tests failed on
+the standing cluster: 0 of 20 delivered at 0 ms (`build/suback-probe.py`).
+Gate, corvus-jupiter: 355 passed, the new test and the join-window test 20
+of 20. Merge at Dannan 0.9.0: repin the tag on the branch, gate, merge, and
+remove the README's stated limit.
+
