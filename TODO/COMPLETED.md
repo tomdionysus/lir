@@ -1512,3 +1512,13 @@ the network (no ping, no ssh), 3 minutes after its upgrade; the other three
 held the majority, 3/4. The SUBACK probe across the three live nodes
 delivered 20/20 at every delay from 0 to 2000 ms, with no misses counted.
 On 0.9.0 it had lost 1/20 at 50 ms and 1/20 at 250 ms.
+
+## 2026-11-17: Dannan 0.9.2
+
+Repinned `0.9.1` to `0.9.2` (`36d6ded`, ABI 0.9.0's). A node now pushes its
+current record to each peer at first direct contact, which closes the gap
+where a joining peer missed the "lir" advert until a heartbeat. Gate,
+node-b `-j2`: `tools/ci.sh release` 361 passed, none skipped;
+`SlowGossipClusterTest` 20 of 20 (6 of 30 failed on 0.9.1). node-d came back
+by 23:20Z and rejoined on its own: majority 4/4. The standing cluster still
+runs `401adde` on 0.9.1 until it is upgraded.
