@@ -1458,3 +1458,14 @@ the five failed (the refused-filter one passed). Gate, corvus-saturn `-j2`:
 asynchronous code). The SN gateway already took a later SUBACK. The board's
 plugin treats a 4xx as final and does not try the next node; the Lir
 Development Cluster session is taking that to Tom.
+
+## 2026-11-17: the standing cluster on Dannan 0.9.0
+
+A rolling upgrade, with Tom's approval and after Louhi and the Lir
+Development Cluster session were told: uranus, neptune, saturn, then
+jupiter, from saturn's build of `870face` (the same binary on all four).
+After each node: `GET /retained` on it answered 200 in 24 to 32 ms, and
+`cluster-check.py` showed 4 nodes, majority 4/5, retained identical. The
+SUBACK probe went from 0/20 at 0 ms before 0.9.0 to 20/20. The probe also
+lost 1 of 20 at 50 ms and 1 of 20 at 250 ms, with misses logged for every
+peer; ACTIVE.md, Watch.
