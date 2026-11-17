@@ -1486,3 +1486,17 @@ test 5 repeats clean. On the standing cluster, one node at a time: install
 `285c7e1`, stop, retire, start, check. All four read majority 4/4; the same
 binary everywhere (md5 `0dfe87a09dec`); `/retained` 200 in 23 to 31 ms on
 each.
+
+## 2026-11-17: Dannan 0.9.1
+
+Repinned `0.9.0` to `0.9.1` (`7206e53`, ABI 0.9.0's), which fixes the
+advert stamp tie. Gate, node-b `-j2`: `tools/ci.sh release` 361
+passed, none skipped. `SlowGossipClusterTest` still timed out in its fixture:
+17 of 20 in the gate, then 6 of 30 and 6 of 20 on a loaded node-b. A
+diagnostic copy showed the same thing in every failure: the first node holds
+the second's record, active, without its "lir" advert, and the second logged
+no peer missed. The likely cause is a peer joining while the start-up push
+goes out, so it gets a copy from before the advert and nothing newer until a
+heartbeat. Sent to Dannan with two questions. 0.9.0 timed out there too, so
+the repin goes ahead. The standing cluster still runs `285c7e1` on 0.9.0
+until it is upgraded.
