@@ -1500,3 +1500,15 @@ goes out, so it gets a copy from before the advert and nothing newer until a
 heartbeat. Sent to Dannan with two questions. 0.9.0 timed out there too, so
 the repin goes ahead. The standing cluster still runs `285c7e1` on 0.9.0
 until it is upgraded.
+
+## 2026-11-17: the standing cluster on Dannan 0.9.1
+
+Rolling, with the maintainer's approval, from node-b's gate build of `401adde`:
+node-d, node-c, node-b, then node-a. After each node, `/retained` answered
+200 and the cluster was whole, majority 4/4 (md5 `c5dc83632a0d` on all
+four). Each node's start-up minority warning is now followed in the same
+second by "on the majority side again". At about 22:36Z node-d dropped off
+the network (no ping, no ssh), 3 minutes after its upgrade; the other three
+held the majority, 3/4. The SUBACK probe across the three live nodes
+delivered 20/20 at every delay from 0 to 2000 ms, with no misses counted.
+On 0.9.0 it had lost 1/20 at 50 ms and 1/20 at 250 ms.
