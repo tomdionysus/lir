@@ -323,10 +323,13 @@ class Exchange final : public ExchangeBase, public std::enable_shared_from_this<
     mqtt::Subscribe s{1, {}, {}};
     for (const auto& f : filters->second) s.subscriptions.push_back(mqtt::Subscription{f, mqtt::QoS::at_most_once});
     _link->receive(mqtt::encode(s, Version::v5));
-    if (!_suback) {
-      end_client();
-      return respond(400, json_error("the subscription was refused"));
-    }
+    await_suback();
+  }
+
+  // The SUBACK's turn is over: what came before it and the retained
+  // messages after it are pending, in order, and the stream begins.
+  void start_stream() {
+    if (_done || _ending || _streaming || !_suback) return;
     for (const uint8_t code : _suback->reasons) {
       if (code >= 0x80) {
         _pending.clear();
@@ -342,9 +345,12 @@ class Exchange final : public ExchangeBase, public std::enable_shared_from_this<
     watch_close();
   }
 
-  // A snapshot of the retained messages the filters match. The broker sends a
-  // subscription's retained messages inside the SUBSCRIBE, on this strand,
-  // so what arrives during it is exactly the snapshot and nothing live.
+  // A snapshot of the retained messages the filters match. The broker sends
+  // a subscription's retained messages right after its SUBACK, in the same
+  // turn on this strand. On a cluster node the SUBACK waits until the other
+  // nodes hold the subscription (broker.h, ClusterHooks::interest_held), so
+  // the answer waits for it. Live messages may come first (MQTT 5.0, 3.8.4),
+  // but none carries the retain flag, so none is in the answer.
   void retained(const bhttp::request<bhttp::string_body>& request, const Target& target) {
     const auto filters = target.query.find("filter");
     if (filters == target.query.end() || filters->second.empty()) return respond(400, json_error("at least one filter is required"));
@@ -356,7 +362,19 @@ class Exchange final : public ExchangeBase, public std::enable_shared_from_this<
       end_client();
       return respond(status_for(*refused), json_error("refused", refused));
     }
-    got.clear();
+    // Everything after the CONNACK is the snapshot's. The answer goes once the
+    // SUBACK's turn is over, so the retained messages after it are in.
+    _client->on_packet = [weak = this->weak_from_this(), executor = _stream->get_executor()](mqtt::Packet p) {
+      const auto self = weak.lock();
+      if (!self) return;
+      const bool acknowledged = std::holds_alternative<mqtt::Suback>(p);
+      self->_snapshot.push_back(std::move(p));
+      if (acknowledged) {
+        asio::post(executor, [weak] {
+          if (const auto s = weak.lock()) s->answer_retained();
+        });
+      }
+    };
     mqtt::Subscribe s{1, {}, {}};
     for (const auto& f : filters->second) s.subscriptions.push_back(mqtt::Subscription{f, mqtt::QoS::at_most_once});
     try {
@@ -365,11 +383,14 @@ class Exchange final : public ExchangeBase, public std::enable_shared_from_this<
       end_client();
       return respond(400, json_error(e.what()));
     }
+    await_suback();
+  }
+
+  void answer_retained() {
+    if (_done || _ending) return;
     std::string body = "[";
-    bool acknowledged = false;
-    for (const auto& packet : got) {
+    for (const auto& packet : _snapshot) {
       if (const auto* ack = std::get_if<mqtt::Suback>(&packet)) {
-        acknowledged = true;
         for (const uint8_t code : ack->reasons) {
           if (code >= 0x80) {
             end_client();
@@ -386,13 +407,30 @@ class Exchange final : public ExchangeBase, public std::enable_shared_from_this<
       }
     }
     end_client();
-    if (!acknowledged) return respond(400, json_error("the subscription was refused"));
     respond(200, body + "]");
+  }
+
+  // The SUBACK is awaited for at most `read_timeout`. On a cluster node it
+  // comes within the cluster's own deadline, missed peers or not, so this
+  // bound is only for a broker that never answers. The wait holds the
+  // exchange, which nothing else holds until the answer or the stream
+  // begins; either cancels it.
+  void await_suback() {
+    _timer.expires_after(_config.read_timeout);
+    _timer.async_wait([self = this->shared_from_this()](const boost::system::error_code& ec) {
+      if (ec || self->_done || self->_ending || self->_streaming) return;
+      self->_pending.clear();
+      self->end_client();
+      self->respond(503, json_error("the subscription was not acknowledged in time"));
+    });
   }
 
   void on_stream_packet(mqtt::Packet packet) {
     if (auto* ack = std::get_if<mqtt::Suback>(&packet)) {
       _suback = std::move(*ack);
+      asio::post(_stream->get_executor(), [weak = this->weak_from_this()] {
+        if (const auto self = weak.lock()) self->start_stream();
+      });
     } else if (const auto* p = std::get_if<mqtt::Publish>(&packet)) {
       auto event = sse_event(*p);
       if (_streaming) {
@@ -461,6 +499,7 @@ class Exchange final : public ExchangeBase, public std::enable_shared_from_this<
   std::shared_ptr<VirtualClient> _client;
   std::shared_ptr<broker::Link> _link;
   std::optional<mqtt::Suback> _suback;
+  std::vector<mqtt::Packet> _snapshot;
   std::vector<std::string> _pending;
   std::array<uint8_t, 512> _scratch{};
   bool _streaming = false;

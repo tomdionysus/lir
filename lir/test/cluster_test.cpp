@@ -14,6 +14,9 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
+#include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/write.hpp>
 #include <fstream>
 #include <future>
 #include <memory>
@@ -24,6 +27,7 @@
 #include "dannan/node.h"
 #include "dannan/test/fixtures/temp_dir.h"
 #include "lir/client/client.h"
+#include "lir/http/http.h"
 #include "lir/system/ledger.h"
 #include "lir/system/system.h"
 #include "lir/test/fixtures/mqtt_client.h"
@@ -208,6 +212,43 @@ TEST_F(SlowGossipClusterTest, AMessagePublishedElsewhereRightAfterSubackArrives)
   ASSERT_TRUE(got);
   EXPECT_EQ(text(*got), "here");
   EXPECT_EQ(b->on_broker<uint64_t>([](broker::Broker& broker) { return broker.stats().subscribe_missed; }), 0u);
+}
+
+// A plain GET over loopback: the whole response, read until the server
+// closes.
+std::string http_get(uint16_t port, const std::string& target) {
+  boost::asio::io_context io;
+  boost::asio::ip::tcp::socket socket(io);
+  socket.connect({boost::asio::ip::make_address("127.0.0.1"), port});
+  const std::string request = "GET " + target + " HTTP/1.1\r\nHost: lir\r\nConnection: close\r\n\r\n";
+  boost::asio::write(socket, boost::asio::buffer(request));
+  std::string out;
+  std::array<char, 4096> buffer{};
+  boost::system::error_code ec;
+  while (!ec) out.append(buffer.data(), socket.read_some(boost::asio::buffer(buffer), ec));
+  return out;
+}
+
+// The claim board reads GET /retained on any node. On a cluster node the
+// SUBACK inside it is held until the other nodes hold the subscription, so
+// the answer waits for it. Found on the standing cluster, 2026-11-17: an
+// upgraded node answered 400 to every read.
+TEST_F(ClusterTest, HttpRetainedAnswersOnAClusterNode) {
+  MqttClient pub(a->port());
+  pub.connect("pub");
+  pub.publish("stack/pis/x", "claimed", QoS::at_least_once, true);
+  ASSERT_TRUE(eventually([&] { return b->retained() == 1; }));
+  http::HttpConfig config;
+  config.listen_host = "127.0.0.1";
+  config.port = 0;
+  http::HttpServer server(io.context, *b->edge, config, b->node->context().logger("http"));
+  server.start();
+  const auto first = http_get(server.port(), "/retained?filter=stack/%23");
+  const auto again = http_get(server.port(), "/retained?filter=stack/%23");
+  server.stop();
+  EXPECT_TRUE(first.starts_with("HTTP/1.1 200")) << first;
+  EXPECT_NE(first.find("\"topic\":\"stack/pis/x\",\"qos\":0,\"retain\":true,\"payload\":\"claimed\""), std::string::npos) << first;
+  EXPECT_TRUE(again.starts_with("HTTP/1.1 200")) << again;
 }
 
 TEST_F(ClusterTest, QoS1PublishReachesASubscriberOnAnotherNode) {

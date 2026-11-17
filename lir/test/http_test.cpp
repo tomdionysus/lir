@@ -10,10 +10,13 @@
 #include <gtest/gtest.h>
 #include <poll.h>
 
+#include <atomic>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/read.hpp>
 #include <boost/asio/ssl.hpp>
+#include <boost/asio/steady_timer.hpp>
 #include <boost/asio/write.hpp>
+#include <memory>
 #include <mutex>
 
 #include "dannan/test/fixtures/child_process.h"
@@ -231,6 +234,65 @@ TEST_F(HttpTest, RetainedOfNothingIsAnEmptyArray) {
   const auto response = request(http.port(), "GET", "/retained?filter=nobody/%23");
   ASSERT_TRUE(response.starts_with("HTTP/1.1 200")) << response;
   EXPECT_TRUE(response.ends_with("\r\n\r\n[]")) << response;
+}
+
+// On a cluster node the broker holds a SUBACK until the other nodes hold
+// the subscription (ClusterHooks::interest_held), so it comes in a later
+// turn, after the SUBSCRIBE has returned. Here every SUBACK is held 100 ms
+// and reports one peer missed, as a node beside an older one would.
+class HttpHeldSubackTest : public HttpTest {
+ protected:
+  HttpHeldSubackTest() {
+    edge.call<bool>([this](broker::Broker& b) {
+      broker::ClusterHooks hooks;
+      hooks.interest_held = [this](std::function<void(size_t)> held) {
+        ++holds;
+        auto timer = std::make_shared<boost::asio::steady_timer>(edge.strand(), 100ms);
+        timer->async_wait([timer, held = std::move(held)](const boost::system::error_code&) { held(1); });
+      };
+      b.attach(std::move(hooks));
+      return true;
+    });
+  }
+  std::atomic<int> holds{0};
+};
+
+TEST_F(HttpHeldSubackTest, RetainedWaitsForTheSuback) {
+  MqttClient pub(edge.port());
+  pub.connect("pub");
+  pub.publish("stack/pis/a", "1", QoS::at_least_once, true);
+  pub.publish("stack/pis/b", "2", QoS::at_least_once, true);
+  const auto response = request(http.port(), "GET", "/retained?filter=stack/%23");
+  ASSERT_TRUE(response.starts_with("HTTP/1.1 200")) << response;
+  EXPECT_NE(response.find("{\"topic\":\"stack/pis/a\",\"qos\":0,\"retain\":true,\"payload\":\"1\"}"), std::string::npos) << response;
+  EXPECT_NE(response.find("{\"topic\":\"stack/pis/b\",\"qos\":0,\"retain\":true,\"payload\":\"2\"}"), std::string::npos) << response;
+  EXPECT_GE(holds.load(), 1);
+  EXPECT_TRUE(test::eventually([&] { return edge.call<size_t>([](broker::Broker& br) { return br.connections(); }) == 1; }, 3s));
+}
+
+TEST_F(HttpHeldSubackTest, RetainedOfNothingIsStillAnEmptyArray) {
+  const auto response = request(http.port(), "GET", "/retained?filter=nobody/%23");
+  ASSERT_TRUE(response.starts_with("HTTP/1.1 200")) << response;
+  EXPECT_TRUE(response.ends_with("\r\n\r\n[]")) << response;
+}
+
+TEST_F(HttpHeldSubackTest, ARefusedFilterIsStillRefused) {
+  EXPECT_TRUE(request(http.port(), "GET", "/retained?filter=a/%23/b").starts_with("HTTP/1.1 400"));
+  EXPECT_TRUE(request(http.port(), "GET", "/subscribe?filter=a/%23/b").starts_with("HTTP/1.1 400"));
+}
+
+TEST_F(HttpHeldSubackTest, AStreamWaitsForTheSubackThenGetsRetainedThenLive) {
+  MqttClient pub(edge.port());
+  pub.connect("pub");
+  pub.publish("room/0/temp", "19", QoS::at_least_once, true);
+  HttpClient stream(http.port());
+  stream.send("GET", "/subscribe?filter=room/+/temp");
+  auto seen = stream.read_until("\"payload\":\"19\"");
+  EXPECT_TRUE(seen.starts_with("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream")) << seen;
+  EXPECT_NE(seen.find("\"retain\":true"), std::string::npos) << seen;
+  pub.publish("room/1/temp", "21.5", QoS::at_least_once);
+  seen = stream.read_until("\"payload\":\"21.5\"");
+  EXPECT_NE(seen.find("\"retain\":false,\"payload\":\"21.5\""), std::string::npos) << seen;
 }
 
 TEST_F(HttpTest, RetainedLeavesNoClientBehind) {
