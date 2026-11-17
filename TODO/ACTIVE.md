@@ -124,8 +124,12 @@ ABI change. At 0.9.1: repin, gate, upgrade the cluster, and rerun the probe
 (expect 20/20 at every delay and no misses). No stopgap in Lir meanwhile.
 The same tie times out `SlowGossipClusterTest`'s fixture: in 3 of 10 runs
 on a loaded node-b, the start-up "lir" push lost to the handshake's stamp
-(`cluster_test.cpp:192`). It passed on node-a and hosted CI. Gate 0.9.1
-with that fixture repeated 20 times. The upgrade also carries `98861e8`,
+(`cluster_test.cpp:192`). On hosted CI it failed 3 of 4 runs on
+2026-11-17: 44177572057 tsan, 44178256902 asan arm64, 44178722443 release
+arm64. None was a sanitizer report. Until 0.9.1 a red hosted run with only
+that failure is this tie. On Dannan's fix (`34356c3`, node-b, idle) the
+fixture passed 20 of 20, against 19 of 20 on 0.9.0, and the suite 361 of
+361. Gate 0.9.1 with that fixture repeated 20 times. The upgrade also carries `98861e8`,
 which logs the return to a majority.
 
 **Waiting on the maintainer:** nothing open.
