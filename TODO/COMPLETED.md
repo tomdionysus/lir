@@ -1439,3 +1439,21 @@ No Lir call site reads `CallOutcome::peer`, whose type changed in 0.9.0.
 Gate, node-a `-j2`: `tools/ci.sh release` 355 passed, none skipped.
 Merged into `develop`. The standing cluster still runs `7db72d1` (0.8.x)
 until it is upgraded.
+
+## 2026-11-17: HTTP waits for the held SUBACK
+
+Found when upgrading the standing cluster: node-d, the first node on the new
+build, answered 400 ("the subscription was refused") to every GET /retained
+from about 20:35 to 20:42Z. `cluster-check.py` showed it unreachable, and
+node-d's standby claim-board scheduler logged one failed round. node-d was
+rolled back to the old build (node-a's installed bin and lib) and the
+upgrade stopped. Cause: `/retained` and `/subscribe` in `lir/http/http.cpp`
+read the SUBACK inside the SUBSCRIBE, and a cluster node now sends it later.
+Both now wait for it, bounded by `read_timeout` (503); the wait holds the
+exchange. Tests: `HttpHeldSubackTest` (four; every SUBACK held 100 ms and
+one peer reported missed, as beside a 0.8.5 node) and
+`ClusterTest.HttpRetainedAnswersOnAClusterNode`. On the old code four of
+the five failed (the refused-filter one passed). Gate, node-b `-j2`:
+360 passed, none skipped; the HTTP tests 10 repeats clean (new
+asynchronous code). The SN gateway already took a later SUBACK. The board's
+plugin treats a 4xx as final and does not try the next node; the coordinating session is taking that to the maintainer.
