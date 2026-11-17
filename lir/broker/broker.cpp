@@ -506,8 +506,25 @@ void Link::on_subscribe(const mqtt::Subscribe& subscribe) {
     if (!v5() && code >= 0x80) code = 0x80;
     ack.reasons.push_back(code);
   }
-  send(ack);
-  for (const auto& [filter, options] : retained_for) broker.send_retained(session, filter, options);
+  const bool subscribed = std::any_of(ack.reasons.begin(), ack.reasons.end(), [](uint8_t code) { return code < 0x80; });
+  if (!subscribed || !broker._hooks.interest_held) {
+    send(ack);
+    for (const auto& [filter, options] : retained_for) broker.send_retained(session, filter, options);
+    return;
+  }
+  // Held until the other nodes hold the interest. Matching PUBLISHes may
+  // go first (MQTT 5.0, 3.8.4); the retained ones follow the SUBACK.
+  std::weak_ptr<Link> weak = shared_from_this();
+  broker._hooks.interest_held([weak, ack = std::move(ack), retained_for = std::move(retained_for)](size_t missed) {
+    const auto self = weak.lock();
+    if (!self || self->_state != State::connected) return;
+    auto& b = self->_broker;
+    b._stats.subscribe_missed += missed;
+    const auto it = b._sessions.find(self->_client_id);
+    if (it == b._sessions.end() || it->second->link != self.get()) return;
+    self->send(ack);
+    for (const auto& [filter, options] : retained_for) b.send_retained(*it->second, filter, options);
+  });
 }
 
 void Link::on_unsubscribe(const mqtt::Unsubscribe& unsubscribe) {

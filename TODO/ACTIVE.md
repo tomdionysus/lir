@@ -1,6 +1,6 @@
 # Lir - Active Work
 
-Last updated: 2026-11-15. `COMPLETED.md` is the record, with the gate counts
+Last updated: 2026-11-17. `COMPLETED.md` is the record, with the gate counts
 and the detail this file no longer carries ("Archived from ACTIVE.md",
 2026-11-14 and 2026-11-15).
 
@@ -8,14 +8,12 @@ and the detail this file no longer carries ("Archived from ACTIVE.md",
 
 **State.** `develop` at the record commit after `7db72d1`, pushed; the
 repository is public, and Lir commits and pushes on its own (Tom,
-2026-11-15). Dannan pinned at `0.8.5`, Lugh at `dbb0573` (plugin only).
-Last gate, corvus-saturn: `lir_tests` release 354 passed, with the fuzz
-targets merged and the cluster's join window fixed. `tools/ci.sh client`
-clean on uranus at `7db72d1`. `tools/ci.sh lugh` 343 at the 0.8.0 repin.
-Hosted CI: intermittent failures since `e81e675`. Two were Lir's join window,
-now fixed. One is a TSan finding in Dannan (`COMPLETED.md`, 2026-11-15, "the
-cluster's join window"), with Dannan and left unsuppressed, so the tsan job
-may still fail on it. Nothing unmerged.
+2026-11-15). Dannan pinned at `0.9.0`, Lugh at `dbb0573` (plugin only).
+Last gate, corvus-jupiter, 2026-11-17: `tools/ci.sh release` 355 passed,
+none skipped, on Dannan 0.9.0 with the SUBACK hold merged and the ledger
+suppression gone. `tools/ci.sh client` clean on uranus at `7db72d1`.
+`tools/ci.sh lugh` 343 at the 0.8.0 repin. Hosted CI's tsan job now runs
+without the ledger suppression (the Watch below). Nothing unmerged.
 
 **The standing cluster** runs `7db72d1` on all four nodes (2026-11-15
 22:33Z, `COMPLETED.md`). `louhi/#` is open to anonymous clients on all
@@ -55,15 +53,8 @@ from a release build of `develop`, then `python3 -I build/cluster-check.py`
    (`OnDagda.SeqNeverRepeatsAcrossARestart` first) come with the tag.
    Ship nothing before contract v2 freezes at slice 4. Use the named
    acknowledgement levels.
-3. **At Dannan 0.9.0:** repin; the MQTT-SN DTLS gateway
-   (`lir/sn/gateway.cpp`) onto `DatagramListener`, then delete
-   `edge::server_context` and `verified_certificate(SSL*)`; remove the TSan
-   suppression of `RetainedMemoryLedger::release`
-   (`lir/test/tsan-suppressions.txt`). Merge `feature/suback-hold`
-   (`f35526d`, local, built and gated on Dannan's develop: `COMPLETED.md`,
-   2026-11-16): set its pin to the 0.9.0 tag, gate, merge, and remove the
-   README's stated limit on the window after SUBACK. Then, with agreement
-   there:
+3. **On Dannan 0.9.0** (repinned 2026-11-17; the SUBACK hold merged, the
+   ledger suppression gone, `COMPLETED.md`). With agreement there:
    - **Guarded publish** for the claim board (its 0.5.0 or later;
      `../lir-develop-cluster/TODO/2026-11-15-claim-board-0.4.0.md`, part 1):
      agreed trees, a node setting (the board needs `stack/pis/#` only),
@@ -76,13 +67,21 @@ from a release build of `develop`, then `python3 -I build/cluster-check.py`
      Dannan's design (`../dannan/TODO/2026-11-15-hlc-design.md`); adopting
      it needs Tom to reopen the 2026-11-04 ordering decision. Recommend it:
      the later write wins after a heal, and expiry gets an absolute time.
-4. **At Lugh's first release:** repin the plugin (`tools/ci.sh lugh`). The
+     It is `Context::hlc()` in 0.9.0. On a node without key custody, its
+     ceiling is a plain durable file, so restoring an old state directory
+     on its own is not refused. The contract states that limit, and 0.10.0's
+     peer-witnessed high-water mark covers it (Tom, 2026-11-17, on Lir's
+     answer).
+4. **At Dannan 0.10.0:** move the MQTT-SN DTLS gateway
+   (`lir/sn/gateway.cpp`) onto `DatagramListener`, which isn't in 0.9.0.
+   Then delete `edge::server_context` and `verified_certificate(SSL*)`.
+5. **At Lugh's first release:** repin the plugin (`tools/ci.sh lugh`). The
    hosted `lugh` job uses the secret `LUGH_READ_TOKEN`. Lugh after `2d75176`
    pins Dannan 0.8.5, the same as Lir, and `lugh_client`'s interface hasn't
    changed (Lugh, 2026-11-16). Since `2d75176`, Lugh percent-encodes a scope
    level that holds '"' or '\'. Lir's usual topics never contain either.
-5. **MQTT-SN 2.0** when OASIS approves a Committee Specification.
-6. **lir::client** users: Louhi (step 8), Lugh's principal-events publisher
+6. **MQTT-SN 2.0** when OASIS approves a Committee Specification.
+7. **lir::client** users: Louhi (step 8), Lugh's principal-events publisher
    and Mimir's Lugh plugin pin `6b23268` or later. QoS 2, aliases and user
    properties on request.
 
@@ -103,11 +102,11 @@ neptune, Lir `5f68295` on Dannan 0.8.5:
   `build/ci-logs/neptune-asan-ledger-uaf.log`.
 - TSan, with `print_suppressions`: none of 30 runs reported anything, and
   the ledger suppression never matched.
-Dannan's fix is on its develop branch (`79dfa2e`). Tom, 2026-11-16: wait
-for the 0.9.0 tag rather than pin develop. Until then, the tsan job may fail
-on it. If the NodeRecord report ever appears on a Dannan build that has the
-fix, tell Dannan at once: it would mean the explanation is wrong. If a cluster test times out again, it is a new cause:
-the join window is closed.
+Dannan's fix (`79dfa2e`) is in 0.9.0, which Lir pins since 2026-11-17, and
+the ledger suppression is gone. If the NodeRecord report, or any report in
+`RetainedMemoryLedger`, appears again, tell Dannan at once: it would mean
+the explanation is wrong. If a cluster test times out again, it is a new
+cause: the join window is closed.
 
 **Waiting on Tom:** nothing open.
 
@@ -296,11 +295,10 @@ Not reopened without asking Tom.
   in about 11 ms. Not yet measured: the notify channel's cost per space.
   Dagda's record: its `TODO/2026-11-13-three-systems-design.md`, "What
   slice 0 has measured (the Pi)".
-- **Dannan:** `0.9.0`: the agreement primitive (Tom: anything that can
-  use agreement waits for it), the hybrid logical clock (Lir reviewed its
-  design; adopting it for retained ordering needs Tom to reopen
-  2026-11-04), the DatagramListener for the MQTT-SN DTLS gateway, and the
-  ledger Lease fix that lets the TSan suppression go; the small-message
-  bench.
+- **Dannan:** `0.10.0`: the DatagramListener for the MQTT-SN DTLS gateway;
+  the peer-witnessed high-water mark (the clock's restore case). Also the
+  small-message bench. Agreement and the hybrid clock are in 0.9.0. Lir's
+  use of each waits on Tom: the guarded-publish design for agreement, and
+  reopening 2026-11-04 for the clock.
 - **Lugh:** its first release, for the plugin's repin.
 - **OASIS:** an approved MQTT-SN 2.0 Committee Specification.
