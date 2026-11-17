@@ -9,9 +9,9 @@ and the detail this file no longer carries ("Archived from ACTIVE.md",
 **State.** `develop` at the record commit after `7db72d1`, pushed; the
 repository is public, and Lir commits and pushes on its own (Tom,
 2026-11-15). Dannan pinned at `0.9.0`, Lugh at `dbb0573` (plugin only).
-Last gate, corvus-jupiter, 2026-11-17: `tools/ci.sh release` 355 passed,
-none skipped, on Dannan 0.9.0 with the SUBACK hold merged and the ledger
-suppression gone. `tools/ci.sh client` clean on uranus at `7db72d1`.
+Last gate, corvus-saturn, 2026-11-17: `lir_tests` release 360 passed,
+none skipped, on Dannan 0.9.0 with the SUBACK hold merged, HTTP waiting for
+the held SUBACK (`82088a2`), and the ledger suppression gone. `tools/ci.sh client` clean on uranus at `7db72d1`.
 `tools/ci.sh lugh` 343 at the 0.8.0 repin. Hosted CI's tsan job now runs
 without the ledger suppression (the Watch below). Nothing unmerged.
 
