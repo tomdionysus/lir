@@ -1467,3 +1467,22 @@ After each node: `GET /retained` on it answered 200 in 24 to 32 ms, and
 SUBACK probe went from 0/20 at 0 ms before 0.9.0 to 20/20. The probe also
 lost 1 of 20 at 50 ms and 1 of 20 at 250 ms, with misses logged for every
 peer; ACTIVE.md, Watch.
+
+## 2026-11-17: lir-node --retire, and the stale member retired
+
+Every node counted a fifth member in Dannan's agreed roster, 8e23d6f7, so
+the majority read 4 of 5. It was the louhi-node Louhi ran from node-c at
+01:34Z on 2026-11-16: node-a, node-b and node-c rewrote their roster at
+01:33:51 to 01:33:57Z that night. Louhi confirmed it is gone for good.
+The maintainer chose a retire command. `lir-node --retire NODE_ID` opens a stopped
+node's state, calls `Nodes::retire`, prints the outcome and stops; the
+state lock refuses it while the node runs (`tools/lir_node.cpp`). Test:
+`ProcessRetire.ARetiredNodeLeavesTheAgreedRosterForGood`. Also fixed the
+test client to keep a PUBLISH that comes before its SUBACK
+(`ClusterTest.ClientEventsReachEveryNode` failed on hosted TSan, run
+44174274779, after the hold made that order real). Gate, node-b
+`-j2`: 361 passed, none skipped; the new process test and the client-events
+test 5 repeats clean. On the standing cluster, one node at a time: install
+`285c7e1`, stop, retire, start, check. All four read majority 4/4; the same
+binary everywhere (md5 `0dfe87a09dec`); `/retained` 200 in 23 to 31 ms on
+each.

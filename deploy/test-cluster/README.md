@@ -87,3 +87,21 @@ build: `LIR_ONLY=<name>` does one node, for a rolling upgrade, and
 `node.yaml.in`) and restarts. On a node, `systemctl status lir-node` and `journalctl -u lir-node`.
 `$lir/cluster` says how many nodes are joined:
 `curl -sN -m 3 'http://192.0.2.1:8183/subscribe?filter=%24lir/cluster'`.
+After each node of an upgrade, check `GET /retained` on that node itself as
+well as the cluster.
+
+Each node's `$lir/nodes/<id>` gives its partition reading: the members of
+Dannan's agreed roster, how many are reachable, and the ids it cannot reach.
+A node that has joined stays a member until an operator retires it, even
+after it has gone for good. To retire one, on each node in turn:
+
+```
+systemctl stop lir-node
+cd /opt/lir-cluster
+sudo -u lir env LD_LIBRARY_PATH=/opt/lir-cluster/lib bin/lir-node --config node.yaml --retire <node id>
+systemctl start lir-node
+```
+
+The command prints `{"event":"retire","id":"...","retired":true}`, or
+`false` when the node was not a member, and is refused while the node runs.
+A retired node that joins again is a member again.
