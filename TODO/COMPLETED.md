@@ -1457,3 +1457,13 @@ the five failed (the refused-filter one passed). Gate, node-b `-j2`:
 360 passed, none skipped; the HTTP tests 10 repeats clean (new
 asynchronous code). The SN gateway already took a later SUBACK. The board's
 plugin treats a 4xx as final and does not try the next node; the coordinating session is taking that to the maintainer.
+
+## 2026-11-17: the standing cluster on Dannan 0.9.0
+
+A rolling upgrade, with the maintainer's approval and after Louhi and the coordinating session were told: node-d, node-c, node-b, then
+node-a, from node-b's build of `870face` (the same binary on all four).
+After each node: `GET /retained` on it answered 200 in 24 to 32 ms, and
+`cluster-check.py` showed 4 nodes, majority 4/5, retained identical. The
+SUBACK probe went from 0/20 at 0 ms before 0.9.0 to 20/20. The probe also
+lost 1 of 20 at 50 ms and 1 of 20 at 250 ms, with misses logged for every
+peer; ACTIVE.md, Watch.

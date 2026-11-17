@@ -15,8 +15,10 @@ the held SUBACK (`82088a2`), and the ledger suppression gone. `tools/ci.sh clien
 `tools/ci.sh lugh` 343 at the 0.8.0 repin. Hosted CI's tsan job now runs
 without the ledger suppression (the Watch below). Nothing unmerged.
 
-**The standing cluster** runs `7db72d1` on all four nodes (2026-11-15
-22:33Z, `COMPLETED.md`). `louhi/#` is open to anonymous clients on all
+**The standing cluster** runs `870face` on Dannan 0.9.0 on all four nodes
+(2026-11-17 20:58Z, rolling, `COMPLETED.md`). After each node, check
+`GET /retained` on that node as well as `cluster-check.py`: an HTTP failure
+shows only as "unreachable" there. `louhi/#` is open to anonymous clients on all
 four (the maintainer, 2026-11-16, kept open). A configuration change goes out with
 `LIR_CONFIG_ONLY=1 LIR_ONLY=<name> sh deploy/test-cluster/install.sh - <the four NAME=ADDRESS>`. To upgrade it, tell Louhi and the coordinating session first, then one node at a time, node-a (the acting
 scheduler) last:
@@ -106,6 +108,16 @@ the ledger suppression is gone. If the NodeRecord report, or any report in
 `RetainedMemoryLedger`, appears again, tell Dannan at once: it would mean
 the explanation is wrong. If a cluster test times out again, it is a new
 cause: the join window is closed.
+
+**Watch: misses of the SUBACK hold on 0.9.0.** With all four nodes on
+0.9.0, peers are still reported missed ("the peer holds an older record of
+this node"). node-b's count rose 6 in a minute, mostly the claim board's
+short-lived `stack/` subscriptions. The probe (`build/suback-probe.py`,
+2026-11-17 20:58Z) delivered 20/20 at 0 ms, but 19/20 at 50 ms and 19/20 at
+250 ms. Sent to Dannan with the logs, with two questions: is "older record"
+expected while the node's own record changes during the push, and should
+Lir keep a prefix advertised for a while after its last subscription goes,
+to stop the churn? Nothing is changed until Dannan answers.
 
 **Waiting on the maintainer:** nothing open.
 
