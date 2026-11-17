@@ -8,7 +8,7 @@ and the detail this file no longer carries ("Archived from ACTIVE.md",
 
 **State.** `develop` at the record commit after `7db72d1`, pushed; the
 repository is public, and Lir commits and pushes on its own (Tom,
-2026-11-15). Dannan pinned at `0.9.1`, Lugh at `dbb0573` (plugin only).
+2026-11-15). Dannan pinned at `0.9.2`, Lugh at `dbb0573` (plugin only).
 Last gate, corvus-saturn, 2026-11-17: `lir_tests` release 360 passed,
 none skipped, on Dannan 0.9.0 with the SUBACK hold merged, HTTP waiting for
 the held SUBACK (`82088a2`), and the ledger suppression gone. `tools/ci.sh client` clean on uranus at `7db72d1`.
@@ -113,7 +113,9 @@ the ledger suppression is gone. If the NodeRecord report, or any report in
 the explanation is wrong. If a cluster test times out again, it is a new
 cause: the join window is closed.
 
-**Watch: the SUBACK hold.** On 0.9.1 the probe delivered 20/20 at every
+**Watch: the SUBACK hold.** Dannan 0.9.2 closes the join gap below (gate,
+saturn, 2026-11-17: `SlowGossipClusterTest` 20 of 20, the suite 361). Watch
+hosted CI for that fixture timing out again. On 0.9.1 the probe delivered 20/20 at every
 delay across three nodes with no misses (2026-11-17 22:38Z). One gap
 remains: a peer that connects while a node's start-up push is going out
 keeps the older record, without "lir", until a heartbeat. That times out
