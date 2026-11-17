@@ -44,6 +44,15 @@
 // 512 MiB of held messages before the node gives way (QoS 0 shed at 80%,
 // QoS 1/2 refused at 90%, new clients refused at 100%).
 //   lir-node --version
+//   lir-node --key FILE --state DIR --retire NODE_ID...
+//
+// --retire is an operator's word that a node has left the cluster for good
+// (the maintainer, 2026-11-17): Dannan takes it out of this node's agreed roster
+// (Nodes::retire), so the partition reading no longer counts it. It runs
+// with this node stopped, since it opens the node's state, and is refused
+// while the node runs (the state lock). Run it on each node in turn. It
+// prints one line a node, {"event":"retire","id":"...","retired":true}, false
+// when the node was not a member.
 //
 // Clients are refused unless --allow-anonymous is given (design, section
 // 1), or, in a lir-node built with the Lugh plugin (LIR_BUILD_LUGH) and
@@ -71,6 +80,7 @@
 #include <vector>
 
 #include "dannan/config/config.h"
+#include "dannan/identity/node_id.h"
 #include "dannan/node.h"
 #include "lir/auth/scopes.h"
 #include "lir/auth/tokens.h"
@@ -115,6 +125,8 @@ struct Options {
   dannan::status::LogLevel log_level = dannan::status::LogLevel::info;
   dannan::status::LogFormat log_format = dannan::status::LogFormat::text;
   bool version = false;
+  // --retire: the nodes to take out of the agreed roster; then stop.
+  std::vector<dannan::identity::NodeId> retire;
   size_t session_standbys = 1;
   // Balancing at CONNECT: over the average by this fraction; negative never.
   double rebalance_over = 0.2;
@@ -190,6 +202,7 @@ dannan::config::Reader reader() {
     out.settings.push_back({std::move(key), kind, std::move(flag), std::move(variable), std::move(what)});
   };
   add("command.version", Kind::toggle, "--version", "print the version and stop");
+  add("command.retire", Kind::list, "--retire", "a node id to take out of the agreed roster, with this node stopped; then stop");
   add("cluster.key", Kind::value, "--key", "the cluster key file");
   add("cluster.bootstrap", Kind::list, "--bootstrap", "HOST:PORT");
   add("cluster.session_standbys", Kind::value, "--session-standbys", "a count, 0 to 16");
@@ -266,6 +279,11 @@ Options parse(int argc, char** argv) {
     const auto value = settings.number(key, 1, 86400000);
     return value ? std::chrono::milliseconds(*value) : otherwise;
   };
+  for (const auto& text : settings.list("command.retire")) {
+    const auto id = dannan::identity::NodeId::parse(text);
+    if (!id) throw settings.refuse("command.retire", "a node id, 32 hex digits");
+    out.retire.push_back(*id);
+  }
   out.key = settings.path_of("cluster.key").value_or("");
   for (const auto& seed : settings.list("cluster.bootstrap")) out.bootstrap.push_back(endpoint(seed));
   out.session_standbys = settings.number("cluster.session_standbys", 0, 16).value_or(out.session_standbys);
@@ -365,6 +383,28 @@ std::string status_json(lir::edge::Edge& edge) {
   return out.str();
 }
 
+// --retire: opens the node's state without starting it, retires each node,
+// and stops. 0 when every retire ran; 1 if the state could not be opened
+// (the node is running) or a node could not be retired (this node itself).
+int retire(const Options& options) {
+  try {
+    asio::io_context io;
+    dannan::NodeConfig config;
+    config.state_path = options.state;
+    config.key = dannan::identity::load_cluster_key(options.key);
+    config.log = dannan::status::console_sink(options.log_format, options.log_level);
+    dannan::Node node(io, config);
+    for (const auto& id : options.retire) {
+      const bool retired = node.context().nodes().retire(id);
+      say("{\"event\":\"retire\",\"id\":\"" + dannan::identity::to_string(id) + "\",\"retired\":" + (retired ? "true" : "false") + "}");
+    }
+    return 0;
+  } catch (const std::exception& error) {
+    std::cerr << "lir-node: " << error.what() << "\n";
+    return 1;
+  }
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -379,6 +419,7 @@ int main(int argc, char** argv) {
     std::cout << lir::kVersion << "\n";
     return 0;
   }
+  if (!options.retire.empty()) return retire(options);
   signal(SIGPIPE, SIG_IGN);
   signal(SIGTERM, [](int) { stopping = true; });
   signal(SIGINT, [](int) { stopping = true; });
