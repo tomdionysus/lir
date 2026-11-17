@@ -15,11 +15,9 @@ the held SUBACK (`82088a2`), and the ledger suppression gone. `tools/ci.sh clien
 `tools/ci.sh lugh` 343 at the 0.8.0 repin. Hosted CI's tsan job now runs
 without the ledger suppression (the Watch below). Nothing unmerged.
 
-**The standing cluster** runs `401adde` on Dannan 0.9.1 on all four nodes
-(2026-11-17 22:35Z, rolling, `COMPLETED.md`), majority 4 of 4 since the
-stale louhi-node was retired (`lir-node --retire`, the deploy README).
-node-d dropped off the network at about 22:36Z (no ping, no ssh) and needs
-someone at the machine; the other three hold the majority, 3 of 4. After each node, check
+**The standing cluster** runs `e839b4a` on Dannan 0.9.2 on all four nodes
+(2026-11-17 23:49Z, rolling, `COMPLETED.md`), majority 4 of 4. The SUBACK
+probe then delivered 20/20 at every delay on all four, with no misses. After each node, check
 `GET /retained` on that node as well as `cluster-check.py`: an HTTP failure
 shows only as "unreachable" there. `louhi/#` is open to anonymous clients on all
 four (the maintainer, 2026-11-16, kept open). A configuration change goes out with

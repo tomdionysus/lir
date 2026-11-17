@@ -1522,3 +1522,14 @@ node-b `-j2`: `tools/ci.sh release` 361 passed, none skipped;
 `SlowGossipClusterTest` 20 of 20 (6 of 30 failed on 0.9.1). node-d came back
 by 23:20Z and rejoined on its own: majority 4/4. The standing cluster still
 runs `401adde` on 0.9.1 until it is upgraded.
+
+## 2026-11-17: the standing cluster on Dannan 0.9.2
+
+Rolling, with the maintainer's approval, from node-b's gate build of `e839b4a`:
+node-d (back since about 23:20Z), node-c, node-b, then node-a. After each
+node: `/retained` answered 200 in under 40 ms, and the cluster stayed whole
+at majority 4/4. md5 `46afb1bfdf26` on all four. Hosted CI on `e839b4a`
+was fully green (run 44200063109). The SUBACK probe on all four nodes,
+23:50 to 23:51Z: 20/20 delivered at every delay from 0 to 2000 ms, control
+20/20, and `subscribe_missed` 0 on every node before and after. The window
+after SUBACK is closed on the standing cluster.
