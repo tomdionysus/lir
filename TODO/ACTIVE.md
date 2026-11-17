@@ -15,8 +15,9 @@ the held SUBACK (`82088a2`), and the ledger suppression gone. `tools/ci.sh clien
 `tools/ci.sh lugh` 343 at the 0.8.0 repin. Hosted CI's tsan job now runs
 without the ledger suppression (the Watch below). Nothing unmerged.
 
-**The standing cluster** runs `870face` on Dannan 0.9.0 on all four nodes
-(2026-11-17 20:58Z, rolling, `COMPLETED.md`). After each node, check
+**The standing cluster** runs `285c7e1` on Dannan 0.9.0 on all four nodes
+(2026-11-17 21:30Z, rolling, `COMPLETED.md`), majority 4 of 4 since the
+stale louhi-node was retired (`lir-node --retire`, the deploy README). After each node, check
 `GET /retained` on that node as well as `cluster-check.py`: an HTTP failure
 shows only as "unreachable" there. `louhi/#` is open to anonymous clients on all
 four (Tom, 2026-11-16, kept open). A configuration change goes out with
@@ -115,10 +116,13 @@ cause: the join window is closed.
 this node"). saturn's count rose 6 in a minute, mostly the claim board's
 short-lived `stack/` subscriptions. The probe (`build/suback-probe.py`,
 2026-11-17 20:58Z) delivered 20/20 at 0 ms, but 19/20 at 50 ms and 19/20 at
-250 ms. Sent to Dannan with the logs, with two questions: is "older record"
-expected while the node's own record changes during the push, and should
-Lir keep a prefix advertised for a while after its last subscription goes,
-to stop the churn? Nothing is changed until Dannan answers.
+250 ms. Dannan found the cause (2026-11-17): an advert change made in the
+same millisecond as a record snapshot got the snapshot's stamp, and peers
+holding the snapshot refused it. Every miss was a true refusal. The
+claim board's frequent `/retained` reads make those ties common. Fixed on
+Dannan's `feature/advert-stamp`, to ship as 0.9.1 at Tom's word, with no
+ABI change. At 0.9.1: repin, gate, upgrade the cluster, and rerun the probe
+(expect 20/20 at every delay and no misses). No stopgap in Lir meanwhile.
 
 **Waiting on Tom:** nothing open.
 
