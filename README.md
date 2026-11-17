@@ -140,7 +140,7 @@ client are built, against the project's own Dannan.
 ### Build
 
 A C++20 compiler, CMake 3.24 or later, Boost 1.83 or later (Asio and Beast; Debian 13's is 1.83), OpenSSL 3, and
-GoogleTest for the tests. Dannan is fetched from `../dannan` at the pinned release (0.8.5),
+GoogleTest for the tests. Dannan is fetched from `../dannan` at the pinned release (0.9.0),
 so clone it beside this repository; building Dannan needs yaml-cpp.
 
 ```
@@ -378,12 +378,11 @@ flows. `$lir/nodes/<id>` reports the side, the nodes it cannot reach, and both c
 One limit is Dannan's, stated: nodes joined during a split can give both sides a
 majority, so join new nodes to a whole cluster.
 
-A second limit, stated until Dannan 0.9: a subscription reaches the other nodes at
-Dannan's heartbeat pace (5 s by default). A message published on another node in that
-time is lost for the new subscriber, at any QoS. Retained values are not affected: a
-subscriber gets them at SUBSCRIBE. With 0.9, a node holds SUBACK until the other nodes
-hold the subscription, under a short deadline. A node that misses it is counted and
-logged, and the subscription is granted anyway.
+A node holds SUBACK until every other node holds the new subscription, so a message
+published anywhere after SUBACK reaches the subscriber. The wait has a deadline (one
+second by default). A node that misses it is logged and counted (`subscribe_missed` in
+`$lir/nodes/<id>`), and the subscription is granted anyway. A message published on that
+node before the subscription reaches it can be lost for the new subscriber.
 
 Next, persistence on Dagda (`TODO/2026-11-13-step5-design.md`). A QoS 1 or 2 publish is
 written to its shard's replicated log and acknowledged once two replicas hold it, with
