@@ -358,7 +358,7 @@ Conventions, shared with the stack: [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Status
 
 In development; no release is cut yet. The first, 0.1.0, follows persistence on Dagda.
-Built and tested (354 tests, and five fuzz targets): all of MQTT 3.1, 3.1.1 and 5.0 on one node, over TCP, TLS,
+Built and tested (355 tests, and five fuzz targets): all of MQTT 3.1, 3.1.1 and 5.0 on one node, over TCP, TLS,
 WebSocket and WebSocket over TLS; the cluster on Dannan with sessions that move and are mirrored to standbys,
 and Server Reference to balance new clients; system topics; HTTP and HTTPS publish and SSE; topic scopes, with
 anonymous clients refused by default; client certificates; limits and a memory budget shared with Dannan's
