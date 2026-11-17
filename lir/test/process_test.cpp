@@ -11,6 +11,9 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
+#include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/write.hpp>
 #include <chrono>
 #include <fstream>
 #include <iterator>
@@ -39,8 +42,10 @@ bool have_mosquitto() {
 
 struct NodeProcess {
   std::unique_ptr<ChildProcess> child;
+  std::string id;
   uint16_t port = 0;
   uint16_t mqtt_port = 0;
+  uint16_t http_port = 0;
 
   // Anonymous clients are allowed unless `extra` says otherwise.
   NodeProcess(const std::filesystem::path& dir, const std::string& name, std::optional<uint16_t> bootstrap,
@@ -74,14 +79,43 @@ struct NodeProcess {
     child = std::make_unique<ChildProcess>(argv, dir / (name + ".log"));
     const auto line = child->line(Clock::now() + 10s);
     std::smatch match;
-    if (!line || !std::regex_search(*line, match, std::regex(R"("port":(\d+),"mqtt_port":(\d+))"))) {
+    if (!line || !std::regex_search(*line, match, std::regex(R"re("id":"([0-9a-f]+)","port":(\d+),"mqtt_port":(\d+))re"))) {
       ADD_FAILURE() << "lir-node did not report listening: " << line.value_or("(nothing)");
       return;
     }
-    port = static_cast<uint16_t>(std::stoi(match[1]));
-    mqtt_port = static_cast<uint16_t>(std::stoi(match[2]));
+    id = match[1];
+    port = static_cast<uint16_t>(std::stoi(match[2]));
+    mqtt_port = static_cast<uint16_t>(std::stoi(match[3]));
+    if (std::regex_search(*line, match, std::regex(R"re("http_port":(\d+))re"))) http_port = static_cast<uint16_t>(std::stoi(match[1]));
   }
 };
+
+// A plain GET over loopback: the whole response, or nothing if the server
+// cannot be reached.
+std::string http_get(uint16_t port, const std::string& target) {
+  boost::asio::io_context io;
+  boost::asio::ip::tcp::socket socket(io);
+  boost::system::error_code ec;
+  socket.connect({boost::asio::ip::make_address("127.0.0.1"), port}, ec);
+  if (ec) return {};
+  const std::string request = "GET " + target + " HTTP/1.1\r\nHost: lir\r\nConnection: close\r\n\r\n";
+  boost::asio::write(socket, boost::asio::buffer(request), ec);
+  std::string out;
+  std::array<char, 4096> buffer{};
+  while (!ec) out.append(buffer.data(), socket.read_some(boost::asio::buffer(buffer), ec));
+  return out;
+}
+
+// Runs lir-node to its end with `argv` after the binary: its exit status and
+// what it printed.
+std::pair<std::optional<int>, std::string> lir_node(const std::filesystem::path& dir, std::vector<std::string> argv) {
+  argv.insert(argv.begin(), LIR_NODE_BINARY);
+  ChildProcess child(argv, dir / "command.log");
+  std::string out;
+  const auto deadline = Clock::now() + 15s;
+  while (auto line = child.line(deadline)) out += *line + "\n";
+  return {child.wait(deadline), out};
+}
 
 // Runs a mosquitto client to its end: its exit status and what it printed.
 std::pair<std::optional<int>, std::string> run(const std::filesystem::path& dir, std::vector<std::string> argv, std::chrono::seconds bound = 15s) {
@@ -179,6 +213,48 @@ TEST_F(ProcessTest, ABadSettingIsRefusedNamingItsSource) {
   const std::string said((std::istreambuf_iterator<char>(log)), std::istreambuf_iterator<char>());
   EXPECT_NE(said.find("bad.yaml"), std::string::npos) << said;
   EXPECT_NE(said.find("limits.receive_maximum"), std::string::npos) << said;
+}
+
+// lir-node --retire (Tom, 2026-11-17): an operator takes a node that has left
+// for good out of a stopped node's agreed roster, durably; refused while the
+// node runs. Needs no mosquitto.
+TEST(ProcessRetire, ARetiredNodeLeavesTheAgreedRosterForGood) {
+  dannan::test::TempDir dir;
+  std::ofstream(dir.path() / "cluster.key") << "lir process test";
+  const std::vector<std::string> state_a{"--key", (dir.path() / "cluster.key").string(), "--state", (dir.path() / "a").string()};
+  std::string gone;
+  {
+    NodeProcess first(dir.path(), "a", std::nullopt);
+    ASSERT_NE(first.http_port, 0);
+    NodeProcess second(dir.path(), "b", first.port);
+    ASSERT_FALSE(second.id.empty());
+    gone = second.id;
+    // The first node counts the second in its agreed roster, as its system
+    // topic says.
+    bool both = false;
+    for (int i = 0; i < 100 && !both; ++i) {
+      both = http_get(first.http_port, "/retained?filter=%24lir/nodes/" + first.id).find(R"(members\":2)") != std::string::npos;
+      if (!both) std::this_thread::sleep_for(100ms);
+    }
+    ASSERT_TRUE(both);
+  }
+
+  auto argv = state_a;
+  argv.insert(argv.end(), {"--retire", gone});
+  const auto [status, out] = lir_node(dir.path(), argv);
+  EXPECT_EQ(status, 0) << out;
+  EXPECT_NE(out.find("{\"event\":\"retire\",\"id\":\"" + gone + "\",\"retired\":true}"), std::string::npos) << out;
+  const auto [again, said] = lir_node(dir.path(), argv);
+  EXPECT_EQ(again, 0) << said;
+  EXPECT_NE(said.find("\"retired\":false"), std::string::npos) << said;
+
+  NodeProcess running(dir.path(), "a", std::nullopt);
+  ASSERT_NE(running.port, 0);
+  EXPECT_EQ(lir_node(dir.path(), argv).first, 1);
+
+  auto bad = state_a;
+  bad.insert(bad.end(), {"--retire", "not-a-node"});
+  EXPECT_EQ(lir_node(dir.path(), bad).first, 2);
 }
 
 }  // namespace
