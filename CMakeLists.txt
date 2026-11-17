@@ -48,7 +48,7 @@ endif()
 set(LIR_DANNAN_REPOSITORY "${CMAKE_CURRENT_SOURCE_DIR}/../dannan" CACHE STRING "Dannan's repository, a path or a URL")
 # Not a cache variable: a moved pin must take effect in a build tree that
 # already exists.
-set(LIR_DANNAN_TAG "0.8.5")
+set(LIR_DANNAN_TAG "0.9.0")
 include(FetchContent)
 # A project that fetches Lir has its own Dannan already: one Dannan a process.
 if(NOT TARGET dannan::dannan)

@@ -46,8 +46,9 @@ struct LirNode {
   std::unique_ptr<system::SystemTopics> system;
   contract::AllowAll allow;
 
+  // `heartbeat`: Dannan's gossip pace; dead_after and forget_after follow it.
   LirNode(boost::asio::io_context& io, const std::filesystem::path& state, const dannan::identity::ClusterKey& key,
-          std::vector<dannan::net::Endpoint> bootstrap) {
+          std::vector<dannan::net::Endpoint> bootstrap, std::chrono::milliseconds heartbeat = 100ms) {
     dannan::NodeConfig config;
     config.state_path = state;
     config.key = key;
@@ -56,8 +57,9 @@ struct LirNode {
     config.port = 0;
     config.bootstrap = std::move(bootstrap);
     config.inbound = dannan::reach::Inbound::yes;
-    config.heartbeat = 100ms;
-    config.dead_after = 2s;
+    config.heartbeat = heartbeat;
+    config.dead_after = std::max<std::chrono::milliseconds>(2s, heartbeat * 4);
+    config.forget_after = std::max<std::chrono::milliseconds>(config.forget_after, config.dead_after * 2);
     config.telemetry_interval = 100ms;
     config.connect_timeout = 1s;
     config.version = "lir-test";
@@ -172,6 +174,40 @@ TEST_F(ClusterTest, ANodeIsSeenServingLirOnlyWithItsChannelsSubscribed) {
   const std::lock_guard lock(seen->mutex);
   EXPECT_GT(seen->serving, 0u);
   EXPECT_EQ(seen->without_interest, 0u);
+}
+
+// Two nodes whose gossip is too slow to matter within a test: a node learns
+// another's new interest only from the push a subscription makes.
+class SlowGossipClusterTest : public ::testing::Test {
+ protected:
+  SlowGossipClusterTest() {
+    std::ofstream(dir.path() / "cluster.key") << "lir cluster test";
+    key = dannan::identity::load_cluster_key(dir.path() / "cluster.key");
+    a = std::make_unique<LirNode>(io.context, dir.path() / "a", key, std::vector<dannan::net::Endpoint>{}, 30s);
+    b = std::make_unique<LirNode>(io.context, dir.path() / "b", key, std::vector<dannan::net::Endpoint>{{"127.0.0.1", a->node->port()}}, 30s);
+    EXPECT_TRUE(eventually([&] { return a->sees(*b) && b->sees(*a); }));
+  }
+
+  test::Io io;
+  dannan::test::TempDir dir;
+  dannan::identity::ClusterKey key;
+  std::unique_ptr<LirNode> a;
+  std::unique_ptr<LirNode> b;
+};
+
+// The maintainer, 2026-11-16: the SUBACK is held until the other nodes hold the new
+// subscription, so a message published anywhere after it arrives.
+TEST_F(SlowGossipClusterTest, AMessagePublishedElsewhereRightAfterSubackArrives) {
+  MqttClient sub(b->port());
+  sub.connect("sub");
+  sub.subscribe("after/suback", QoS::at_least_once);
+  MqttClient pub(a->port());
+  pub.connect("pub");
+  pub.publish("after/suback", "here", QoS::at_least_once);
+  const auto got = sub.next_message();
+  ASSERT_TRUE(got);
+  EXPECT_EQ(text(*got), "here");
+  EXPECT_EQ(b->on_broker<uint64_t>([](broker::Broker& broker) { return broker.stats().subscribe_missed; }), 0u);
 }
 
 TEST_F(ClusterTest, QoS1PublishReachesASubscriberOnAnotherNode) {

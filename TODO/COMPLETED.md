@@ -1426,3 +1426,16 @@ Gate, node-a: 355 passed, the new test and the join-window test 20
 of 20. Merge at Dannan 0.9.0: repin the tag on the branch, gate, merge, and
 remove the README's stated limit.
 
+
+## 2026-11-17: Dannan 0.9.0, and the SUBACK hold merged
+
+Dannan tagged 0.9.0 (`59b7abc`), with the advert push (`e78b66c`) and the
+ledger Lease fix (`79dfa2e`). On `feature/suback-hold`: merged `develop` (one
+conflict, the pin line), pinned `0.9.0`, removed the TSan suppression of
+`RetainedMemoryLedger::release`, and replaced the README's stated limit on
+the window after SUBACK with the behaviour: SUBACK held until every node
+holds the subscription, 1 s deadline, a miss counted in `subscribe_missed`.
+No Lir call site reads `CallOutcome::peer`, whose type changed in 0.9.0.
+Gate, node-a `-j2`: `tools/ci.sh release` 355 passed, none skipped.
+Merged into `develop`. The standing cluster still runs `7db72d1` (0.8.x)
+until it is upgraded.

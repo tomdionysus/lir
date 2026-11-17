@@ -106,7 +106,7 @@ std::string lir_json(const std::string& node, size_t connections, size_t session
       << ",\"retained\":" << retained_count << ",\"accepted\":" << s.connections_accepted << ",\"refused\":" << s.connections_refused
       << ",\"protocol_errors\":" << s.protocol_errors << ",\"received\":" << s.messages_received << ",\"delivered\":" << s.messages_delivered
       << ",\"injected\":" << s.messages_injected << ",\"wills\":" << s.wills_published << ",\"sessions_expired\":" << s.sessions_expired
-      << ",\"sessions_taken\":" << s.sessions_taken << ",\"sessions_surrendered\":" << s.sessions_surrendered
+      << ",\"sessions_taken\":" << s.sessions_taken << ",\"sessions_surrendered\":" << s.sessions_surrendered << ",\"subscribe_missed\":" << s.subscribe_missed
       << ",\"dropped\":{\"offline_qos0\":" << s.dropped_offline_qos0 << ",\"queue_full\":" << s.dropped_queue_full << ",\"expired\":" << s.dropped_expired
       << ",\"too_large\":" << s.dropped_too_large << ",\"pressure\":" << s.dropped_pressure << "},\"memory\":{\"held\":" << held_bytes
       << ",\"budget\":" << memory_budget << ",\"pressure\":" << quoted(broker::pressure_name(pressure))

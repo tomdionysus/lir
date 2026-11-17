@@ -22,7 +22,9 @@
 //   most once), QoS 1 and 2 on lir.seq (at least once, in order per origin,
 //   deduplicated here by sequence). Each node subscribes there by the
 //   literal prefix of its filters, so Dannan sends a node only what it may
-//   want; the broker matches the filters.
+//   want; the broker matches the filters. A new prefix's interest is pushed
+//   to every peer, and the SUBACK is held until they hold it or
+//   `subscribe_deadline` passes (the maintainer, 2026-11-16).
 // - Retained values are held on every node, versioned (broker.h), spread
 //   on lir.retained and fetched whole from each node that joins.
 // - Shared subscriptions: each node publishes its groups on lir.groups;
@@ -49,6 +51,10 @@ inline constexpr dannan::net::MessageType mirror_type{0x4C03};
 struct ClusterConfig {
   // How long a node waits for a peer's answer.
   std::chrono::milliseconds call_deadline{2000};
+  // How long a SUBACK waits for the other nodes to hold a new subscription
+  // (and "lir" for them to see this node); past it, the SUBACK goes and the
+  // peers that missed it are counted (the maintainer, 2026-11-16).
+  std::chrono::milliseconds subscribe_deadline{1000};
   // How often this node republishes its shared groups, besides on change.
   std::chrono::milliseconds resync_every{30000};
   // Each stream channel's replay buffer.
