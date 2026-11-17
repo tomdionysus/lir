@@ -8,7 +8,7 @@ and the detail this file no longer carries ("Archived from ACTIVE.md",
 
 **State.** `develop` at the record commit after `7db72d1`, pushed; the
 repository is public, and Lir commits and pushes on its own (the maintainer,
-2026-11-15). Dannan pinned at `0.8.4`, Lugh at `dbb0573` (plugin only).
+2026-11-15). Dannan pinned at `0.8.5`, Lugh at `dbb0573` (plugin only).
 Last gate, node-b: `lir_tests` release 354 passed, with the fuzz
 targets merged and the cluster's join window fixed. `tools/ci.sh client`
 clean on node-d at `7db72d1`. `tools/ci.sh lugh` 343 at the 0.8.0 repin.
@@ -33,10 +33,10 @@ from a release build of `develop`, then `python3 -I build/cluster-check.py`
   when the job ends; `claim-board wait` in the background when none are free.
 - No wasted runs: sanitizers at the release gate; a repeat only for a
   stated reason (a flaky test, odd behaviour, a fix).
-- Sanitizers run on the build nodes since the 4K-page kernels (2026-11-16): TSan
-  with g++ anywhere, or clang++-19 on node-a, node-b and node-c; never a
-  sanitizer build on node-d (4 GB). Prefer node-b or node-c, and check
-  `free -m` first.
+- Sanitizers run on every build node since the 4K-page, 48-bit-VA kernels
+  (2026-11-16): ASan, UBSan and TSan, with g++ anywhere or clang++-19 on
+  node-a, node-b and node-c. node-d has 4 GB and ran out of memory on
+  one, so use the 16 GB build nodes and check `free -m` first.
 - Never keep a node list: Dannan's roster and adverts are the one list of
   Lir's nodes (the maintainer, 2026-11-15).
 
@@ -58,13 +58,10 @@ from a release build of `develop`, then `python3 -I build/cluster-check.py`
    (`lir/sn/gateway.cpp`) onto `DatagramListener`, then delete
    `edge::server_context` and `verified_certificate(SSL*)`; remove the TSan
    suppression of `RetainedMemoryLedger::release`
-   (`lir/test/tsan-suppressions.txt`). Hold SUBACK on Dannan's
-   `Fanout::subscribe` with a deadline (Decisions, 2026-11-16): a new prefix
-   on `lir.seq` and `lir.notify` waits until peers hold the interest or the
-   deadline passes. Then SUBACK goes anyway, the missed peers counted in
-   `$lir/nodes` and logged. Test first: a QoS 1 message published on
-   another node right after SUBACK is delivered (`build/suback-probe.py`
-   has the shape). Remove the README's stated limit. Then, with agreement
+   (`lir/test/tsan-suppressions.txt`). Merge `feature/suback-hold`
+   (`f35526d`, local, built and gated on Dannan's develop: `COMPLETED.md`,
+   2026-11-16): set its pin to the 0.9.0 tag, gate, merge, and remove the
+   README's stated limit on the window after SUBACK. Then, with agreement
    there:
    - **Guarded publish** for the claim board (its 0.5.0 or later;
      `../coordination/TODO/2026-11-15-claim-board-0.4.0.md`, part 1):
@@ -79,17 +76,36 @@ from a release build of `develop`, then `python3 -I build/cluster-check.py`
      it needs the maintainer to reopen the 2026-11-04 ordering decision. Recommend it:
      the later write wins after a heal, and expiry gets an absolute time.
 4. **At Lugh's first release:** repin the plugin (`tools/ci.sh lugh`). The
-   hosted `lugh` job uses the secret `LUGH_READ_TOKEN`.
+   hosted `lugh` job uses the secret `LUGH_READ_TOKEN`. Lugh after `2d75176`
+   pins Dannan 0.8.5, the same as Lir, and `lugh_client`'s interface hasn't
+   changed (Lugh, 2026-11-16). Since `2d75176`, Lugh percent-encodes a scope
+   level that holds '"' or '\'. Lir's usual topics never contain either.
 5. **MQTT-SN 2.0** when OASIS approves a Committee Specification.
 6. **lir::client** users: Louhi (step 8), Lugh's principal-events publisher
    and Mimir's Lugh plugin pin `6b23268` or later. QoS 2, aliases and user
    properties on request.
 
-**Watch:** the Dannan TSan finding (a `NodeRecord` map node freed from two
-threads, in `ConnectingOnAnotherNodeTakesTheClientOver`). Neither side
-reproduced it (Lir: 0 TSan reports in 53 processes). It is open in Dannan's
-plan as unexplained and not suppressed. If the tsan job reports it again,
-send Dannan the new frames. If a cluster test times out again, it is a new cause:
+**Watch:** the Dannan TSan finding: two `~NodeRecord` free one map node.
+First seen in `ConnectingOnAnotherNodeTakesTheClientOver` (run 43773090610).
+It recurred in `ARuleWrittenOnOneNodeAppliesOnEvery` (run 43802763961), on
+one thread: `SystemTopics::on_roster` takes `nodes().snapshot()`
+(`system.cpp:356`) and publishes (`system.cpp:358`), and
+`Fanout::destinations`' roster copies free a node the snapshot's records
+still point at. Dannan's explanation (2026-11-16): the ledger defect whose
+TSan report is suppressed here (`RetainedMemoryLedger::release` on a
+destroyed ledger) frees memory it no longer owns and corrupts the heap. That
+explanation comes from reading the code; nobody has reproduced the link. On
+node-c, Lir `5f68295` on Dannan 0.8.5:
+- ASan: `HeldMessagesAreLeasedInTheNodesLedger` failed in 1 of 30 runs of
+  `ClusterTest.*` with a use-after-free in `release`. The call path is from a
+  `Fanout::ask_replay` completion after `~LirNode`; the log is
+  `build/ci-logs/node-c-asan-ledger-uaf.log`.
+- TSan, with `print_suppressions`: none of 30 runs reported anything, and
+  the ledger suppression never matched.
+Dannan's fix is on its develop branch (`79dfa2e`). The maintainer, 2026-11-16: wait
+for the 0.9.0 tag rather than pin develop. Until then, the tsan job may fail
+on it. If the NodeRecord report ever appears on a Dannan build that has the
+fix, tell Dannan at once: it would mean the explanation is wrong. If a cluster test times out again, it is a new cause:
 the join window is closed.
 
 **Waiting on the maintainer:** nothing open.
@@ -163,6 +179,17 @@ hosted CI, Linux arm64.
 ## Decisions
 
 Not reopened without asking the maintainer.
+
+- (2026-11-16, the maintainer, asked in turn) Step 5's payloads over 64 KiB are
+  never shared between messages. Dagda names an object by its content's
+  SHA-256, and a remove releases every claim the passed clock dominates. So
+  retiring one message would delete the payload of another message with the
+  same content. Each object starts with its message's dot, so its id is
+  unique. There is no reference count in Lir and nothing new from Dagda.
+  Details: `2026-11-13-step5-design.md`, "Large payloads".
+
+- (2026-11-16, the maintainer, asked in turn) Dannan's ledger fix: wait for the 0.9.0
+  tag rather than pin a Dannan develop commit.
 
 - (2026-11-16, the maintainer, asked in turn) The window after SUBACK: a subscription
   reaches other nodes at Dannan's heartbeat pace (5 s), so a message

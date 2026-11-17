@@ -38,7 +38,7 @@ and makes it durable. Fan-out does not move to a shard primary.
 | Which retained topics exist (for wildcard subscribes) | Implicit: every node has every value | An in-memory index of retained topics on every node, fed by `Heads::watch_keys` on every retained space; values fetched from holders at SUBSCRIBE | Keys-changed notice (no storage) |
 | The lease per shard | None | `lir/shard/<n>`: who resumes the shard's owed entries when a publishing node is gone | Lease space per shard, placed with the shard's scheme |
 | The per-origin sequence | In memory | A reserved block, durable in a node-local space (below) | Node-local space |
-| Payloads over 64 KiB | Inline | Objects at Replicated, claimed; the log entry carries the id; deleted by `Objects::remove` on the final retire | Objects, Claims |
+| Payloads over 64 KiB | Inline | Objects at Replicated, claimed; the log entry carries the id; deleted by `Objects::remove` on the final retire. Each object begins with its message's dot, so no two messages share one (below, "Large payloads") | Objects, Claims |
 | Message history | Not built | A log per opted-in topic filter, bounded by count and age | Log |
 | Wildcard and shared-group interest | Channels and memory | Unchanged | (none) |
 
@@ -153,6 +153,25 @@ starts above the last bound committed. Gaps are allowed; reuse is not. The
 node-local space's no-rollback rule (Dagda D3) refuses a restored older
 file, so a block is never handed out twice.
 
+## Large payloads
+
+A payload over 64 KiB is a Dagda object, and an object's id is the SHA-256
+of its plaintext (`dagda/store/object_id.h:21`). Two messages with the same
+payload would therefore share one object. Retiring the first would remove
+it while the second still needs it: a remove releases every claim the passed
+clock dominates, not one named claim (`dagda/context.h:246-258`, confirmed
+by Dagda 2026-11-16).
+
+Ruled by the maintainer, 2026-11-16: objects are never shared. Each object starts with
+its message's dot `(origin, seq)`, followed by the payload, so its id is
+unique to that message. The cost is that identical large payloads are not
+deduplicated, which is rare. Lir counts no references, and asks Dagda for
+nothing new. A retained value over 64 KiB is written the same way, under
+the dot of the PUBLISH that set it.
+
+Test to write first:
+`OnDagda.TwoMessagesWithOneLargePayloadEachKeepTheirOwnObject`.
+
 ## On a minority side
 
 Dannan's partition reading (the maintainer, 2026-11-13: an even split is a minority)
@@ -189,6 +208,7 @@ time (Dagda D13).
 - `OnDagda.AMinoritySideDegradesToPersistedByDefault`
 - `OnDagda.AMinoritySideSetToRefuseRefusesWith0x97`
 - `OnDagda.APayloadOver64KiBIsAnObjectDeletedOnItsFinalAck`
+- `OnDagda.TwoMessagesWithOneLargePayloadEachKeepTheirOwnObject`
 - `OnDagda.OrderPerTopicAndOriginHoldsAcrossAFailover`
 
 Step 4's cluster tests stay. Where one names an interim behaviour (standbys,
