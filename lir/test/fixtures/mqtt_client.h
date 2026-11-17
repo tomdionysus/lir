@@ -16,7 +16,9 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/write.hpp>
 #include <chrono>
+#include <deque>
 #include <functional>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <thread>
@@ -75,9 +77,22 @@ class MqttClient {
     return ack.value_or(mqtt::Connack{});
   }
 
+  // A matching PUBLISH may come before the SUBACK (MQTT 5.0, 3.8.4), and
+  // does on a cluster node, where the SUBACK is held until the other nodes
+  // hold the subscription: it is kept for the reads that follow.
   void subscribe(const std::string& filter, mqtt::QoS qos = mqtt::QoS::at_least_once) {
     send(mqtt::Subscribe{_next_id++, {}, {{filter, qos}}});
-    EXPECT_TRUE(receive_a<mqtt::Suback>());
+    std::deque<mqtt::Packet> before;
+    bool acknowledged = false;
+    while (auto packet = receive()) {
+      if (std::holds_alternative<mqtt::Suback>(*packet)) {
+        acknowledged = true;
+        break;
+      }
+      before.push_back(std::move(*packet));
+    }
+    EXPECT_TRUE(acknowledged);
+    _early.insert(_early.end(), std::make_move_iterator(before.begin()), std::make_move_iterator(before.end()));
   }
 
   void publish(const std::string& topic, const std::string& text, mqtt::QoS qos = mqtt::QoS::at_most_once, bool retain = false) {
@@ -100,6 +115,11 @@ class MqttClient {
 
   // The next packet, or nothing on close or timeout.
   std::optional<mqtt::Packet> receive() {
+    if (!_early.empty()) {
+      auto packet = std::move(_early.front());
+      _early.pop_front();
+      return packet;
+    }
     for (;;) {
       if (const auto frame = mqtt::read_frame(_buffer, UINT32_MAX); frame && _buffer.size() >= frame->size()) {
         auto packet = mqtt::decode(std::span<const uint8_t>(_buffer).first(frame->size()), _version);
@@ -170,6 +190,8 @@ class MqttClient {
   mqtt::Version _version;
   int _timeout_ms;
   mqtt::Bytes _buffer;
+  // Packets read while waiting for a SUBACK, handed out first.
+  std::deque<mqtt::Packet> _early;
   uint16_t _next_id = 1;
 };
 
