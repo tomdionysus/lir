@@ -114,10 +114,17 @@ cause: the join window is closed.
 `state/clock/hlc-ceiling` once a second: a temp file, an fsync, a rename and
 a directory fsync. That is about 5-6 disk writes/s on an idle node (the coordinating session, node-d, 2026-11-19). The maintainer calls it wasteful. The write is
 Dannan's (`keep_ahead`, `dannan/contract/hlc.cpp:131`), so Lir changes
-nothing. Dannan has proposed 0.9.3 to the maintainer: write only when the ceiling comes
-within 2 s of the last stamp issued, then set it 30 s ahead, and write the
-last stamp issued on a clean stop. If the maintainer approves and it ships: repin, gate,
-and do a rolling upgrade with the maintainer's approval.
+nothing. The maintainer decided the fix (2026-11-19): Dannan 0.9.3, after the Macha
+cutover. The ceiling follows only the stamps actually issued, never the wall
+clock:
+- An idle node writes nothing, and the first stamp after an idle spell pays
+  one write.
+- While stamping, the ceiling is set 30 s ahead whenever it comes within 2 s
+  of the last stamp, which is one write every 28 s.
+- A clean stop writes the last stamp, so a planned restart starts at wall
+  time.
+When Dannan says 0.9.3 exists: repin, gate, then a rolling upgrade once the maintainer
+approves it.
 
 **Watch: the SUBACK hold.** Dannan 0.9.2 closes the join gap below (gate,
 node-b, 2026-11-17: `SlowGossipClusterTest` 20 of 20, the suite 361). Watch
