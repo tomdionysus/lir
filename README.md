@@ -9,9 +9,11 @@ Lir is the event system for a cluster of trusted machines. It is a C++20 library
 node binary that turn a set of nodes into one MQTT broker: connect to any node, publish
 or subscribe on any node, drop the connection and resume the session on another, and the
 cluster behaves as a single broker. It speaks MQTT 3.1, 3.1.1 and 5.0 in full, over TCP,
-TLS and WebSocket, and MQTT-SN 1.2 for sensor networks over UDP and DTLS, with an HTTP publish and Server-Sent Events endpoint beside it for browsers and
-curl. It runs on [Dannan](https://github.com/tomdionysus/dannan), the network, and
-persists in [Dagda](https://github.com/tomdionysus/dagda), the store.
+TLS and WebSocket, and MQTT-SN 1.2 for sensor networks over UDP and DTLS, with an HTTP
+publish and Server-Sent Events endpoint beside it for browsers and curl. It runs on
+[Dannan](https://github.com/tomdionysus/dannan), the network, and will persist in
+[Dagda](https://github.com/tomdionysus/dagda), the store; until that step lands, what it
+holds is in memory on the nodes ([Status](#status)).
 
 ## Why it exists
 
@@ -59,9 +61,8 @@ Lir is the broker written once for this stack:
   with clearly more clients than the cluster's average (20% over, `--rebalance-over`)
   sends a new MQTT 5.0 client to the least-loaded node instead, with Server Reference;
   live connections are never moved, and 3.x clients, which cannot be redirected, are
-  always served. Retained
-  messages are ordered by a Lamport counter, then the node id, so every node agrees on
-  the winner whatever order they arrive in.
+  always served. Retained messages are ordered by a Lamport counter, then the node id,
+  so every node agrees on the winner whatever order they arrive in.
 - **System topics**, JSON, each switchable and on by default. Clients may read them,
   never write them:
   - `$lir/nodes/<node id>`, retained: connections, sessions, retained count, message
@@ -77,10 +78,10 @@ Lir is the broker written once for this stack:
 - **HTTP.** `POST /publish?topic=T` publishes the body; `GET /subscribe?filter=F` streams
   matching messages as Server-Sent Events, retained messages first;
   `GET /retained?filter=F` answers the retained messages the filters match as one JSON
-  array and closes. Each request is a
-  short-lived MQTT client of the broker, so authentication, retained messages and the
-  cluster apply exactly as they do to any client. A bearer token is passed to the
-  authenticator as the CONNECT password. HTTPS on its own port.
+  array and closes. Each request is a short-lived MQTT client of the broker, so
+  authentication, retained messages and the cluster apply exactly as they do to any
+  client. A bearer token is passed to the authenticator as the CONNECT password. HTTPS
+  on its own port.
 - **MQTT-SN.** A gateway for MQTT-SN 1.2 on UDP: topic registration, short and
   predefined topic ids (predefined ones are retained messages on
   `$lir/mqttsn/topics/<id>`), the will exchange, sleeping clients (what arrives while a
@@ -121,7 +122,8 @@ lives in exactly one.
   classes, logging and the shared primitives. Lir uses it for every byte between nodes.
 - **[Dagda](https://github.com/tomdionysus/dagda)** is the store: objects, claims, leases
   and heads with merges their owner supplies, at a durability level each write chooses.
-  Lir keeps its retained messages, in-flight messages and sessions there.
+  Lir's retained messages, in-flight messages and sessions move there in its next step
+  ([Status](#status)).
 - **[Lugh](https://github.com/tomdionysus/lugh)** is the directory and sign-on. To Lir it
   is one possible identity provider: an optional Lugh plugin, built only when enabled,
   links Lugh's client library to verify a Lugh token and turn it into a client's topic
@@ -131,7 +133,9 @@ Hosted systems never address one another. Other systems use Lir as any MQTT clie
 would, and the stack's projects through Lir's own small client library, `lir::client`
 (`lir/client/client.h`): MQTT 5.0 or 3.1.1 over TCP or TLS, a token as the password,
 QoS 0 and 1 publish and receive, retained publish, a will, wildcard subscribe and
-reconnecting with backoff, on the caller's executor. A project fetches Lir with
+reconnecting with backoff, on the caller's executor. A process that is itself on Dannan
+gives the client its `dannan::Nodes`, and the client finds Lir's nodes in Dannan's
+roster and passes over one that is lost. A project fetches Lir with
 `-DLIR_BUILD_SERVER=OFF` and links `lir::client`; only the codec (`lir::mqtt`) and the
 client are built, against the project's own Dannan.
 
@@ -139,9 +143,11 @@ client are built, against the project's own Dannan.
 
 ### Build
 
-A C++20 compiler, CMake 3.24 or later, Boost 1.83 or later (Asio and Beast; Debian 13's is 1.83), OpenSSL 3, and
-GoogleTest for the tests. Dannan is fetched from `../dannan` at the pinned release (0.9.2),
-so clone it beside this repository; building Dannan needs yaml-cpp.
+A C++20 compiler, CMake 3.24 or later, Boost 1.83 or later (Asio, Beast and JSON; Debian
+13's is 1.83), OpenSSL 3, and GoogleTest 1.14 or later for the tests. Dannan is fetched
+at the pinned release (0.9.2) from a checkout at `../dannan`, or from the repository
+`-DLIR_DANNAN_REPOSITORY` names (a path or a URL, such as Dannan's public repository);
+building Dannan needs yaml-cpp.
 
 ```
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DLIR_BUILD_TESTING=ON
@@ -151,7 +157,9 @@ cmake --build build -j8
 
 Pass `-DCMAKE_PREFIX_PATH` where Boost and OpenSSL are not on the default path (on macOS
 with MacPorts: `"/opt/local/libexec/boost/1.88;/opt/local"`). The process tests use
-`mosquitto_pub` and `mosquitto_sub` when they are installed.
+`mosquitto_pub` and `mosquitto_sub` when they are installed. `tools/ci.sh release` is
+the same build and test as the hosted CI runs it, on Debian 13; the script's header
+lists its other steps.
 
 `-DLIR_BUILD_LUGH=ON` adds the optional Lugh plugin, so clients can sign in with a Lugh
 access token. It fetches Lugh's `lugh_client` from `../lugh` at a pinned commit, built on
@@ -231,6 +239,10 @@ A subscriber on one node receives what is published on the other, retained messa
 on both, and a client with a persistent session can reconnect to either.
 `--session-standbys N` sets how many other nodes mirror each session.
 
+A node that has joined stays a member of the cluster's agreed roster, and counts
+towards its majority, until an operator retires it: `lir-node --retire <node id>` on
+each node while it is stopped. `deploy/test-cluster/README.md` has the steps.
+
 ### Limits
 
 Each node enforces its own limits, sized by default for about 10,000 messages a second
@@ -244,8 +256,9 @@ in order rather than failing: past 80% of its budget for held messages
 is queued, oldest first; past 90% (`--refuse-publish-percent`) it refuses QoS 1 and 2
 publishes (0x97); at 100% (`--refuse-connect-percent`) it refuses new clients. The
 bytes are also leased from the node's Dannan memory ledger, which every system on the
-node shares, so when the node as a whole runs short Lir refuses new clients too. Existing sessions are never evicted. `$lir/nodes/<id>` reports the bytes held
-and the pressure, and `$lir/cluster` says whether every node runs the same limits.
+node shares, so when the node as a whole runs short Lir refuses new clients too.
+Existing sessions are never evicted. `$lir/nodes/<id>` reports the bytes held and the
+pressure, and `$lir/cluster` says whether every node runs the same limits.
 
 ### MQTT-SN
 
@@ -297,6 +310,7 @@ A browser MQTT library (MQTT.js, Paho) connects to `ws://host:8080/mqtt` or
 ```
 curl -N 'http://127.0.0.1:8083/subscribe?filter=sensors/%23'
 curl -X POST --data '22.0' 'http://127.0.0.1:8083/publish?topic=sensors/room1/temp&qos=1'
+curl 'http://127.0.0.1:8083/retained?filter=sensors/%23'
 ```
 
 In the query only `%XX` is decoded; `+` is MQTT's wildcard, never a space.
@@ -339,16 +353,19 @@ lir/mqtt/       the MQTT codec: wire, properties, packets, topics
 lir/subs/       the subscription trie
 lir/shard/      topic shards and ownership prefixes
 lir/sn/         the MQTT-SN 1.2 codec and gateway
-lir/contract/   the Connection and Authenticator contracts
+lir/contract/   the Connection and Authenticator contracts, and the endpoints advert
 lir/broker/     the broker: sessions, QoS, retained, wills, shared groups
-lir/edge/       the TCP and TLS listeners
-lir/cluster/    the cluster on Dannan and its codec
+lir/edge/       the listeners: TCP, TLS, WebSocket and WebSocket over TLS
+lir/cluster/    the cluster on Dannan, its codec, balancing and sequence blocks
 lir/rules/      the rules engine
 lir/system/     the system topics and the memory ledger
-lir/http/       HTTP publish and SSE
+lir/http/       HTTP publish, SSE and retained snapshots
+lir/client/     lir::client, the client library for the stack's projects
+lir/include/    the public headers
 lir/test/       GoogleTest, one binary (lir_tests); fixtures in lir/test/fixtures/
 lir/fuzz/       libFuzzer targets for untrusted bytes
-tools/          lir-node
+tools/          lir-node, and ci.sh, the CI's steps
+deploy/         the standing cluster on the build servers
 docs/           the principles and laws shared with the stack
 TODO/           now and next (ACTIVE.md), the design, and what shipped (COMPLETED.md)
 ```
@@ -358,12 +375,16 @@ Conventions, shared with the stack: [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Status
 
 In development; no release is cut yet. The first, 0.1.0, follows persistence on Dagda.
-Built and tested (361 tests, and five fuzz targets): all of MQTT 3.1, 3.1.1 and 5.0 on one node, over TCP, TLS,
-WebSocket and WebSocket over TLS; the cluster on Dannan with sessions that move and are mirrored to standbys,
-and Server Reference to balance new clients; system topics; HTTP and HTTPS publish and SSE; topic scopes, with
-anonymous clients refused by default; client certificates; limits and a memory budget shared with Dannan's
-ledger; the rules engine; MQTT-SN 1.2 over UDP and DTLS; the Lugh token authenticator's own checks
-(audience, binding, expiry and topic scopes), waiting for Lugh's verifier to be wired in.
+Built and tested (361 tests, and five fuzz targets): all of MQTT 3.1, 3.1.1 and 5.0 on
+one node, over TCP, TLS, WebSocket and WebSocket over TLS; the cluster on Dannan with
+sessions that move and are mirrored to standbys, and Server Reference to balance new
+clients; system topics; HTTP and HTTPS publish, SSE and retained snapshots; topic
+scopes, with anonymous clients refused by default; client certificates; limits and a
+memory budget shared with Dannan's ledger; the rules engine; MQTT-SN 1.2 over UDP and
+DTLS; the client library; and the optional Lugh plugin (audience, binding, expiry and
+topic scopes checked by Lir, the token verified by Lugh's client library), pinned to a
+commit of Lugh's until Lugh's first release. A four-node cluster on arm64 boards
+runs it continuously (`deploy/test-cluster/`).
 
 The cluster is an interim one until Dagda: retained messages are held in memory on every
 node, sessions are mirrored in memory, and a QoS 1 or 2 publish is acknowledged on
