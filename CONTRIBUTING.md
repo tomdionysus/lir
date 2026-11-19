@@ -8,13 +8,17 @@ Dannan the network layer (`../dannan`), Dagda the store (`../dagda`) and
 Lugh the directory (`../lugh`). `../dagda/TODO/2026-11-03-stack.md` says
 what each owns. Hosted systems use Dannan as their network layer and Dagda
 for what they persist, and no code is duplicated between the projects (Tom,
-2026-11-03). Lir links Dannan and Dagda, never Lugh. Lir is an MQTT
-broker, clustered and distributed on Dannan, written new from the design,
-"Lir: Distributed Event System on Dannan" (`TODO/2026-11-03-lir-plan.md`).
+2026-11-03). Lir links Dannan, and Dagda from step 5; only the optional Lugh
+plugin (`-DLIR_BUILD_LUGH=ON`) links Lugh's client library, and Lir builds
+without it (Tom, 2026-11-14). Lir is an MQTT broker, clustered and
+distributed on Dannan, written new from the design, "Lir: Distributed Event
+System on Dannan" (`TODO/2026-11-03-lir-plan.md`, with
+`TODO/2026-11-04-lir-sections.md`).
 
 `../dannan/CONTRIBUTING.md` is the reference text for the conventions the
-projects share; this file is kept identical to it in everything but the
-project's name, its build line and its "Read first".
+projects share. This file follows it in everything but the project's name,
+its "Read first", how it is built and tested, and what Dannan alone has
+(its packages and its ABI check).
 
 The four laws and five disciplines (`docs/principles-and-laws.md`, a verbatim copy
 of Macha's) govern every change here, cited by number. A change that touches
@@ -35,6 +39,8 @@ which discipline it follows.
   `main`.
 - The tag, the CMake `project(... VERSION ...)` and `--version` are the same
   number.
+- No release is cut yet. The first, `0.1.0`, follows step 5 (persistence on
+  Dagda).
 
 ## Commits
 
@@ -45,29 +51,56 @@ which discipline it follows.
 
 ## Building and testing
 
-Lir builds against the sibling Dannan and Dagda checkouts until each has an
-install target and a tag carrying its Context.
-
 ```
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DLIR_BUILD_TESTING=ON \
-  -DLIR_WARNINGS_AS_ERRORS=ON -DCMAKE_PREFIX_PATH="/opt/local/libexec/boost/1.88;/opt/local"
+  -DLIR_WARNINGS_AS_ERRORS=ON
 cmake --build build -j8
 ./build/lir_tests
 ```
 
-Run the test binary rather than `ctest`. Everything runs on a developer machine
-(MacPorts for every dependency on the laptop); there is no hosted CI.
-Sanitizers run before a release, or to hunt a bug that cannot be pinned any
-other way. Multi-node beds (`test/compose/`) are run by hand, never in the
-per-commit gate.
+Dannan is fetched into the build tree at the tag pinned in `CMakeLists.txt`
+(`LIR_DANNAN_TAG`), from the checkout at `../dannan` or from the repository
+`-DLIR_DANNAN_REPOSITORY` names, a path or a URL. Building Lir never touches
+`../dannan`. `-DLIR_BUILD_LUGH=ON` fetches Lugh's `lugh_client` the same way,
+at a pinned commit. `-DLIR_BUILD_SERVER=OFF` builds only the codec
+(`lir::mqtt`) and the client (`lir::client`), as a project that fetches Lir
+builds them.
 
-Write tests from the design and the laws, not from the current behaviour.
+Run the test binary rather than `ctest`. `tools/ci.sh <step>` is one CI step
+on Debian 13, as the nodes have it: `check` (the header block and the
+format), `release`, `clang`, `asan`, `tsan`, `coverage`, `client` (the codec
+and the client alone) and `lugh` (the plugin on). Hosted CI
+(`.github/workflows/ci.yml`) runs each on every push to `main` and `develop`,
+with release and ASan on x86-64 and on arm64, and a build and test on macOS.
+CodeQL analyses every push. The `lugh` job needs the repository secret
+`LUGH_READ_TOKEN`.
+
+The project's own sessions build and test on the shared Pi build servers
+only, never on the laptop (Tom, 2026-11-14): claim cores on the board
+(`deploy/pi-cluster/README.md`), run `tools/ci.sh <step>` with `LIR_CI_JOBS`
+no more than the cores claimed, under `nice 19`, and release the claim when
+the job ends. Sanitizers run at the release gate, or to hunt a bug that
+cannot be pinned any other way. A test is repeated only for a stated reason:
+a flaky test, odd behaviour, or a fix.
+
+`-DLIR_BUILD_FUZZING=ON` (clang only) builds the libFuzzer targets in
+`lir/fuzz/`, one for each parser of untrusted bytes, with the whole build
+instrumented. They run at the release gate, each for a bounded time.
+
+Lir has no compose bed. Its proof on real machines is the standing cluster
+(`deploy/pi-cluster/`), upgraded by hand and only with Tom's approval.
+
+Write tests from the design and the laws, not from the current behaviour. A
+test is never deleted.
 
 ## Dependencies
 
-Dannan, Dagda, Boost (Asio) and OpenSSL, plus GoogleTest for the test build.
-Prefer writing something by hand over adding a library, and say so if a
-dependency really is the right call.
+Dannan, Dagda (from step 5), Boost (Asio, and Beast and JSON, which are part
+of it) and OpenSSL 3, plus GoogleTest for the test build. yaml-cpp comes with
+Dannan, whose settings reader `lir-node` uses. The optional Lugh plugin adds
+Lugh's `lugh_client`. The process tests use `mosquitto_pub` and
+`mosquitto_sub` when they are installed. Prefer writing something by hand
+over adding a library, and say so if a dependency really is the right call.
 
 ## Layout
 
@@ -75,18 +108,21 @@ One layout for all the projects, as `../dannan/CONTRIBUTING.md` "Layout"
 gives it, with `<p>` = `lir`: the library target `lir` in `lir/`, public
 headers in `lir/include/lir/`, subsystems in `lir/<subsystem>/`,
 interfaces in `lir/contract/`, tests in `lir/test/` (one binary
-`lir_tests`), fuzz targets in `lir/fuzz/` (the MQTT packet decoder first),
-tools in `tools/`, beds in `test/compose/`. No presets.
+`lir_tests`, fixtures in `lir/test/fixtures/`), fuzz targets in `lir/fuzz/`,
+tools in `tools/`. No presets. Lir adds `lir/client/` (the client library,
+its own target), `deploy/pi-cluster/` (the standing cluster's unit, config
+and install script), and has no `test/compose/`.
 
 ## Shared code
 
 What more than one project needs lives once, in the lowest project that
 needs it, and the others link it. Lir links Dannan's crypto primitives,
 durable files, byte codec, thread-safety contract, time sources, logging (a
-logger from `Context::logger`), Status surface and test fixtures, and
-Dagda's heads, objects, claims, leases and tickets, and writes none of its
-own. When Lir finds itself writing something another project has, or
-needs, it asks that project's session instead.
+logger from `Context::logger`), settings reader, listeners and connectors,
+Status surface and test fixtures, and from step 5 Dagda's logs, spaces,
+objects, claims and leases. It writes none of its own. When Lir finds itself
+writing something another project has, or needs, it asks that project's
+session instead.
 
 ## Errors
 
@@ -105,7 +141,8 @@ with an empty value.
 - `snake_case` for functions, methods, variables and files; `PascalCase` for
   types; private and protected members prefixed with `_`. Namespaces are
   `<project>::<subsystem>`.
-- Every source file starts with the Lir header block (`CLAUDE.md` has it).
+- Every source file starts with the Lir header block (`CLAUDE.md` has it;
+  `tools/ci.sh check` checks it).
 - No emoji anywhere.
 - Dependency injection over globals; the only process global is the io context.
 - Each component logs through its own scoped logger.
@@ -116,4 +153,4 @@ with an empty value.
 ## Plan
 
 `TODO/ACTIVE.md` is the plan and `TODO/COMPLETED.md` is the record. Move items
-across as they land.
+across as they land, with the gate counts.

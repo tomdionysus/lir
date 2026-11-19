@@ -3,6 +3,18 @@
 The record. Items move here from `ACTIVE.md` as they land, with what
 shipped and the gate counts.
 
+How to read it:
+- Entries are in the order they happened and are never rewritten. An entry
+  says what was true that day; a later entry may supersede it.
+- Where an older entry points at `ACTIVE.md` (a question, an item, a
+  watch), it means `ACTIVE.md` as it was then. That text is kept in the
+  "Archived from ACTIVE.md" sections: 2026-11-14 (the whole file, with
+  "Tom's answers" and the first decisions), 2026-11-15 (the shared listener
+  and the Lugh plugin) and 2026-11-19 (the ledger and SUBACK watches, the
+  SUBACK decision as first recorded, and Dagda's slice 0 figures).
+- The gate count runs from 73 tests (step 1) to 361 (2026-11-17). It has
+  never dropped.
+
 ## 2026-11-03, night: the project starts
 
 - `git init`; basemind set up (`basemind.toml`, rules in the gitignored
@@ -577,7 +589,6 @@ MQTT-SN tests passed three runs in a row.
   ex-data index.
 - `lir-node --mqttsn-dtls-port N [--mqttsn-dtls-listen ADDR]`, with
   `--tls-certificate`, `--tls-key` and `--tls-client-ca`.
-
 
 ## 2026-11-04: close_notify, and the HTTPS certificate subject
 
@@ -1426,7 +1437,6 @@ Gate, corvus-jupiter: 355 passed, the new test and the join-window test 20
 of 20. Merge at Dannan 0.9.0: repin the tag on the branch, gate, merge, and
 remove the README's stated limit.
 
-
 ## 2026-11-17: Dannan 0.9.0, and the SUBACK hold merged
 
 Dannan tagged 0.9.0 (`59b7abc`), with the advert push (`e78b66c`) and the
@@ -1592,3 +1602,75 @@ Dannan's fix `79dfa2e` is in 0.9.0, and the suppression was removed then.
   heartbeat; the fixture failed 6 of 30 on saturn.
 - 0.9.2 closed it, by pushing the current record to a peer at first direct
   contact. The fixture passed 20 of 20, and the probe 20/20 on all four nodes.
+
+**The SUBACK decision, as `ACTIVE.md` carried it until the docs were
+rationalised.** It is carried out; `ACTIVE.md` keeps what still binds.
+
+- (2026-11-16, Tom, asked in turn) The window after SUBACK: a subscription
+  reaches other nodes at Dannan's heartbeat pace (5 s), so a message
+  published elsewhere in that time was lost for the new subscriber
+  (measured on the standing cluster: 0 of 20 at 0 ms, 8 of 8 at 5 s).
+  Dannan adds `Nodes::advertise` with a deadline and evidence (held,
+  missed), and `Fanout::subscribe` completing when the interest is held,
+  in 0.9, with no 0.8.x stopgap. Lir holds SUBACK on it. On a miss, SUBACK
+  anyway, with the missed peers counted and logged. A stated limit in the
+  README until then.
+
+**Dagda's slice 0 verdict, in full** (Dagda, 2026-11-14, on corvus-jupiter).
+The log passes the PUBACK mark on a real device sync. Three processes,
+k = 2, 8,000 a second from outside the replica set: p99 12.5 ms at a 10 ms
+tick, 23.5 ms at 20 ms, the same with 256 logs on one shared segment,
+nothing refused; p99 is about the tick plus 2.5 ms, so 50 ms holds to a
+tick of about 40 ms. A segment per log fails; the shared segment stands. A
+new lease holder reads a 5 s backlog (13,462 entries) in about 11 ms. Not
+yet measured: the notify channel's cost per space. Dagda's record: its
+`TODO/2026-11-13-three-systems-design.md`, "What slice 0 has measured (the
+Pi)".
+
+## 2026-11-19: the docs and TODO rationalised
+
+No code changed. No build or test run, and no cores claimed: the gate
+stands at 361 (`e839b4a`, 2026-11-17). Every claim changed below was
+checked against the code, the build files, the CI workflow or the standing
+cluster first.
+
+- `README.md`: it says Lir will persist in Dagda, where it said it does;
+  the Lugh plugin is listed as built, where it was "waiting to be wired
+  in"; Dannan is fetched from `../dannan` or from the repository
+  `-DLIR_DANNAN_REPOSITORY` names; `lir-node --retire`, the `/retained`
+  example, `lir::client` finding nodes in Dannan's roster and `tools/ci.sh`
+  are there; the layout lists `lir/client/`, `lir/include/` and `deploy/`.
+- `CONTRIBUTING.md`: rewritten where it was stale. It said there was no
+  hosted CI, that everything runs on the laptop, that Lir never links Lugh
+  and that Lir builds against sibling checkouts of Dannan and Dagda. It now
+  gives `tools/ci.sh` and its steps, the hosted jobs, the Pis-only rule,
+  the fuzz targets and the standing cluster.
+- `CLAUDE.md`: the header block's tagline is "Lir - The Message Broker", as
+  Tom decided on 2026-11-04 and as every source file and `tools/ci.sh
+  check` have it (it read "The Distributed Event System"); Lir commits and
+  pushes `develop` on its own (Tom, 2026-11-15; it read "only when asked");
+  builds on the Pis only; the `client` and `contract` namespaces.
+- `deploy/pi-cluster/README.md`: the scheduler runs on all four nodes (read
+  from `stack/scheduler/#`); the upgrade's rule, command and order moved
+  here from `ACTIVE.md`'s words.
+- `TODO/2026-11-03-lir-plan.md`: its text unchanged and its lines unmoved;
+  "Later decisions that differ" added at the end, twelve of them.
+- `TODO/2026-11-04-lir-sections.md`: a note at each answer since carried
+  out or decided.
+- `TODO/2026-11-13-lir-needs.md`: what became of each need, at its head;
+  its "plan N" citations past line 93 were nine lines short since the
+  plan's "Superseded" note went in, and are corrected.
+- `TODO/2026-11-13-step5-design.md`: where it stands, at its head (it still
+  read "a draft, nothing built"); its file:line references corrected
+  (`cluster.h:16-38`, `broker.h:57-61` and `111-120`, plan 112).
+- `TODO/ACTIVE.md`: the `client` gate's last run corrected (the 0.8.5
+  repin, not `7db72d1`); the SUBACK decision of 2026-11-16 cut to what
+  still binds, with its first wording kept here; Dagda's slice 0 figures
+  moved here.
+- This file: "How to read it" at its head.
+- Not checked: the two references into Dagda's code in the step 5 design
+  (`dagda/store/object_id.h:21`, `dagda/context.h:246-258`), which Dagda
+  confirmed on 2026-11-16, and the line numbers the needs file cites in
+  Dannan, Dagda and the stack document as they were on 2026-11-13.
+- `docs/principles-and-laws.md` is unchanged: identical to Dannan's copy,
+  and to Macha's but for the source note.

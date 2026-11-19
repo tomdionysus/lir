@@ -34,14 +34,14 @@ tools rather than by hand:
 3. When no machine has the cores, wait in the queue
    (`claim-board wait <host...|--any> --cores <n|all> --job "..." --for 2h`,
    in the background; it exits once the claim is yours). The queue is run
-   by `claim-board-scheduler.service` beside `lir-node` on jupiter, saturn
-   and neptune (and on uranus if the board's session installs one); it only
-   reads and writes the board.
+   by `claim-board-scheduler.service` beside `lir-node` on all four nodes,
+   one acting and the others standing by; it only reads and writes the
+   board. The schedulers and the plugin are the Lir Development Cluster
+   session's (`../lir-develop-cluster`).
 4. Release your claim the moment you finish, and keep `until` honest.
 5. A session may also ask a machine's holder to make room (Tom,
    2026-11-14, reversing the earlier board-only rule). Post a note before
    anything disruptive.
-
 
 Anonymous clients on the lab LAN may publish, retain and subscribe under
 `stack/`, `test/` and `louhi/` (Louhi's events, Tom, 2026-11-16), and read
@@ -81,14 +81,26 @@ With an MQTT client: `mosquitto_sub -h 10.44.1.169 -p 1983 -t 'stack/#' -v`.
 
 ## Running it
 
+Every restart or upgrade of the standing cluster needs Tom's approval, each
+time, and Louhi and the Lir Development Cluster session are told first.
+
 `install.sh` (beside this file) installs or upgrades every node from a Linux
-build: `LIR_ONLY=<name>` does one node, for a rolling upgrade, and
+release build: `LIR_ONLY=<name>` does one node, for a rolling upgrade, and
 `LIR_CONFIG_ONLY=1` with `-` for the build installs only `node.yaml` (from
-`node.yaml.in`) and restarts. On a node, `systemctl status lir-node` and `journalctl -u lir-node`.
+`node.yaml.in`) and restarts. Its arguments are the build and the four
+`NAME=ADDRESS` pairs:
+
+```
+LIR_ONLY=corvus-saturn sh deploy/pi-cluster/install.sh root@10.44.1.170:/root/lir-work/<build>/release \
+  corvus-jupiter=10.44.1.169 corvus-saturn=10.44.1.170 corvus-neptune=10.44.1.202 corvus-uranus=10.44.1.228
+```
+
+Upgrade one node at a time, with the acting scheduler's node (jupiter) last.
+After each node, check `GET /retained` on that node itself as well as the
+cluster: an HTTP failure on one node shows elsewhere only as "unreachable".
+On a node, `systemctl status lir-node` and `journalctl -u lir-node`.
 `$lir/cluster` says how many nodes are joined:
 `curl -sN -m 3 'http://10.44.1.169:8183/subscribe?filter=%24lir/cluster'`.
-After each node of an upgrade, check `GET /retained` on that node itself as
-well as the cluster.
 
 A node lives in `/home/tom/lir-cluster`: `bin/lir-node`, `lib/` (Lir's and
 Dannan's libraries), `node.yaml`, `cluster.key` (0600) and `state/`. `state/`

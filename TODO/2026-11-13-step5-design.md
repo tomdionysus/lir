@@ -1,23 +1,35 @@
-# Step 5: Lir on Dagda (design draft, 2026-11-13)
+# Step 5: Lir on Dagda (design, 2026-11-13)
 
-A draft for Tom. Nothing here is built, and no code is written against an
-unfrozen Dagda tag until Tom approves this. It maps Lir's interim state onto
-the nouns Tom ruled on 2026-11-13 (`ACTIVE.md`, Decisions;
-`../dagda/TODO/2026-11-13-three-systems-design.md`, "Ruled"). It also lists
-the tests to write first, and the questions it raises for Tom and for Dagda.
+Written as a draft for Tom on 2026-11-13. It maps Lir's interim state onto
+the nouns Tom ruled on that day (`ACTIVE.md`, Decisions;
+`../dagda/TODO/2026-11-13-three-systems-design.md`, "Ruled"), lists the
+tests to write first, and ends with the questions it raised, all answered.
 
-## Where Lir is (the interim, `lir/cluster/cluster.h:16-37`)
+Where it stands (2026-11-19):
+- Tom and Dagda answered its questions on 2026-11-13 ("Questions", below),
+  and Tom ruled on large payloads on 2026-11-16 ("Large payloads").
+- Built, since it needs no Dagda: `shard::session_shard_of`,
+  `cluster::SequenceBlocks` over its `SequenceStore` seam, and the stored
+  forms of inflight and queue entries (`lir/cluster/sequence.h`,
+  `lir/cluster/codec.h`).
+- Everything else waits on Dagda's slice tags, on Lir's Dannan, and is
+  paused by Tom until Macha runs on Dagda (`ACTIVE.md`, "Next", 2). Each
+  test below is written when its slice lands. Nothing ships before contract
+  v2 freezes at slice 4.
+
+## Where Lir is (the interim, `lir/cluster/cluster.h:16-38`)
 
 - A publish is delivered on its own node, then carried in one hop to the
   nodes with matching subscribers: QoS 0 on `lir.notify`, QoS 1/2 on
   `lir.seq`, at least once, in order per origin, deduplicated by sequence.
-  There is no shard primary in the path (Tom's answers 1: fan-out direct).
+  There is no shard primary in the path (Tom, 2026-11-04: fan-out direct).
+  A node holds SUBACK until the other nodes hold the new subscription.
 - PUBACK is sent on acceptance at the publishing node. Nothing is durable.
 - Retained values are held on every node, versioned by `RetainedVersion`
-  (Lamport counter, then node id; `lir/broker/broker.h:56-60`), spread on
+  (Lamport counter, then node id; `lir/broker/broker.h:57-61`), spread on
   `lir.retained`, and fetched whole by a node that joins.
 - A session lives on the node its client is connected to, as a
-  `SessionImage` (`broker.h:110-119`: subscriptions, outbound inflight,
+  `SessionImage` (`broker.h:111-120`: subscriptions, outbound inflight,
   queued deliveries, inbound QoS 2 packet ids, the next packet id). It is
   mirrored in memory to `session_standbys` nodes (default 1) every 100 ms,
   and taken over by `lir.session_take` when the client connects elsewhere.
@@ -52,7 +64,8 @@ node per tick, are about 100 calls a second per replica, well inside
 Dannan 0.7.0's deferred reply.
 
 Shards: topics by `shard_of(topic)` (`lir/shard/shard.h:34`); sessions by
-`SHA-256("lir-sess:" || client id) mod S` (plan 103). `S` defaults to 256,
+`shard::session_shard_of`, `SHA-256("lir-sess:" || client id) mod S`
+(`shard.h:46`; plan 112). `S` defaults to 256,
 which gives about 1,280 spaces and logs: inflight log, queue log, session
 space, retained space and lease space per shard. Dagda's slice 0 measures
 whether a node carries that. If it does not, the first cut is `S` = 64. The
@@ -144,6 +157,9 @@ inflight entry lives for one client round trip, not one network hop.
   move with retained (rules: every node holds every rule, sections 7).
 
 ## The sequence counter
+
+Built as `cluster::SequenceBlocks` (`lir/cluster/sequence.h`); the
+node-local space fills its `SequenceStore` seam when Dagda's slice lands.
 
 A dot is `(origin, seq)`, with seq monotonic across restarts. Committing
 every seq would put a commit on every publish. Instead, a node reserves a

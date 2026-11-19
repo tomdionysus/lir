@@ -14,8 +14,11 @@ The last gate was on corvus-saturn at `e839b4a`, 2026-11-17:
 - `tools/ci.sh release`: 361 passed, none skipped.
 - `SlowGossipClusterTest` repeated: 20 of 20.
 - Hosted CI on `e839b4a`: fully green (run 44200063109).
-- `tools/ci.sh client` was last clean on uranus at `7db72d1`.
-- `tools/ci.sh lugh`: 343, at the 0.8.0 repin.
+- `tools/ci.sh client` was last run on a Pi at the 0.8.5 repin (jupiter,
+  2026-11-16), clean; the hosted `client` job passed on `e839b4a`.
+- `tools/ci.sh lugh`: 343, at the 0.8.0 repin (2026-11-15).
+- No code has changed since; the docs and TODO were rationalised on
+  2026-11-19 with no build or test run.
 
 **The standing cluster** runs `e839b4a` on Dannan 0.9.2 on all four nodes,
 majority 4 of 4. It came through Tom's wipe of the Pis (2026-11-19) intact:
@@ -145,11 +148,16 @@ majority through one loss; a 2 and 2 split is a minority on both sides.
 
 - The design, Tom's: [`2026-11-03-lir-plan.md`](2026-11-03-lir-plan.md) and
   [`2026-11-04-lir-sections.md`](2026-11-04-lir-sections.md). The source of
-  truth; where a later decision below differs, the decision wins and the
-  plan carries a note.
-- Lir's needs of the libraries and its review of Dagda's design:
+  truth; where a later decision below differs, the decision wins. The plan
+  lists those at its end ("Later decisions that differ"), and the sections
+  file carries a note at each.
+- Step 5's design: [`2026-11-13-step5-design.md`](2026-11-13-step5-design.md),
+  with where it stands at its head.
+- Lir's needs of the libraries and its review of Dagda's design, a record
+  of 2026-11-13 with what became of each point:
   [`2026-11-13-lir-needs.md`](2026-11-13-lir-needs.md).
-- Step 5's design: [`2026-11-13-step5-design.md`](2026-11-13-step5-design.md).
+- For a reader and an operator: `README.md`, `CONTRIBUTING.md`, and the
+  laws and disciplines, `docs/principles-and-laws.md` (Macha's, verbatim).
 - The stack: `../dagda/TODO/2026-11-03-stack.md`; Dagda's design for its
   three owners: `../dagda/TODO/2026-11-13-three-systems-design.md`
   ("Ruled"); Dannan's: `../dannan/TODO/2026-11-13-stack-needs.md`.
@@ -210,18 +218,13 @@ Not reopened without asking Tom.
   Details: `2026-11-13-step5-design.md`, "Large payloads".
 
 - (2026-11-16, Tom, asked in turn) Dannan's ledger fix: wait for the 0.9.0
-  tag rather than pin a Dannan develop commit.
-
-- (2026-11-16, Tom, asked in turn) The window after SUBACK: a subscription
-  reaches other nodes at Dannan's heartbeat pace (5 s), so a message
-  published elsewhere in that time was lost for the new subscriber
-  (measured on the standing cluster: 0 of 20 at 0 ms, 8 of 8 at 5 s).
-  Dannan adds `Nodes::advertise` with a deadline and evidence (held,
-  missed), and `Fanout::subscribe` completing when the interest is held,
-  in 0.9, with no 0.8.x stopgap. Lir holds SUBACK on it. On a miss, SUBACK
-  anyway, with the missed peers counted and logged. A stated limit in the
-  README until then.
-
+  tag rather than pin a Dannan develop commit. (Carried out at the 0.9.0
+  repin, 2026-11-17.)
+- (2026-11-16, Tom, asked in turn) Lir holds SUBACK until every other node
+  holds the new subscription, on Dannan's advert push (0.9.0). The wait has
+  a deadline (1 s). On a miss the SUBACK goes anyway, with the missed peers
+  counted (`subscribe_missed`) and logged. How it was measured and landed:
+  `COMPLETED.md`, 2026-11-16 and 2026-11-17.
 - (2026-11-15, Tom, to Dannan, relayed by Dannan) Anything that can use
   consensus or agreement waits for Dannan's agreement primitive, which
   leads 0.9.0: no consensus, lease standing in for one, or workaround of
@@ -306,16 +309,12 @@ Not reopened without asking Tom.
 - **Dagda:** slices 0 to 4 of the three-systems design (0.1.5 on Dannan
   0.6.0, the measurement, node-local spaces, replicated spaces with per-space
   k and the advert aggregate, the merges and leases, the log), contract v2
-  at slice 4. Slice 0's verdict, on corvus-jupiter (Dagda, 2026-11-14):
-  the log passes the PUBACK mark on a real device sync. Three processes,
-  k = 2, 8,000 a second from outside the replica set: p99 12.5 ms at a
-  10 ms tick, 23.5 ms at 20 ms, the same with 256 logs on one shared
-  segment, nothing refused; p99 is about the tick plus 2.5 ms, so 50 ms
-  holds to a tick of about 40 ms. A segment per log fails; the shared
-  segment stands. A new lease holder reads a 5 s backlog (13,462 entries)
-  in about 11 ms. Not yet measured: the notify channel's cost per space.
-  Dagda's record: its `TODO/2026-11-13-three-systems-design.md`, "What
-  slice 0 has measured (the Pi)".
+  at slice 4, each tagged on Lir's Dannan. Slice 0 is done: on a Pi the log
+  passes the PUBACK mark, p99 12.5 ms at a 10 ms tick at 8,000 a second
+  (the figures are in `COMPLETED.md`, "Archived from ACTIVE.md,
+  2026-11-19", and in Dagda's `TODO/2026-11-13-three-systems-design.md`,
+  "What slice 0 has measured (the Pi)"). Slice 1 is on Dagda's develop,
+  untagged. Not yet measured: the notify channel's cost per space.
 - **Dannan:** `0.9.3`, the clock ceiling write (after the Macha cutover).
   `0.10.0`: the DatagramListener for the MQTT-SN DTLS gateway, and the
   peer-witnessed high-water mark (the clock's restore case). Also the

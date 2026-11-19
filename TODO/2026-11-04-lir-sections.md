@@ -2,7 +2,8 @@
 
 Asked in turn on 2026-11-04; all seven are answered. This file and
 `2026-11-03-lir-plan.md` are the design and the source of truth; the starter Claude Doc
-will be deleted.
+will be deleted. The answers are kept as given. A *Note* says where a later decision
+differs or where an answer has since been carried out (as of 2026-11-19).
 
 ## 1. MQTT front end, sessions and Lugh authorisation
 
@@ -37,6 +38,8 @@ will be deleted.
 
 - Beyond `$lir/nodes/<id>` and `$dannan/nodes/<id>`, each configurable and on by default:
   - `$lir/shards/<n>`, retained: holders, primary, lease epoch, retained count.
+    *Note:* not built until step 5; before it shards have no holders or leases, and
+    the topic would report nothing true.
   - `$lir/clients/...`, events: connect and disconnect with client id, node, reason code,
     protocol version.
   - `$lir/cluster`, retained: node count, total connections, message rate, limit
@@ -50,6 +53,8 @@ will be deleted.
 
 - Configuration from flags and a config file, flags overriding the file. The reader is
   Dannan's to own (rule 3): ask Dannan; Lir keeps flags until it is tagged.
+  *Note:* done at Dannan 0.4.0: the file, `secrets.yaml` beside it, `LIR_*` variables,
+  then the flags.
 - Limits are per node; a session moving to a node with smaller limits is clamped and
   told so in CONNACK; mismatches are reported in `$lir/cluster`.
 - Default limits configurable, defaulting to the moderate set: maximum packet 1 MiB,
@@ -75,6 +80,7 @@ will be deleted.
   and anonymous refused by default; MQTT over WebSockets; configurable system topics;
   the config file once Dannan has it; client certificates. Then step 5 on Dagda and the
   Lugh plugin as they unblock.
+  *Note:* all of the unblocked work is done, and the Lugh plugin; step 5 remains.
 - The first release, 0.1.0 on `main`, follows step 5 (persistence on Dagda).
 
 ## 7. Open decisions
@@ -88,6 +94,8 @@ Decided while writing this section:
   actions republish to a templated topic, drop or set properties), stored as retained
   messages under `$lir/rules/`. No embedded scripting language.
 - MQTT-SN: 1.2 and 2.0, as a gateway in `lir-node`.
+  *Note:* 1.2 is built. 2.0 waits for an approved OASIS Committee Specification; there
+  are only working drafts.
 - Server Reference: implemented, configurable. Cluster nodes are reachable, so a node may
   move a client to another node as part of load balancing (CONNACK 0x9C Use another
   server, or DISCONNECT 0x9C or 0x9D with Server Reference, MQTT 5.0 clients only).
@@ -105,6 +113,9 @@ Left open:
   it may be strengthened later.
 - The grammar of scopes in Lugh tokens is Lugh's to define; Lir waits for it
   (separation of concerns).
+  *Note:* decided the same day, with Lir's review taken in: `lir:pub:F`, `lir:sub:F`
+  and `lir:retain:F`, the filter percent-encoded (`lir/auth/scopes.h`;
+  `../lugh/TODO/2026-11-04-oauth.md`, "Topic scopes, for Lir").
 
 ## Further decisions (Tom, 2026-11-04, asked in turn)
 
@@ -137,4 +148,3 @@ MQTT-SN:
 - Predefined topic ids: retained messages on `$lir/mqttsn/topics/<id>`, changeable at
   runtime and replicated.
 - DTLS beside plain UDP, with the same certificate settings and client certificates.
-
