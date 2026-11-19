@@ -99,9 +99,11 @@ A configuration change goes out with
        409;
      - the minority side answers 503 there;
      - MQTT QoS 0 to an agreed tree is refused.
-     The design is written, for Tom:
-     [`2026-11-19-guarded-publish-design.md`](2026-11-19-guarded-publish-design.md)
-     (one register per agreed tree; four questions at its end).
+     The list above is the 2026-11-15 sketch. Tom withdrew the first design
+     on 2026-11-19 (Decisions). The plan is
+     [`2026-11-19-guarded-publish-design.md`](2026-11-19-guarded-publish-design.md):
+     after step 5, a register per topic, on Dannan's atomic commit across
+     names, Dagda's node-local log and Dannan's placement.
    - **The hybrid logical clock** for retained ordering. Lir reviewed
      Dannan's design (`../dannan/TODO/2026-11-15-hlc-design.md`); it is
      `Context::hlc()`. Adopting it needs Tom to reopen the 2026-11-04
@@ -140,7 +142,7 @@ ACTIVE.md", 2026-11-19).
 `codecov/codecov-action` to v7. Dannan, the reference for the stack's CI,
 stays on v4 and v5, so Lir stays with it until Dannan moves.
 
-**Waiting on Tom:** the guarded-publish design's four questions (item 4).
+**Waiting on Tom:** nothing open.
 
 ## The standing cluster
 
@@ -216,6 +218,18 @@ hosted CI, Linux arm64.
 ## Decisions
 
 Not reopened without asking Tom.
+
+- (2026-11-19, Tom, on the first guarded-publish design) Lir builds no
+  workaround for what Dannan or Dagda has not shipped, and does not offer
+  one to Tom as a choice:
+  - Guarded publish waits for Dannan's atomic commit across names, with a
+    register per topic. A whole tree in one register is not done.
+  - Its acceptor state waits for Dagda. No memory store and no file of
+    Lir's own.
+  - "Leaderless does not mean 'group of immovable leaders'." No fixed or
+    operator-moved replica set: placement is Dannan's and follows the
+    roster.
+  - The cluster is never restarted as a whole to introduce a feature.
 
 - (2026-11-16, Tom, asked in turn) Step 5's payloads over 64 KiB are
   never shared between messages. Dagda names an object by its content's
