@@ -5,6 +5,13 @@ the nouns Tom ruled on that day (`ACTIVE.md`, Decisions;
 `../dagda/TODO/2026-11-13-three-systems-design.md`, "Ruled"), lists the
 tests to write first, and ends with the questions it raised, all answered.
 
+**Under audit (2026-11-19).** This design keeps the interim cluster's shape
+and makes it durable. The interim is now checked against the premise
+(`2026-11-19-premise-and-audit.md`), and this design is re-read with it.
+Nothing more is built from it until the audit's findings have been to Tom.
+Items "R1" to "R11" below are the points of Lir's review of Dagda's design
+(2026-11-13), all taken into `../dagda/TODO/2026-11-13-three-systems-design.md`.
+
 Where it stands (2026-11-19):
 - Tom and Dagda answered its questions on 2026-11-13 ("Questions", below),
   and Tom ruled on large payloads on 2026-11-16 ("Large payloads").
@@ -13,7 +20,7 @@ Where it stands (2026-11-19):
   forms of inflight and queue entries (`lir/cluster/sequence.h`,
   `lir/cluster/codec.h`).
 - Everything else waits on Dagda's slice tags, on Lir's Dannan, and is
-  paused by Tom until Macha runs on Dagda (`ACTIVE.md`, "Next", 2). Each
+  paused by Tom until Macha runs on Dagda (`ACTIVE.md`, "What waits"). Each
   test below is written when its slice lands. Nothing ships before contract
   v2 freezes at slice 4.
 

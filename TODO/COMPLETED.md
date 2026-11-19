@@ -14,6 +14,13 @@ How to read it:
   SUBACK decision as first recorded, and Dagda's slice 0 figures).
 - The gate count runs from 73 tests (step 1) to 361 (2026-11-17). It has
   never dropped.
+- Everything here up to 2026-11-19 was built before the premise was written
+  down (`2026-11-19-premise-and-audit.md`). An entry says what was built and
+  that its tests passed. It does not say the thing built was right.
+- Two files this record cites are gone from `TODO/` and are in the history
+  at `5a6769f`: `2026-11-13-lir-needs.md` (Lir's needs of Dannan and Dagda,
+  N1 to N6, G1 to G9, and its review R1 to R11) and the first
+  `2026-11-19-guarded-publish-design.md` (at `9712275`).
 
 ## 2026-11-03, night: the project starts
 
@@ -1674,3 +1681,44 @@ cluster first.
   Dannan, Dagda and the stack document as they were on 2026-11-13.
 - `docs/principles-and-laws.md` is unchanged: identical to Dannan's copy,
   and to Macha's but for the source note.
+
+## 2026-11-19, later: a design withdrawn, and the premise written down
+
+No code changed, nothing was built or run, and no cores were claimed. The
+gate stands at 361 (`e839b4a`).
+
+- Checked upstream: Dannan has no 0.9.3; Lugh's tag `0.1.0` is from
+  2026-11-04, before `lugh_client`, and is not the release the plugin waits
+  for; Dependabot's moves of two CI actions to v7 were not taken, as Dannan
+  is on v4 and v5.
+- Lir wrote a guarded-publish design for the claim board on Dannan 0.9.2's
+  agreement (`9712275`): a whole tree in one register, acceptor state in
+  Lir's memory, a fixed set of four nodes moved by an operator, and perhaps
+  a restart of all four nodes to introduce it. It put four questions to
+  Tom.
+- Tom's answers: wait for multi-name commits; wait for Dagda; "Leaderless
+  does not mean 'group of immovable leaders'."; "You need to replan." Then:
+  "The questions you're asking me mean you haven't understood what Lir is
+  supposed to do."
+- The design was withdrawn (`5a6769f`) and the ruling recorded under
+  Decisions.
+- Tom then asked for a plan "to keep what is good, and rewrite the rest",
+  warning that "the temptation will be to keep code which was written with
+  a fundamentally flawed premise", and then to write it up, rewrite the
+  TODO and docs, and clear what does not support the goal.
+- Written: `TODO/2026-11-19-premise-and-audit.md` (the goal, five
+  statements to check Lir against, three bins for the code, what is
+  already suspected, seven guards against keeping what should go, and the
+  order: ask Tom, audit, a second reader, findings to Tom, then code).
+- `ACTIVE.md` rewritten around it. Removed from it: the six-step plan with
+  its "done" marks, the old "Next" list, and the guarded-publish sketch.
+  Every decision is kept; those of 2026-11-04 that set up the interim are
+  marked as under the question.
+- Removed from `TODO/`: `2026-11-13-lir-needs.md` and the withdrawn design.
+- `README.md` states which parts of the cluster are interim and under
+  audit. `CONTRIBUTING.md` and `CLAUDE.md` carry the premise.
+
+**Handoff.** The next session starts at `ACTIVE.md`, "Resume here": one
+question to Tom, then the audit. Nothing is built before the audit's
+findings have been to him. The standing cluster is untouched and runs
+`e839b4a`. No claims held. `develop` pushed.
