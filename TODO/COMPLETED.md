@@ -1535,3 +1535,60 @@ was fully green (run 44200063109). The SUBACK probe on all four nodes,
 23:50 to 23:51Z: 20/20 delivered at every delay from 0 to 2000 ms, control
 20/20, and `subscribe_missed` 0 on every node before and after. The window
 after SUBACK is closed on the standing cluster.
+
+## 2026-11-18 to 19: the hold, the wipe, and the clock ceiling write
+
+- Tom gave Miach's work priority on the Pis for the evening of 2026-11-18.
+  Lir held no claims and started nothing there.
+- Tom's wipe of the Pis to a bare OS (2026-11-19, 16:05Z), done by the Lir
+  Development Cluster session. Lir told it what a node needs outside
+  `/home/tom/lir-cluster`, now in `deploy/pi-cluster/README.md`. Every node's
+  directory and `state/` were kept. Afterwards Lir's check found:
+  - `/retained` answered 200 on all four in about 25 ms;
+  - the same ids on all four, and jupiter acting;
+  - majority 4/4 on every node;
+  - `stack/#` identical everywhere (6 messages, digest `a9ccb090d6d7`).
+  `/root/lir-work` is gone on every Pi.
+- The cluster session measured each node rewriting `state/clock/hlc-ceiling`
+  once a second, with two fsyncs; Tom called it wasteful. The write is
+  Dannan's, so it went to the Dannan session (Tom: "Dannan's code is
+  Dannan's code"). Tom decided the fix for Dannan 0.9.3: the ceiling follows
+  the stamps issued, not the wall clock. ACTIVE.md, Next, item 3.
+
+## Archived from ACTIVE.md, 2026-11-19
+
+**The ledger watch, in full.** The Dannan TSan finding was two `~NodeRecord`
+freeing one map node. It was first seen in
+`ConnectingOnAnotherNodeTakesTheClientOver` (run 43773090610) and recurred in
+`ARuleWrittenOnOneNodeAppliesOnEvery` (run 43802763961), on one thread:
+`SystemTopics::on_roster` takes `nodes().snapshot()` and publishes, and
+`Fanout::destinations`' roster copies free a node the snapshot's records
+still point at. Dannan's explanation (2026-11-16) is the ledger defect:
+`RetainedMemoryLedger::release` on a destroyed ledger frees memory it no
+longer owns and corrupts the heap. That explanation comes from reading the
+code; nobody reproduced the link. On neptune, Lir `5f68295` on Dannan 0.8.5:
+- ASan: `HeldMessagesAreLeasedInTheNodesLedger` failed in 1 of 30 runs of
+  `ClusterTest.*` with a use-after-free in `release`, from a
+  `Fanout::ask_replay` completion after `~LirNode`
+  (`build/ci-logs/neptune-asan-ledger-uaf.log`).
+- TSan with `print_suppressions`: none of 30 runs reported anything.
+Dannan's fix `79dfa2e` is in 0.9.0, and the suppression was removed then.
+
+**The SUBACK watch, in full.**
+- On 0.9.0, with all four nodes upgraded, peers were still reported missed
+  ("the peer holds an older record of this node"). The probe
+  (`build/suback-probe.py`, 2026-11-17 20:58Z) delivered 20/20 at 0 ms, but
+  19/20 at 50 ms and at 250 ms.
+- Dannan's cause: an advert change made in the same millisecond as a record
+  snapshot got the snapshot's stamp, and peers that held the snapshot refused
+  it. The claim board's frequent `/retained` reads made those ties common.
+- The same tie timed out `SlowGossipClusterTest`'s fixture: 3 of 10 runs on a
+  loaded saturn, and 3 of 4 hosted runs on 2026-11-17 (44177572057 tsan,
+  44178256902 asan arm64, 44178722443 release arm64), none of them a
+  sanitizer report.
+- 0.9.1 fixed the tie: the probe delivered 20/20 at every delay with no
+  misses. A second gap remained. A peer that connected while a node's
+  start-up push was going out kept the older record, without "lir", until a
+  heartbeat; the fixture failed 6 of 30 on saturn.
+- 0.9.2 closed it, by pushing the current record to a peer at first direct
+  contact. The fixture passed 20 of 20, and the probe 20/20 on all four nodes.
