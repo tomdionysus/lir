@@ -1,45 +1,61 @@
 # Lir - Active Work
 
-Last updated: 2026-11-17. `COMPLETED.md` is the record, with the gate counts
+Last updated: 2026-11-19. `COMPLETED.md` is the record, with the gate counts
 and the detail this file no longer carries ("Archived from ACTIVE.md",
-2026-11-14 and 2026-11-15).
+2026-11-14, 2026-11-15 and 2026-11-19).
 
 ## Resume here
 
-**State.** `develop` at the record commit after `7db72d1`, pushed; the
-repository is public, and Lir commits and pushes on its own (the maintainer,
-2026-11-15). Dannan pinned at `0.9.2`, Lugh at `dbb0573` (plugin only).
-Last gate, node-b, 2026-11-17: `lir_tests` release 360 passed,
-none skipped, on Dannan 0.9.0 with the SUBACK hold merged, HTTP waiting for
-the held SUBACK (`82088a2`), and the ledger suppression gone. `tools/ci.sh client` clean on node-d at `7db72d1`.
-`tools/ci.sh lugh` 343 at the 0.8.0 repin. Hosted CI's tsan job now runs
-without the ledger suppression (the Watch below). Nothing unmerged.
+**State.** `develop` is pushed and nothing is unmerged. The repository is
+public, and Lir commits and pushes `develop` on its own (the maintainer, 2026-11-15).
+Dannan is pinned at `0.9.2` and Lugh at `dbb0573` (plugin only).
 
-**The standing cluster** runs `e839b4a` on Dannan 0.9.2 on all four nodes
-(2026-11-17 23:49Z, rolling, `COMPLETED.md`), majority 4 of 4. The SUBACK
-probe then delivered 20/20 at every delay on all four, with no misses. After each node, check
-`GET /retained` on that node as well as `cluster-check.py`: an HTTP failure
-shows only as "unreachable" there. `louhi/#` is open to anonymous clients on all
-four (the maintainer, 2026-11-16, kept open). A configuration change goes out with
-`LIR_CONFIG_ONLY=1 LIR_ONLY=<name> sh deploy/test-cluster/install.sh - <the four NAME=ADDRESS>`. To upgrade it, tell Louhi and the coordinating session first, then one node at a time, node-a (the acting
-scheduler) last:
-`LIR_ONLY=<name> sh deploy/test-cluster/install.sh root@<node>:/root/lir-work/build-ci/release node-a=192.0.2.1 node-b=192.0.2.2 node-c=192.0.2.3 node-d=192.0.2.4`
-from a release build of `develop`, then `python3 -I build/cluster-check.py`
-(untracked) after each node.
+The last gate was on node-b at `e839b4a`, 2026-11-17:
+- `tools/ci.sh release`: 361 passed, none skipped.
+- `SlowGossipClusterTest` repeated: 20 of 20.
+- Hosted CI on `e839b4a`: fully green (run 44200063109).
+- `tools/ci.sh client` was last clean on node-d at `7db72d1`.
+- `tools/ci.sh lugh`: 343, at the 0.8.0 repin.
+
+**The standing cluster** runs `e839b4a` on Dannan 0.9.2 on all four nodes,
+majority 4 of 4. It came through the maintainer's wipe of the build nodes (2026-11-19) intact:
+the same ids, `/retained` 200 on every node, and retained identical. The
+wipe removed `/root/lir-work` on every build node, so the next build starts from a
+fresh clone there.
+
+To upgrade the cluster:
+1. Get the maintainer's approval: every restart or upgrade of the standing cluster
+   needs it, each time.
+2. Tell Louhi and the coordinating session.
+3. Do one node at a time, with node-a (the acting scheduler) last:
+   `LIR_ONLY=<name> sh deploy/test-cluster/install.sh root@<node>:/root/lir-work/<build>/release node-a=192.0.2.1 node-b=192.0.2.2 node-c=192.0.2.3 node-d=192.0.2.4`.
+   Install from a release build of `develop`.
+4. After each node, check `GET /retained` on that node as well as
+   `python3 -I build/cluster-check.py` (untracked). An HTTP failure shows
+   only as "unreachable" in the check.
+
+A configuration change goes out with
+`LIR_CONFIG_ONLY=1 LIR_ONLY=<name> sh deploy/test-cluster/install.sh - <the four NAME=ADDRESS>`.
+`louhi/#` is open to anonymous clients on all four (the maintainer, 2026-11-16).
 
 **How work is done (the maintainer, 2026-11-14):**
-- No builds or test runs on the workstation; the build nodes only, in `/root/lir-work`,
-  `-j2` and `nice 19` (node-d `-j1`: 4 GB). Claim cores on the board
-  first (`claim-board claim <host> "<job>" --cores 2 --until +90m`), release
-  when the job ends; `claim-board wait` in the background when none are free.
-- No wasted runs: sanitizers at the release gate; a repeat only for a
-  stated reason (a flaky test, odd behaviour, a fix).
-- Sanitizers run on every build node since the 4K-page, 48-bit-VA kernels
-  (2026-11-16): ASan, UBSan and TSan, with g++ anywhere or clang++-19 on
-  node-a, node-b and node-c. node-d has 4 GB and ran out of memory on
-  one, so use the 16 GB build nodes and check `free -m` first.
+- No builds or test runs on the workstation. They run on the build nodes only, in
+  `/root/lir-work`, at `-j2` and `nice 19` (node-d `-j1`: it has 4 GB).
+- Claim cores on the board first, and release them when the job ends. When
+  no build node has free cores, run `claim-board wait` in the background.
+- When the maintainer or the cluster session puts a hold on the build nodes (another project's
+  priority), start nothing there until it is lifted. The standing
+  `lir-node` service is not a job.
+- No wasted runs: sanitizers run at the release gate. A test is repeated
+  only for a stated reason: a flaky test, odd behaviour, or a fix.
+- Sanitizers (ASan, UBSan and TSan) run on every build node: g++ anywhere, or
+  clang++-19 on node-a, node-b and node-c. Use the 16 GB build nodes and check
+  `free -m` first; node-d ran out of memory on one.
 - Never keep a node list: Dannan's roster and adverts are the one list of
   Lir's nodes (the maintainer, 2026-11-15).
+- Dannan's code is Dannan's (the maintainer, 2026-11-19). When a problem is in Dannan,
+  Dagda or Lugh, tell that project's session; do not investigate or patch
+  its code from here.
 
 ## Next, in order
 
@@ -49,113 +65,69 @@ from a release build of `develop`, then `python3 -I build/cluster-check.py`
    each target for `-max_total_time=60`, with the sanitizer runs. The
    release follows step 5.
 2. **Step 5, on Dagda**, by [`2026-11-13-step5-design.md`](2026-11-13-step5-design.md),
-   when Dagda's slices are tagged: paused by the maintainer until Macha runs on Dagda.
-   Slice 1 is on Dagda's develop (`1065b18`), untagged. Lir needs a Dagda
-   tag on Dannan 0.8 (one Dannan a process); its tests
-   (`OnDagda.SeqNeverRepeatsAcrossARestart` first) come with the tag.
-   Ship nothing before contract v2 freezes at slice 4. Use the named
-   acknowledgement levels.
-3. **On Dannan 0.9.0** (repinned 2026-11-17; the SUBACK hold merged, the
-   ledger suppression gone, `COMPLETED.md`). With agreement there:
+   when Dagda's slices are tagged. Paused by the maintainer until Macha runs on Dagda.
+   - Slice 1 is on Dagda's develop (`1065b18`), untagged.
+   - Lir needs a Dagda tag on Lir's Dannan, since a process runs one Dannan.
+     Its tests come with the tag, `OnDagda.SeqNeverRepeatsAcrossARestart`
+     first.
+   - Ship nothing before contract v2 freezes at slice 4.
+   - Use the named acknowledgement levels.
+3. **At Dannan 0.9.3** (after the Macha cutover; Dannan says when it exists):
+   repin, gate, then a rolling upgrade once the maintainer approves it.
+   - It changes the hybrid clock's ceiling write. Today every node rewrites
+     `state/clock/hlc-ceiling` once a second: a temp file, an fsync, a rename
+     and a directory fsync. That is about 5-6 disk writes/s on an idle node
+     (measured on node-d, 2026-11-19).
+   - The fix, as the maintainer decided it (2026-11-19): the ceiling follows only the
+     stamps issued, never the wall clock. An idle node writes nothing. While
+     a node is stamping, the ceiling goes 30 s ahead whenever it comes within
+     2 s of the last stamp, about one write every 28 s. A clean stop writes
+     the last stamp.
+   - Lir changes nothing for it.
+4. **Agreement and the clock, on Dannan 0.9**. Both are in Dannan since
+   0.9.0; Lir's use of each needs the maintainer first.
    - **Guarded publish** for the claim board (its 0.5.0 or later;
      `../coordination/TODO/2026-11-15-claim-board-0.4.0.md`, part 1):
-     agreed trees, a node setting (the board needs `stack/pis/#` only),
-     every write and clear there through Dannan's agreement, the revision
-     its log index; `GET /retained` gives each topic's revision and an
-     `as_of` per tree; `POST /publish` takes `{"unchanged": {"filter",
-     "since"}}` and answers 409; the minority side answers 503 there; MQTT
-     QoS 0 to an agreed tree is refused. Put the design to the maintainer first.
-   - **The hybrid logical clock** for retained ordering: Lir reviewed
-     Dannan's design (`../dannan/TODO/2026-11-15-hlc-design.md`); adopting
-     it needs the maintainer to reopen the 2026-11-04 ordering decision. Recommend it:
-     the later write wins after a heal, and expiry gets an absolute time.
-     It is `Context::hlc()` in 0.9.0. On a node without key custody, its
-     ceiling is a plain durable file, so restoring an old state directory
-     on its own is not refused. The contract states that limit, and 0.10.0's
-     peer-witnessed high-water mark covers it (the maintainer, 2026-11-17, on Lir's
-     answer).
-4. **At Dannan 0.10.0:** move the MQTT-SN DTLS gateway
-   (`lir/sn/gateway.cpp`) onto `DatagramListener`, which isn't in 0.9.0.
-   Then delete `edge::server_context` and `verified_certificate(SSL*)`.
-5. **At Lugh's first release:** repin the plugin (`tools/ci.sh lugh`). The
-   hosted `lugh` job uses the secret `LUGH_READ_TOKEN`. Lugh after `2d75176`
-   pins Dannan 0.8.5, the same as Lir, and `lugh_client`'s interface hasn't
-   changed (Lugh, 2026-11-16). Since `2d75176`, Lugh percent-encodes a scope
-   level that holds '"' or '\'. Lir's usual topics never contain either.
-6. **MQTT-SN 2.0** when OASIS approves a Committee Specification.
-7. **lir::client** users: Louhi (step 8), Lugh's principal-events publisher
-   and Mimir's Lugh plugin pin `6b23268` or later. QoS 2, aliases and user
-   properties on request.
+     - agreed trees, configured per node (the board needs `stack/pis/#` only);
+     - every write and clear there goes through Dannan's agreement, and the
+       revision is its log index;
+     - `GET /retained` gives each topic's revision and an `as_of` per tree;
+     - `POST /publish` takes `{"unchanged": {"filter", "since"}}` and answers
+       409;
+     - the minority side answers 503 there;
+     - MQTT QoS 0 to an agreed tree is refused.
+     Put the design to the maintainer first.
+   - **The hybrid logical clock** for retained ordering. Lir reviewed
+     Dannan's design (`../dannan/TODO/2026-11-15-hlc-design.md`); it is
+     `Context::hlc()`. Adopting it needs the maintainer to reopen the 2026-11-04
+     ordering decision. Recommend it: the later write wins after a heal, and
+     expiry gets an absolute time.
+     - A known limit: on a node without key custody, the ceiling is a plain
+       durable file, so restoring an old state directory on its own is not
+       refused. The contract states that limit, and Dannan 0.10.0's
+       peer-witnessed high-water mark covers it (the maintainer, 2026-11-17).
+5. **At Dannan 0.10.0:** move the MQTT-SN DTLS gateway
+   (`lir/sn/gateway.cpp`) onto `DatagramListener`. Then delete
+   `edge::server_context` and `verified_certificate(SSL*)`.
+6. **At Lugh's first release:** repin the plugin and run `tools/ci.sh lugh`.
+   The hosted `lugh` job uses the secret `LUGH_READ_TOKEN`. `lugh_client`'s
+   interface is unchanged (Lugh, 2026-11-16). Since `2d75176`, Lugh
+   percent-encodes a scope level that holds '"' or '\'; Lir's usual topics
+   never contain either.
+7. **MQTT-SN 2.0** when OASIS approves a Committee Specification.
+8. **lir::client** users: Louhi (step 8), Lugh's principal-events publisher
+   and Mimir's Lugh plugin, at pin `6b23268` or later. QoS 2, aliases and
+   user properties on request.
 
-**Watch:** the Dannan TSan finding: two `~NodeRecord` free one map node.
-First seen in `ConnectingOnAnotherNodeTakesTheClientOver` (run 43773090610).
-It recurred in `ARuleWrittenOnOneNodeAppliesOnEvery` (run 43802763961), on
-one thread: `SystemTopics::on_roster` takes `nodes().snapshot()`
-(`system.cpp:356`) and publishes (`system.cpp:358`), and
-`Fanout::destinations`' roster copies free a node the snapshot's records
-still point at. Dannan's explanation (2026-11-16): the ledger defect whose
-TSan report is suppressed here (`RetainedMemoryLedger::release` on a
-destroyed ledger) frees memory it no longer owns and corrupts the heap. That
-explanation comes from reading the code; nobody has reproduced the link. On
-node-c, Lir `5f68295` on Dannan 0.8.5:
-- ASan: `HeldMessagesAreLeasedInTheNodesLedger` failed in 1 of 30 runs of
-  `ClusterTest.*` with a use-after-free in `release`. The call path is from a
-  `Fanout::ask_replay` completion after `~LirNode`; the log is
-  `build/ci-logs/node-c-asan-ledger-uaf.log`.
-- TSan, with `print_suppressions`: none of 30 runs reported anything, and
-  the ledger suppression never matched.
-Dannan's fix (`79dfa2e`) is in 0.9.0, which Lir pins since 2026-11-17, and
-the ledger suppression is gone. If the NodeRecord report, or any report in
-`RetainedMemoryLedger`, appears again, tell Dannan at once: it would mean
-the explanation is wrong. If a cluster test times out again, it is a new
-cause: the join window is closed.
-
-**Watch: the clock ceiling's 1 Hz write.** Every node rewrites
-`state/clock/hlc-ceiling` once a second: a temp file, an fsync, a rename and
-a directory fsync. That is about 5-6 disk writes/s on an idle node (the coordinating session, node-d, 2026-11-19). The maintainer calls it wasteful. The write is
-Dannan's (`keep_ahead`, `dannan/contract/hlc.cpp:131`), so Lir changes
-nothing. The maintainer decided the fix (2026-11-19): Dannan 0.9.3, after the Macha
-cutover. The ceiling follows only the stamps actually issued, never the wall
-clock:
-- An idle node writes nothing, and the first stamp after an idle spell pays
-  one write.
-- While stamping, the ceiling is set 30 s ahead whenever it comes within 2 s
-  of the last stamp, which is one write every 28 s.
-- A clean stop writes the last stamp, so a planned restart starts at wall
-  time.
-When Dannan says 0.9.3 exists: repin, gate, then a rolling upgrade once the maintainer
-approves it.
-
-**Watch: the SUBACK hold.** Dannan 0.9.2 closes the join gap below (gate,
-node-b, 2026-11-17: `SlowGossipClusterTest` 20 of 20, the suite 361). Watch
-hosted CI for that fixture timing out again. On 0.9.1 the probe delivered 20/20 at every
-delay across three nodes with no misses (2026-11-17 22:38Z). One gap
-remains: a peer that connects while a node's start-up push is going out
-keeps the older record, without "lir", until a heartbeat. That times out
-`SlowGossipClusterTest`'s fixture (6 of 30 on node-b). Dannan confirmed it
-and will fix it in 0.9.2: a node pushes its current record to a peer at
-first direct contact. At 0.9.2: repin, and gate with that fixture repeated
-20 times. History, on 0.9.0: With all four nodes on
-0.9.0, peers are still reported missed ("the peer holds an older record of
-this node"). node-b's count rose 6 in a minute, mostly the claim board's
-short-lived `stack/` subscriptions. The probe (`build/suback-probe.py`,
-2026-11-17 20:58Z) delivered 20/20 at 0 ms, but 19/20 at 50 ms and 19/20 at
-250 ms. Dannan found the cause (2026-11-17): an advert change made in the
-same millisecond as a record snapshot got the snapshot's stamp, and peers
-holding the snapshot refused it. Every miss was a true refusal. The
-claim board's frequent `/retained` reads make those ties common. Fixed on
-Dannan's `feature/advert-stamp`, to ship as 0.9.1 at the maintainer's word, with no
-ABI change. At 0.9.1: repin, gate, upgrade the cluster, and rerun the probe
-(expect 20/20 at every delay and no misses). No stopgap in Lir meanwhile.
-The same tie times out `SlowGossipClusterTest`'s fixture: in 3 of 10 runs
-on a loaded node-b, the start-up "lir" push lost to the handshake's stamp
-(`cluster_test.cpp:192`). On hosted CI it failed 3 of 4 runs on
-2026-11-17: 44177572057 tsan, 44178256902 asan arm64, 44178722443 release
-arm64. None was a sanitizer report. Until 0.9.1 a red hosted run with only
-that failure is this tie. On Dannan's fix (`34356c3`, node-b, idle) the
-fixture passed 20 of 20, against 19 of 20 on 0.9.0, and the suite 361 of
-361. Gate 0.9.1 with that fixture repeated 20 times. The upgrade also carries `98861e8`,
-which logs the return to a majority.
+**Watch: two Dannan defects that 0.9.x is believed to fix.** If either comes
+back, tell Dannan at once. The history is in `COMPLETED.md` ("Archived from
+ACTIVE.md", 2026-11-19).
+- The ledger. A TSan report in `RetainedMemoryLedger`, or two `~NodeRecord`
+  freeing one map node, would mean Dannan's explanation (`79dfa2e`, in
+  0.9.0) is wrong. The suppression is gone.
+- The join gap. If `SlowGossipClusterTest` times out in its fixture on
+  hosted CI, the gap 0.9.2 closed is open again. Before 0.9.2 it failed 6
+  of 30 runs on node-b.
 
 **Waiting on the maintainer:** nothing open.
 
@@ -344,9 +316,10 @@ Not reopened without asking the maintainer.
   in about 11 ms. Not yet measured: the notify channel's cost per space.
   Dagda's record: its `TODO/2026-11-13-three-systems-design.md`, "What
   slice 0 has measured (the build node)".
-- **Dannan:** `0.10.0`: the DatagramListener for the MQTT-SN DTLS gateway;
-  the peer-witnessed high-water mark (the clock's restore case). Also the
-  small-message bench. Agreement and the hybrid clock are in 0.9.0. Lir's
+- **Dannan:** `0.9.3`, the clock ceiling write (after the Macha cutover).
+  `0.10.0`: the DatagramListener for the MQTT-SN DTLS gateway, and the
+  peer-witnessed high-water mark (the clock's restore case). Also the
+  small-message bench. Agreement and the hybrid clock are in 0.9.0; Lir's
   use of each waits on the maintainer: the guarded-publish design for agreement, and
   reopening 2026-11-04 for the clock.
 - **Lugh:** its first release, for the plugin's repin.

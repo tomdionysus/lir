@@ -36,7 +36,7 @@ tools rather than by hand:
    in the background; it exits once the claim is yours). The queue is run
    by `claim-board-scheduler.service` beside `lir-node` on node-a, node-b
    and node-c (and on node-d if the board's session installs one); it only
-reads and writes the board.
+   reads and writes the board.
 4. Release your claim the moment you finish, and keep `until` honest.
 5. A session may also ask a machine's holder to make room (the maintainer,
    2026-11-14, reversing the earlier board-only rule). Post a note before
@@ -89,6 +89,19 @@ build: `LIR_ONLY=<name>` does one node, for a rolling upgrade, and
 `curl -sN -m 3 'http://192.0.2.1:8183/subscribe?filter=%24lir/cluster'`.
 After each node of an upgrade, check `GET /retained` on that node itself as
 well as the cluster.
+
+A node lives in `/opt/lir-cluster`: `bin/lir-node`, `lib/` (Lir's and
+Dannan's libraries), `node.yaml`, `cluster.key` (0600) and `state/`. `state/`
+holds the node's id and Dannan's agreed roster. Keep it: a node that starts
+with an empty one joins under a new id, and the old id stays a member until it
+is retired. Outside that directory a node needs:
+- `/etc/systemd/system/lir-node.service`, enabled;
+- the user `lir`, which owns the directory;
+- libc, libstdc++ and OpenSSL 3 from the OS;
+- `cgroup_enable=memory` on the kernel command line, so the unit's memory
+  settings take effect.
+That is what a wipe of a build node has to keep (it was kept in the wipe of
+2026-11-19).
 
 Each node's `$lir/nodes/<id>` gives its partition reading: the members of
 Dannan's agreed roster, how many are reachable, and the ids it cannot reach.
