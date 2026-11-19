@@ -386,9 +386,20 @@ topic scopes checked by Lir, the token verified by Lugh's client library), pinne
 commit of Lugh's until Lugh's first release. A four-node cluster on arm64 boards
 runs it continuously (`deploy/test-cluster/`).
 
-The cluster is an interim one until Dagda: retained messages are held in memory on every
-node, sessions are mirrored in memory, and a QoS 1 or 2 publish is acknowledged on
-acceptance, not on replication.
+**The cluster layer is an interim, and it is under audit.** Lir is meant to be a
+leaderless broker that replicates nothing itself: what survives a node is Dagda's, and
+membership and placement are Dannan's. The cluster that runs today was written before
+Dagda could carry it, and departs from that in ways now being checked one by one
+(`TODO/2026-11-19-premise-and-audit.md`):
+
+- retained messages are held in memory on every node, and a joining node fetches them;
+- each session is mirrored in memory to standby nodes by Lir's own scheme;
+- a QoS 1 or 2 publish is acknowledged on acceptance, not on replication, so a node
+  lost at the wrong moment loses an acknowledged message;
+- `$lir/cluster` and the roster events are published by the Lir node with the lowest id.
+
+Parts of what this README describes under "The cluster" will be rewritten, not kept.
+Do not rely on it for messages that must not be lost.
 
 A node knows which side of a split it is on: Dannan reads it against the cluster's agreed
 roster, a majority only with more than half of it reachable, so an even split is a
@@ -405,7 +416,8 @@ second by default). A node that misses it is logged and counted (`subscribe_miss
 `$lir/nodes/<id>`), and the subscription is granted anyway. A message published on that
 node before the subscription reaches it can be lost for the new subscriber.
 
-Next, persistence on Dagda (`TODO/2026-11-13-step5-design.md`). A QoS 1 or 2 publish is
+After the audit, persistence on Dagda (`TODO/2026-11-13-step5-design.md`, itself re-read
+in the audit). As designed, a QoS 1 or 2 publish is
 written to its shard's replicated log and acknowledged once two replicas hold it, with
 p99 under 50 ms as the target. Sessions and retained messages move to replicated spaces.
 Fan-out stays direct between nodes. On the minority side of a partition a node degrades

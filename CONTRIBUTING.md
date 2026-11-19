@@ -20,6 +20,13 @@ projects share. This file follows it in everything but the project's name,
 its "Read first", how it is built and tested, and what Dannan alone has
 (its packages and its ABI check).
 
+Every change is checked against Lir's premise
+(`TODO/2026-11-19-premise-and-audit.md`): no node is special; Lir replicates
+and persists nothing itself, which is Dagda's; membership and placement are
+Dannan's; nothing stands in for a primitive that has not shipped; nothing
+acknowledges a guarantee it does not have. A change that cannot be made that
+way yet is not made yet.
+
 The four laws and five disciplines (`docs/principles-and-laws.md`, a verbatim copy
 of Macha's) govern every change here, cited by number. A change that touches
 scheduling, admission, priority, retry or recovery says which law it serves and
