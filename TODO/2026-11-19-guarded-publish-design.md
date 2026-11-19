@@ -1,167 +1,75 @@
-# Guarded publish: agreed trees on Dannan's agreement (design, 2026-11-19)
+# Guarded publish: agreed topics on Dannan's agreement (2026-11-19)
 
-A design for the maintainer. Nothing here is built. The claim board asked for it
-(`../coordination/TODO/2026-11-15-claim-board-0.4.0.md`, part 1), and
-Lir answered on 2026-11-15 that it would come on Dannan's agreement, which
-0.9.0 shipped. `ACTIVE.md` ("Next", 4) says to put the design to the maintainer first.
-It is written against Dannan 0.9.2's `dannan/agree/agreement.h`, read, not
-yet called from Lir.
+The first draft of this file is withdrawn (the maintainer, 2026-11-19). It is in the
+history at `9712275`. This file records why, and the plan that replaces it.
+Nothing is built.
 
-## What the board asked for
+## What was wrong with the first draft
 
-- `GET /retained` gives each topic the revision of its last write, the
-  same on every node, and an `as_of` for the answer.
-- `POST /publish` takes `{"unchanged": {"filter": F, "since": R}}`. It is
-  applied only if nothing under F was written or cleared after R, checked
-  where the write is applied, so it is linearisable. Otherwise 409, with
-  the current revision.
+It was four workarounds, and each put to the maintainer as a choice something his rules
+had already settled.
+
+| The draft | the maintainer's answer | The rule it broke |
+|---|---|---|
+| A whole tree in one register, because a change names only one name | Wait for multi-name commits | No workaround of Lir's own for a primitive Dannan has not shipped (Decisions, 2026-11-15) |
+| Acceptor state in Lir's memory, or a file of Lir's own | Wait for Dagda | What Lir persists lives in Dagda (rule 2) |
+| The register on a fixed genesis set, moved by an operator | "Leaderless does not mean 'group of immovable leaders'." | No node is special: every node is a broker, and placement is Dannan's |
+| Perhaps restart all four nodes together to introduce it | "You need to replan." | The cluster is never stopped to change it; a node at a time, always |
+
+The draft also bent the broker to fit: it refused QoS 0, and made the
+operator the keeper of where state lives. Lir is a leaderless, multimaster
+broker in which any node does anything, built only from what Dannan and
+Dagda provide. A feature that cannot be built that way yet is not built yet.
+
+## What the board asked for (unchanged)
+
+- `GET /retained` gives each topic the revision of its last write, the same
+  on every node, and an `as_of` for the answer.
+- `POST /publish` takes `{"unchanged": {"filter": F, "since": R}}`, applied
+  only if nothing under F was written or cleared after R, else 409.
 - A clear is a write, with a revision.
 
-## What Dannan gives
+## The plan
 
-Dannan's agreement is CASPaxos: one linearisable register per name,
-changed by a function of its current value, committed by a majority of
-the slot's replica set. It has no log. In 0.9.2:
-- A change names **one** name (several only for a read), until Dannan's
-  plan item 7, the atomic commit across names.
-- Every name is in one of a fixed number of slots (256). A slot no
-  acceptor has recorded is served by the cluster's genesis set, which
-  every node is configured with (`NodeConfig::agreement_genesis`), the
-  same everywhere and fixed for the cluster's life. `found()` records
-  every slot on the genesis set once.
-- The hosted system keeps each acceptor's state (`AcceptorStore`), in
-  memory or durably. A store that restarted without its state must not
-  vote until it has caught up (`ready()`, `catch_up()`).
-- A minority side is refused, saying why. `Outcome::changed_at` is a
-  fencing token per name.
+Guarded publish comes after step 5, on three things Lir does not have yet.
+Lir builds none of them itself and nothing in their place.
 
-## The design
+1. **A register per topic**, in Dannan's agreement. A guard over a filter is
+   then a change that names several registers, so it needs Dannan's atomic
+   commit across names (Dannan's plan, item 7). Until that ships there is no
+   guarded publish.
+2. **Acceptor state in Dagda**, on its node-local log, as Dagda proposed for
+   agreement (`../dannan/TODO/2026-11-15-agreement-design.md`, "Where a
+   persisting store lives"). That is Dagda's slice 4, which step 5 waits on
+   too.
+3. **Replica sets from Dannan's placement**, moving as nodes join and leave,
+   as every other placement in Lir does. An agreed topic's set is its topic
+   shard's replicas, the same nodes that hold its retained space in step 5,
+   moved by Dannan's `transfer()` when the shard's replicas move. No node
+   list is configured in Lir and no operator moves anything.
 
-**1. An agreed tree is one register.** A node setting names the agreed
-trees, as topic filters ending in `/#` that do not overlap, for example
-`agreed_trees: ["stack/pis/#"]`. Each tree is one CASPaxos register,
-named by its filter, in the space `lir`, slot `slot_of(name)`. Its value
-is the whole tree:
-- `revision`, a counter, raised by one at every change;
-- each retained topic under the tree: its message and the revision that
-  last wrote it;
-- each cleared topic: a tombstone with the revision that cleared it, kept
-  for a window (10 minutes, as the QoS 2 window) and then dropped at the
-  next change.
+What agreement itself costs is not a workaround and stays: a write to an
+agreed topic needs a majority of its replicas, so a minority side cannot
+commit one. That is the `decided` level. It applies only to topics a node
+is configured to agree on; every other topic stays multimaster.
 
-One register per tree, not one per topic, because a guard covers a filter
-and a change can name only one register. It also makes the revision a
-plain counter that is the same on every node. The cost is that every
-write to the tree contends for one register, and that the whole tree
-travels in each accept. The board writes a few times a second at most,
-and `stack/pis/#` holds about 6 to 50 small messages, a few KiB. A tree
-over `agreed_tree_bytes` (default 256 KiB) refuses a write that would grow
-it, with 0x97 or 413.
+## Asked of Dannan
 
-**2. A write is a change.** Every publish to an agreed tree, from MQTT,
-MQTT-SN, HTTP, a will or a rule, retained or not, guarded or not, is one
-`change()` on the tree's register:
-- The change function checks the guard, if there is one: is any topic
-  under F, or any tombstone, at a revision above R? If so, it leaves the
-  value as it was and answers "conflict" with the current revision.
-- Otherwise it raises the revision. A retained publish sets the topic, an
-  empty retained publish leaves a tombstone, and a publish that is not
-  retained changes nothing but the revision. A guarded publish that is not
-  retained still needs the guard to hold, so it goes through too.
-- Once committed, the message is delivered, and retained everywhere, as
-  today. The committed tree goes on `lir.retained` with its revision, and
-  each node's retained map for the tree takes the higher revision. So
-  every node's copy converges to the register, and Lamport ordering does
-  not apply inside an agreed tree.
+Told as needs, not built around:
 
-**3. Acknowledgement.** QoS 1 and 2 are acknowledged once the change
-commits (the `decided` level). A conflict is PUBACK 0x83 (Implementation
-specific error) with a reason string naming the revision for 5.0, or
-closing a 3.x client. A refusal on a minority side is 0x97. QoS 0 to an
-agreed tree is refused, since nothing can tell its sender (a 5.0 client
-is sent DISCONNECT 0x83; a 3.x client is closed). Over HTTP: 200 with the
-revision, 409 with the current revision, 503 on a minority side or past
-the deadline.
+- Atomic commit across names (item 7), for a guard over a filter. Lir is a
+  user of it, beside Mimir and Kvasir.
+- A running cluster must be able to start using agreement one node at a
+  time. Today the slot table's genesis set is in each node's configuration,
+  and a node whose table differs is refused when it joins. How the standing
+  cluster adopts a table without stopping is Dannan's to say.
+- Replica sets that follow placement: whether Dannan's runtime proposes the
+  transfers as the roster changes, or the hosted system does from Dannan's
+  placement. Either way the rule is Dannan's, once, for every user.
 
-**4. Reads stay local.** `GET /retained` answers from the node's own
-copy, as today, adding `revision` to each message under an agreed tree
-and `as_of` per tree. A filter that spans two trees, or a tree and
-anything else, gets an `as_of` for each tree it touches. A guard's filter
-must lie inside one tree, or the publish is refused 400. A stale copy
-costs only a 409 and a fresh read, never a wrong write: the guard is
-checked against the register at commit. A minority side still serves
-reads. A strict read (`GET /retained?...&strict=1`, one round on a
-majority) is offered for a reader that must not see an old copy.
+## The details that carry over
 
-**5. Where the register lives.** Its replica set is the genesis set, the
-nodes running Lir when agreed trees are first configured. Lir moves it
-only by an operator command, `lir-node --move-agreed <tree>` with the
-new set (Dannan's `transfer()`), never by placement on its own. Each
-membership change otherwise moves no registers, and the board has no
-automatic moves to get wrong. `lir-node --retire` refuses to retire a
-node in a register's set until the register has moved.
-
-**6. The acceptor store.** Lir's own, in memory: the interim keeps
-retained messages in memory too, so the board is as durable as it is
-today. A node that restarts says `ready()` false until it has caught up
-from a majority of the other replicas (`catch_up()`), so a rolling
-restart keeps everything. If a majority of the set restarts at once,
-every agreed tree is lost, as the retained values of a restart of every
-node are today. Step 5 moves the store onto Dagda (a node-local log, as
-Dagda proposed for agreement), and then it survives.
-
-**7. Fencing.** A write's answer carries its revision. `changed_at` is not
-needed: the revision is the token.
-
-## What it costs
-
-- One round trip on the fast path, from a node that wrote last; two when
-  another node wrote meanwhile; more under contention. On the build nodes' LAN,
-  about 1 to 5 ms a round.
-- Each node in the set holds one register per tree.
-- No Lir change outside the agreed trees: everything else stays
-  multimaster and Lamport-ordered.
-
-## Asked of the maintainer
-
-1. One register per agreed tree, as above.
-2. The acceptor store in memory until step 5. The alternative is Lir's
-   own durable file, against the stack's rule that what a hosted system
-   persists lives in Dagda.
-3. The register's set fixed at the genesis set, moved only by an
-   operator. The alternative is moves by Dannan's placement as nodes come
-   and go, which is more code and more ways to fail for a four-node
-   cluster.
-4. Introducing it on the standing cluster. The genesis set is fixed for
-   the cluster's life, and a node whose slot table differs is refused when
-   it joins. A rolling upgrade may therefore split the cluster between
-   nodes with a genesis set and nodes without one. This is to be
-   confirmed with Dannan before anything is built. If so, the four nodes
-   are restarted together on the new configuration, a short outage of
-   the board, with the maintainer's approval.
-
-## Asked of Dannan, after the maintainer's go
-
-- Does an empty genesis set and a configured one count as different
-  tables, refusing the join? Can a running cluster take a genesis set
-  without every node restarting at once?
-- Is a change's value of a few hundred KiB, carried whole in each accept,
-  within what one message carries?
-
-## Tests, first
-
-- `AgreedTree.AGuardedPublishFromAStaleRevisionIsRefusedWithTheCurrentOne`
-- `AgreedTree.TwoGuardedPublishesFromOneRevisionCommitOnlyOne`
-- `AgreedTree.AClearIsAWriteTheGuardSees`
-- `AgreedTree.ATombstoneLeavesAfterItsWindow`
-- `AgreedTree.EveryNodeServesTheSameRevisionAfterACommit`
-- `AgreedTree.TheMinoritySideRefusesWritesAndServesReads`
-- `AgreedTree.QoS0ToAnAgreedTreeIsRefused`
-- `AgreedTree.AGuardWhoseFilterLeavesTheTreeIsRefused`
-- `AgreedTree.ATreeOverItsBoundRefusesAWriteThatGrowsIt`
-- `AgreedTree.ARestartedNodeVotesOnlyAfterCatchingUp`
-- `AgreedTree.ARollingRestartLosesNoAgreedTopic`
-- `AgreedTree.TopicsOutsideAnAgreedTreeStayMultimaster`
-- `HttpAgreed.RetainedCarriesRevisionsAndAsOfPerTree`
-- `HttpAgreed.APublishWithAStaleGuardIs409WithTheRevision`
-- `ProcessRetire.ANodeInAnAgreedSetIsNotRetiredUntilMoved`
+To be redrawn on per-topic registers when the three things above exist:
+reads stay local, with `revision` and `as_of` added; a guard is checked at
+the commit, so a stale read costs a 409 and never a wrong write; QoS 1 and 2
+are acknowledged once agreed; the tests are written first.
