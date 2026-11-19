@@ -99,7 +99,9 @@ A configuration change goes out with
        409;
      - the minority side answers 503 there;
      - MQTT QoS 0 to an agreed tree is refused.
-     Put the design to Tom first.
+     The design is written, for Tom:
+     [`2026-11-19-guarded-publish-design.md`](2026-11-19-guarded-publish-design.md)
+     (one register per agreed tree; four questions at its end).
    - **The hybrid logical clock** for retained ordering. Lir reviewed
      Dannan's design (`../dannan/TODO/2026-11-15-hlc-design.md`); it is
      `Context::hlc()`. Adopting it needs Tom to reopen the 2026-11-04
@@ -113,6 +115,8 @@ A configuration change goes out with
    (`lir/sn/gateway.cpp`) onto `DatagramListener`. Then delete
    `edge::server_context` and `verified_certificate(SSL*)`.
 6. **At Lugh's first release:** repin the plugin and run `tools/ci.sh lugh`.
+   Lugh's tag `0.1.0` (2026-11-04) is older than `lugh_client` and is not
+   that release; Lugh releases after its P8 (Tom, 2026-11-17).
    The hosted `lugh` job uses the secret `LUGH_READ_TOKEN`. `lugh_client`'s
    interface is unchanged (Lugh, 2026-11-16). Since `2d75176`, Lugh
    percent-encodes a scope level that holds '"' or '\'; Lir's usual topics
@@ -132,7 +136,11 @@ ACTIVE.md", 2026-11-19).
   hosted CI, the gap 0.9.2 closed is open again. Before 0.9.2 it failed 6
   of 30 runs on saturn.
 
-**Waiting on Tom:** nothing open.
+**Not taken:** Dependabot's branches moving `actions/checkout` to v7 and
+`codecov/codecov-action` to v7. Dannan, the reference for the stack's CI,
+stays on v4 and v5, so Lir stays with it until Dannan moves.
+
+**Waiting on Tom:** the guarded-publish design's four questions (item 4).
 
 ## The standing cluster
 
