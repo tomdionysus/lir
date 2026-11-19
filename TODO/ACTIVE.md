@@ -111,6 +111,16 @@ the ledger suppression is gone. If the NodeRecord report, or any report in
 the explanation is wrong. If a cluster test times out again, it is a new
 cause: the join window is closed.
 
+**Watch: the clock ceiling's 1 Hz write.** Every node rewrites
+`state/clock/hlc-ceiling` once a second: a temp file, an fsync, a rename and
+a directory fsync. That is about 5-6 disk writes/s on an idle node (Lir
+Development Cluster, uranus, 2026-11-19). Tom calls it wasteful. The write is
+Dannan's (`keep_ahead`, `dannan/contract/hlc.cpp:131`), so Lir changes
+nothing. Dannan has proposed 0.9.3 to Tom: write only when the ceiling comes
+within 2 s of the last stamp issued, then set it 30 s ahead, and write the
+last stamp issued on a clean stop. If Tom approves and it ships: repin, gate,
+and do a rolling upgrade with Tom's approval.
+
 **Watch: the SUBACK hold.** Dannan 0.9.2 closes the join gap below (gate,
 saturn, 2026-11-17: `SlowGossipClusterTest` 20 of 20, the suite 361). Watch
 hosted CI for that fixture timing out again. On 0.9.1 the probe delivered 20/20 at every
