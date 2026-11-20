@@ -95,9 +95,9 @@ Its gate on node-d:
 - coverage 99.9% of lines (the one line left is a closing brace gcov
   counts for allocation failure) and 100% of functions.
 
-Dannan is pinned at `0.10.0` (`885a266`, 2026-11-20; gate on node-b: check,
-release 113 of 113, ASan and TSan with Dannan instrumented, deb lintian
-clean). Released 0.1.0 is on Dannan `0.9.2`. Lir's code and headers did
+Dannan is pinned at `0.10.1` (`4e3e270`, 2026-11-20; gate on node-b: check,
+release 113 of 113, ASan and TSan with Dannan instrumented, 35 `__asan_`
+and 36 `__tsan_` symbols, deb lintian clean; 0.10.0 was `885a266`). Released 0.1.0 is on Dannan `0.9.2`. Lir's code and headers did
 not change, but Dannan's ABI did (`libdannan0.10`) and lir::mqtt is built
 against it, so the next release is a new minor. Nothing of Dagda or Lugh is
 linked yet. Every build node now has `mosquitto-clients`.
