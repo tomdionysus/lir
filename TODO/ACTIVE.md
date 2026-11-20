@@ -232,7 +232,20 @@ Nothing here is started before the audit's findings have been to the maintainer.
 - **OASIS:** an approved MQTT-SN 2.0 Committee Specification.
 - **Owed to others:** `lir::client` is used by Louhi, Lugh's
   principal-events publisher and Mimir's Lugh plugin, at pin `987a5f4` or
-  later. QoS 2, aliases and user properties come on request.
+  later. QoS 2, aliases and user properties come on request. The rewrite
+  removed it; it returns written new as `liblir-client0.1`, not restored.
+  Louhi's first requirements (2026-11-20; its publisher stays on
+  `e40dd2e`, opt-in, until then): construct on an executor with a config,
+  Dannan's time source and a scoped logger; the config carries the broker
+  endpoints (from Dannan's roster), optional TLS trust roots, the client
+  id, MQTT 5, and a will (an empty retained QoS 1 message that clears the
+  node's status topic); a state callback with the reason for each change;
+  start, and stop with a callback once everything is closed; publish at
+  QoS 1 with retain, its outcome (ok, why) to a callback. Louhi asks for a
+  token source called on each connect in place of a fixed password (a
+  Lugh access token), reconnection with Dannan's backoff, and every
+  callback posted to the caller's executor. Louhi's test broker uses
+  `lir::mqtt`'s packet API, unchanged since `e40dd2e`.
 
 Not taken: Dependabot's moves of `actions/checkout` and
 `codecov/codecov-action` to v7. Dannan, the reference for the stack's CI,
