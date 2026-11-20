@@ -50,7 +50,8 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends \
             g++ clang clang-format cmake ninja-build git ca-certificates openssl mosquitto-clients \
-            libboost-dev libssl-dev libyaml-cpp-dev libgtest-dev
+            libboost-dev libssl-dev libyaml-cpp-dev libgtest-dev \
+            libclang-rt-19-dev  # clang's sanitizer and libFuzzer runtimes
 
       - uses: actions/checkout@v4
 
