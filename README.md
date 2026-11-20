@@ -92,6 +92,11 @@ and adds the install rules. The tests need the mosquitto command-line
 clients. `tools/ci.sh <step>` runs each CI step, sanitizers and fuzzing
 included.
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md); everyone taking part follows the
+[Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## License
 
 GPLv3; see [LICENSE](LICENSE).
