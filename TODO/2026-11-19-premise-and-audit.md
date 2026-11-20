@@ -159,6 +159,11 @@ Dagda.
 
 ## How much of MQTT Lir supports now
 
+Measured on 2026-11-20 (step 2): [`docs/conformance.md`](../docs/conformance.md).
+Of MQTT 5.0's 252 statements 84 are tested, and of 3.1.1's 139, 51; of
+the 108 that bear on more than one node, a handful are tested across
+nodes. What follows is what was written before the measurement.
+
 Not known as a measured figure, and that is itself a finding.
 
 - By the record, on one node every feature of MQTT 3.1, 3.1.1 and 5.0 is
