@@ -1743,3 +1743,34 @@ No code changed; nothing built or run. The gate stands at 361.
 write the conformance gate, map needs to nouns, a second reader, then
 The maintainer. Nothing is built or deleted before that. The standing cluster is
 untouched. No claims held. `develop` pushed.
+
+## 2026-11-20: step 1, the contracts read
+
+No code changed; nothing built or run. The gate stands at 361. basemind's
+MCP server was down; its CLI served.
+
+- Read whole: Dannan `0.9.2`'s `Context`, `Agreement`, `Fanout` and
+  placement (the `../dannan` checkout is another session's branch older
+  than the tag, so the tag was read through git); Dagda's `Context` at
+  `0.3.2`; Dagda's three-systems design for what it has designed for Lir.
+- The plan's table corrected (`511c2d8`). Shared subscriptions: Dannan's
+  placement chooses among nodes, not a group's members, so the publisher
+  picks a node with interest by rendezvous and that node picks a member.
+  Order per publisher: `notify` carries no sequence; `stream` does, to its
+  replay buffer's bound. Wildcards: an interest advert past 1 KiB reads as
+  everything. Wills: a split fires the wills of clients still connected
+  on the other side, a question for the maintainer.
+- The unknowns sharpened. One connection per client id: agreement refuses
+  a minority side; a channel per client id overflows the interest advert.
+  Offline subscriptions: a candidate (the publisher matches and appends
+  under its own dot), unchecked with Dagda. Endings by time: a queued
+  message's expiry is the log entry's; a session's ends with no notice,
+  and nothing fires its will.
+- Nothing Lir waits on from Dagda (D1, D2, D5, D6, D9) is in its contract;
+  slices 2 to 4 are paused until Macha's cutover. Lir does not link Dagda
+  at all today, though `CLAUDE.md` says it does.
+
+**Handoff.** Start at `ACTIVE.md`, "Resume here", step 2: the conformance
+gate. It needs the MQTT 5.0 and 3.1.1 specifications' conformance
+statements and a pass over `test/`. The standing cluster is untouched. No
+claims held. `develop` pushed.
