@@ -84,7 +84,7 @@ jobs:
           files: build-ci/coverage.info
           disable_search: true
           token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: false
+          fail_ci_if_error: true
 
   macos:
     runs-on: macos-15
