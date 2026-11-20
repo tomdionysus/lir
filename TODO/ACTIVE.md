@@ -15,40 +15,46 @@ Dannan as the network layer."
   merge after.
 - Dannan is the network layer. What Lir persists lives in Dagda.
 
-## The premise
+## Built on Dannan
 
-What every piece of Lir is checked against
-([`2026-11-19-premise-and-audit.md`](2026-11-19-premise-and-audit.md)):
+The plan is [`2026-11-19-premise-and-audit.md`](2026-11-19-premise-and-audit.md).
+Read it before anything else. In short (Tom, 2026-11-19 and 20):
 
-1. No node is special: not by configuration, an operator, or a rule.
-2. Lir replicates and persists nothing itself; that is Dagda's.
-3. Membership and placement are Dannan's.
-4. Nothing stands in for a primitive that has not shipped. Lir waits, and
-   tells that project what it needs.
-5. Nothing acknowledges a guarantee it does not have (the Lir session's
-   reading; Tom to confirm).
-
-The cluster is never stopped as a whole to change it.
+- Lir is built on Dannan, not a system of its own that uses Dannan. Dannan
+  is the distributed system; Lir is MQTT expressed in Dannan's nouns, and
+  Dagda's for what persists.
+- The question for every piece is "which Dannan or Dagda noun is this?" A
+  piece that is Lir's own mechanism is wrong by construction.
+- A gap is never Lir's to fill: it is a need for Dannan or Dagda, and Lir
+  waits. No interim.
+- Lir has no kind of node that Dannan does not have. Dannan has no special
+  nodes.
+- Nothing acknowledges a guarantee it does not have. The cluster is never
+  stopped as a whole to change it.
 
 ## Resume here
 
-**What happened (2026-11-19).** Lir wrote a guarded-publish design made of
-four workarounds and put them to Tom as choices. Tom withdrew it: "The
-questions you're asking me mean you haven't understood what Lir is supposed
-to do." He then asked for a plan to keep what is good and rewrite the rest,
-warning that the temptation will be to keep code written on a flawed
-premise. That plan is the premise-and-audit file. Nothing in it is done.
+**What happened (2026-11-19 and 20).** Lir wrote a guarded-publish design
+made of four workarounds and put them to Tom as choices. Tom withdrew it:
+"The questions you're asking me mean you haven't understood what Lir is
+supposed to do." The fault is older than that design: the cluster that runs
+today is Lir's own distributed system beside Dannan. Tom's "only real
+question": what does full MQTT require that Dannan does not already
+provide, and how is that built on top of Dannan? The plan holds Lir's first
+answer, unchecked, and three things it does not know.
 
-**Do this first, in this order.** Build nothing until step 4.
-1. Ask Tom, once and plainly: is the flaw the interim cluster itself (his
-   2026-11-04 answer: standbys now, Dagda later), or only the habit of
-   adding workarounds to it? And ask his word on the five statements.
-2. Audit the code by bin, as the plan sets out, writing findings into the
-   plan file. For anything that touches more than one node, keeping is what
-   needs a reason.
-3. Have a fresh agent audit the same code from the design and the premise
-   alone. Take the differences, and all the findings, to Tom.
-4. Only then code, tests first, on a clean branch.
+**Do this, in this order.** Build and delete nothing until step 6.
+1. Read Dannan's and Dagda's contracts whole, and correct the plan's table
+   against them.
+2. Write the conformance gate: every normative statement of MQTT 5.0 and
+   3.1.1 by its identifier, with the test that proves it or "none". No
+   such list exists today, so how much of MQTT Lir supports is not
+   measured.
+3. Map each cross-node need to its noun, or state the need to the Dannan
+   or Dagda session.
+4. Have a fresh agent answer the real question independently.
+5. Take all of it to Tom.
+6. Only then code, tests first, on a clean branch.
 
 **State.** `develop` is pushed and nothing is unmerged. No code changed on
 2026-11-19. Dannan is pinned at `0.9.2` and Lugh at `dbb0573` (plugin only).
@@ -67,9 +73,10 @@ a build there starts from a fresh clone.
 
 ## How work is done
 
-- Before a design or a question to Tom, test every part against the premise
-  and the Decisions below. A missing primitive means wait. Never offer Tom
-  an option that breaks a rule.
+- Before a design or a question to Tom, name the Dannan or Dagda noun each
+  part is built on. A missing noun means wait and tell that project. Never
+  offer Tom an option that is Lir's own mechanism. Say "I don't know" when
+  that is the answer.
 - No builds or test runs on the Mac. They run on the Pis only, in
   `/root/lir-work`, at `-j2` and `nice 19` (uranus `-j1`: it has 4 GB).
   Claim cores on the board first and release them when the job ends. When
@@ -125,13 +132,19 @@ comes back, tell Dannan at once (`COMPLETED.md`, "Archived from ACTIVE.md,
   freeing one map node.
 - The join gap: `SlowGossipClusterTest` timing out in its fixture.
 
-**Waiting on Tom:** the question in "Resume here", 1.
+**Waiting on Tom:** nothing open. The findings of steps 1 to 4 go to him
+at step 5.
 
 ## Decisions
 
 Not reopened without asking Tom. Those of 2026-11-04 that set up the
-interim cluster are marked: the question in "Resume here" asks whether
-they stand.
+interim cluster are marked: they are Lir's own mechanisms, and what
+becomes of them goes to Tom with the plan's findings.
+
+- (2026-11-20, Tom) Lir is built on Dannan, not merely using it. Dannan has
+  no special nodes and neither has Lir. The only real question is what full
+  MQTT requires that Dannan does not already provide, and how that is built
+  on top of Dannan. "I don't know" is an acceptable answer.
 
 - (2026-11-19, Tom, on the first guarded-publish design) Lir builds no
   workaround for what Dannan or Dagda has not shipped, and does not offer
@@ -210,7 +223,7 @@ they stand.
 - (2026-11-04, Tom, asked in turn)
   - Fan-out direct on Dannan's channels; per-shard leases only where one
     writer matters.
-  - *Interim, under the question:* sessions mirrored to configurable
+  - *Interim, Lir's own mechanisms:* sessions mirrored to configurable
     standbys until Dagda (default one); retained on every node and PUBACK
     on acceptance until step 5.
   - Retained ordered by the Lamport counter, then the node id.

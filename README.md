@@ -33,7 +33,8 @@ Lir is the broker written once for this stack:
 - **All of MQTT.** Every client library and tool that speaks MQTT works unchanged: QoS 0,
   1 and 2, retained messages, wills, wildcards, shared subscriptions, persistent sessions,
   topic aliases, message expiry, request and response, and enhanced authentication.
-  "Supports MQTT" is defined by the specification's conformance statements, each tested.
+  "Supports MQTT" is to be defined by the specification's conformance statements, each
+  tested; that list is not written yet ([Status](#status)).
 - **On the cluster that is already there.** Membership, reachability through NATs, node
   identity, placement and the wire between nodes are Dannan's; what must survive a node
   is Dagda's. Lir adds only what makes it a broker, and has no copy of anything below it.
