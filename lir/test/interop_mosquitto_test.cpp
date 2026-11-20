@@ -98,6 +98,18 @@ class Server {
     }
   }
 
+  // The client's last word: a DISCONNECT, or nothing when it simply closes.
+  std::optional<Packet> last(Version version) {
+    if (_buffer.empty() && ready(_connection)) {
+      uint8_t chunk[4096];
+      const ssize_t got = ::recv(_connection, chunk, sizeof(chunk), 0);
+      if (got == 0) return std::nullopt;
+      if (got < 0) throw std::runtime_error("recv failed");
+      _buffer.insert(_buffer.end(), chunk, chunk + got);
+    }
+    return next(version);
+  }
+
   // What a broker does once the client's DISCONNECT is in: closes its end.
   void close() {
     if (_connection >= 0) ::close(_connection);
@@ -241,7 +253,12 @@ TEST_P(MosquittoInterop, PublishAtQoS1WithAWill) {
     }
     server.send(Ack{PacketType::puback, publish.packet_id, reason::success, {}}, version);
 
-    EXPECT_TRUE(std::holds_alternative<Disconnect>(server.next(version)));
+    // A client may end with DISCONNECT or simply close: mosquitto_pub on
+    // Debian sends one, Homebrew's on macOS closes (CI run 44672174426).
+    // Either way it read Lir's PUBACK, which its exit code says.
+    if (const auto end = server.last(version)) {
+      EXPECT_TRUE(std::holds_alternative<Disconnect>(*end));
+    }
     server.close();
   });
   EXPECT_EQ(client.wait(steady_clock::now() + patience), 0) << "mosquitto_pub did not accept Lir's CONNACK and PUBACK; it said:\n" << contents(log);
