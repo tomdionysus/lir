@@ -179,7 +179,7 @@ case "$step" in
     # Dannan's packages by Dannan's own step, at the pinned tag.
     rm -rf "$out/deb"
     git clone --quiet --depth 1 --branch "$dannan_tag" "$LIR_DANNAN_REPOSITORY" "$out/deb/dannan"
-    DANNAN_REPOSITORY="$LIR_DANNAN_REPOSITORY" "$out/deb/dannan/tools/ci.sh" install-debs "$dannan_tag"
+    DANNAN_REPOSITORY="$LIR_DANNAN_REPOSITORY" DEB_BUILD_OPTIONS="parallel=$jobs" "$out/deb/dannan/tools/ci.sh" install-debs "$dannan_tag"
     cd "$top"
     apt-get build-dep -y ./
     DEB_BUILD_OPTIONS="parallel=$jobs" tools/build-deb.sh
