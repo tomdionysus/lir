@@ -24,10 +24,19 @@ option(LIR_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 # Off: only lir::mqtt and lir::client, for a project that fetches Lir to talk
 # to it (docs/contract.md, section 3).
 option(LIR_BUILD_SERVER "Build the broker and the tests; off builds only lir::mqtt and lir::client" ON)
+option(LIR_BUILD_FUZZING "Build the libFuzzer targets (lir/fuzz/), with clang" OFF)
 
 find_package(Boost 1.83 CONFIG REQUIRED COMPONENTS headers)
 find_package(OpenSSL 3 REQUIRED COMPONENTS Crypto SSL)
 find_package(Threads REQUIRED)
+
+# A fuzz build runs under AddressSanitizer and UndefinedBehaviorSanitizer,
+# Dannan included: instrumented and plain code sharing containers give ASan
+# false reports.
+if(LIR_BUILD_FUZZING)
+  add_compile_options(-fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer)
+  add_link_options(-fsanitize=address,undefined)
+endif()
 
 # Dannan, at its tag, cloned from the sibling checkout into the build tree,
 # so building Lir never touches ../dannan. A path or a URL: STRING, as a PATH
@@ -42,6 +51,12 @@ if(NOT TARGET dannan::dannan)
   FetchContent_Declare(dannan GIT_REPOSITORY "${LIR_DANNAN_REPOSITORY}" GIT_TAG "${LIR_DANNAN_TAG}")
   set(DANNAN_BUILD_TESTING OFF CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(dannan)
+endif()
+
+# Only Lir's own code is instrumented for libFuzzer's coverage, so the fuzzer
+# explores Lir's parsers and not Dannan's internals.
+if(LIR_BUILD_FUZZING)
+  add_compile_options(-fsanitize=fuzzer-no-link)
 endif()
 
 add_library(lir_warnings INTERFACE)
@@ -60,4 +75,8 @@ add_subdirectory(lir)
 if(LIR_BUILD_TESTING AND LIR_BUILD_SERVER)
   find_package(GTest 1.14 CONFIG REQUIRED)
   add_subdirectory(lir/test)
+endif()
+
+if(LIR_BUILD_FUZZING)
+  add_subdirectory(lir/fuzz)
 endif()
