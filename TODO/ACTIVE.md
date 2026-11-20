@@ -95,9 +95,12 @@ Its gate on node-d:
 - coverage 99.9% of lines (the one line left is a closing brace gcov
   counts for allocation failure) and 100% of functions.
 
-Dannan is pinned at `0.9.2`. Nothing of Dagda or Lugh is linked yet. The
-build nodes have `mosquitto-clients` on node-d only; the others need it before
-Lir's tests run there.
+Dannan is pinned at `0.10.0` (`885a266`, 2026-11-20; gate on node-b: check,
+release 113 of 113, ASan and TSan with Dannan instrumented, deb lintian
+clean). Released 0.1.0 is on Dannan `0.9.2`. Lir's code and headers did
+not change, but Dannan's ABI did (`libdannan0.10`) and lir::mqtt is built
+against it, so the next release is a new minor. Nothing of Dagda or Lugh is
+linked yet. Every build node now has `mosquitto-clients`.
 
 The old code is in the history at `e809114`.
 
@@ -209,16 +212,16 @@ Nothing here is started before the audit's findings have been to the maintainer.
   written only for stamps issued (the maintainer, 2026-11-19), so an idle node writes
   nothing. Lir changes nothing for it: repin, gate, then a rolling upgrade
   once the maintainer approves.
-- **Dannan 0.10.0 (tagged without the stream carrier):** on repinning,
-  `tools/ci.sh asan` and `tsan` set `DANNAN_SANITIZE=address` and `thread`
-  beside the global flags (every stack library a sanitizer build links is
-  built from source and instrumented, the maintainer, 2026-11-20; checked
-  with nm), and the deb step installs Dannan's packages with Dannan's
-  `tools/ci.sh install-debs <tag>` instead of building them itself.
-  Before repinning, read 0.10.0's changelog and release notes against
-  Lir's code: a new API that replaces a workaround, a helper that replaces
-  code of Lir's own, a fixed bug Lir worked around. The repin commit says
-  what changed and what was kept, and why (the maintainer, 2026-11-20).
+- **Dannan 0.10.0: done** (`885a266`). Every repin reads the release's
+  changelog against Lir's code first and says in its commit what changed
+  and what was kept (the maintainer, 2026-11-20). From 0.10.0: Lir's own
+  UTF-8 decoder became `dannan::encoding::valid_utf8`; the sanitizer steps
+  build Dannan through `DANNAN_SANITIZE` and check its symbols; the deb
+  step uses Dannan's `install-debs`. Still to do: run the libFuzzer
+  targets through `dannan::fuzz::smoke` in `lir_tests`.
+- **Dagda 0.4.0** (on Dannan 0.10.0, being coded): D6, the register map,
+  passed its ASan and TSan gates and is on Dagda's develop as `767e83d`.
+  Read its notes when 0.4.0 lands, for retained messages.
 - **Dannan 0.11.0:** the stream carrier (item 17's `inject`,
   `StreamDirectory`), which step 2's connections are tested on.
 - **Dannan, later:** the `DatagramListener`, for the MQTT-SN DTLS gateway
