@@ -34,17 +34,19 @@ and the contract other systems build against is
 
 ## Installing
 
-Debian packages for trixie, on x86-64 and arm64, are attached to each
-[release](https://github.com/tomdionysus/lir/releases):
+Lir is packaged for Debian 13 (trixie), on x86-64 and arm64, in the
+tomcully.com apt repository:
 
 - `liblir-mqtt0.1`: the shared library `lir::mqtt`;
 - `liblir-dev`: its headers and CMake package.
 
 They depend on Dannan's packages of the matching minor (`libdannan0.9`,
-`libdannan-dev`). Install both projects' packages together:
+`libdannan-dev`), from the same repository, which apt installs with them:
 
 ```sh
-sudo apt install ./libdannan*.deb ./liblir*.deb
+sudo curl -fsSLo /etc/apt/sources.list.d/tomcully.sources https://tomcully.com/apt/tomcully.sources
+sudo apt update
+sudo apt install liblir-dev
 ```
 
 How the packages are built and versioned is in
