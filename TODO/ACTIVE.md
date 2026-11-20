@@ -163,9 +163,10 @@ a build there starts from a fresh clone.
   The node's log settings take the stack's names: `log.level` (all,
   debug, info, warn, error; `dannan::status::parse_log_level`) and
   `log.format` (text, json; `parse_log_format`), read through
-  `dannan::config`. Whether flags and environment variables exist at all
-  is open with the maintainer; if they do, `--log-level`, `--log-format`,
-  `LIR_LOG_LEVEL`, `LIR_LOG_FORMAT`.
+  `dannan::config`. The YAML is the source of truth; a flag or an
+  environment variable may override any key, through `dannan::config`
+  (the maintainer, 2026-11-20): key `a.b` is `--a-b` and `LIR_A_B`, so
+  `--log-level`, `LIR_LOG_LEVEL`, `--log-format`, `LIR_LOG_FORMAT`.
 - The stack negotiates through the coordinating session, which
   keeps the record (`../coordination/TODO/2026-11-20-cluster-stack-placement.md`).
   Before anything goes to the maintainer, ask whether the goals already answer it:
