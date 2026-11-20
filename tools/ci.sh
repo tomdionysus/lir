@@ -17,6 +17,10 @@
 #   tools/ci.sh coverage   a coverage build's tests; lcov report build-ci/coverage.info
 #   tools/ci.sh fuzz       each libFuzzer target (lir/fuzz/) from its seeds, under ASan and UBSan,
 #                          LIR_FUZZ_SECONDS each (default 60); a finding lands in build-ci/fuzz/findings/
+#   tools/ci.sh package    Dannan installed at its tag, then Lir against it, installed, and a
+#                          consumer (test/package) built from the prefix alone
+#   tools/ci.sh deb        Dannan's packages from its tag by its own tools/build-deb.sh, installed;
+#                          then Lir's, its tests inside the build, and lintian (as root: it installs)
 #
 # Builds go under build-ci/ (LIR_CI_OUT to move it), one job per CPU
 # (LIR_CI_JOBS to set it: 2 on the shared build nodes). Dannan is fetched at the
@@ -31,6 +35,9 @@ top=$(cd "$(dirname "$0")/.." && pwd)
 out=${LIR_CI_OUT:-$top/build-ci}
 jobs=${LIR_CI_JOBS:-$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)}
 step=${1:-}
+# The pins, read where they are set.
+dannan_tag=$(sed -n 's/^set(LIR_DANNAN_TAG "\([0-9.]*\)")/\1/p' "$top/CMakeLists.txt")
+lir_version=$(sed -n 's/^project(lir VERSION \([0-9.]*\).*/\1/p' "$top/CMakeLists.txt")
 if [ -z "${LIR_DANNAN_REPOSITORY:-}" ]; then
   if [ -d "$top/../dannan/.git" ]; then
     LIR_DANNAN_REPOSITORY=$top/../dannan
@@ -123,8 +130,34 @@ case "$step" in
       exit 1
     fi
     ;;
+  package)
+    rm -rf "$out/package"
+    prefix="$out/package/prefix"
+    git clone --quiet --depth 1 --branch "$dannan_tag" "$LIR_DANNAN_REPOSITORY" "$out/package/dannan-src"
+    cmake -S "$out/package/dannan-src" -B "$out/package/dannan" -G Ninja -DCMAKE_BUILD_TYPE=Release -DDANNAN_BUILD_TOOLS=OFF \
+      -DCMAKE_INSTALL_PREFIX="$prefix"
+    cmake --build "$out/package/dannan" -j "$jobs"
+    cmake --install "$out/package/dannan"
+    cmake -S "$top" -B "$out/package/lir" -G Ninja -DCMAKE_BUILD_TYPE=Release -DLIR_WARNINGS_AS_ERRORS=ON -DLIR_SYSTEM_DANNAN=ON \
+      -DCMAKE_PREFIX_PATH="$prefix" -DCMAKE_INSTALL_PREFIX="$prefix"
+    cmake --build "$out/package/lir" -j "$jobs"
+    cmake --install "$out/package/lir"
+    cmake -S "$top/test/package" -B "$out/package/consumer" -G Ninja -DCMAKE_PREFIX_PATH="$prefix" -DLIR_EXPECTED_VERSION="$lir_version"
+    cmake --build "$out/package/consumer"
+    LD_LIBRARY_PATH="$prefix/lib:$prefix/lib64:$prefix/lib/$(gcc -print-multiarch 2>/dev/null || true)" "$out/package/consumer/consumer"
+    ;;
+  deb)
+    rm -rf "$out/deb"
+    git clone --quiet --depth 1 --branch "$dannan_tag" "$LIR_DANNAN_REPOSITORY" "$out/deb/dannan"
+    (cd "$out/deb/dannan" && apt-get build-dep -y ./ && DEB_BUILD_OPTIONS="nocheck parallel=$jobs" tools/build-deb.sh)
+    apt-get install -y "$out"/deb/dannan/build-deb/libdannan*.deb
+    cd "$top"
+    apt-get build-dep -y ./
+    DEB_BUILD_OPTIONS="parallel=$jobs" tools/build-deb.sh
+    lintian --fail-on error,warning build-deb/*.changes
+    ;;
   *)
-    echo "usage: tools/ci.sh check|release|client|clang|asan|tsan|coverage|fuzz" >&2
+    echo "usage: tools/ci.sh check|release|client|clang|asan|tsan|coverage|fuzz|package|deb" >&2
     exit 2
     ;;
 esac

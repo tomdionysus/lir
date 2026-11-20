@@ -50,7 +50,16 @@ cmake --build build
 ```
 
 Dannan is fetched at its pinned tag from the sibling checkout `../dannan`
-(`-DLIR_DANNAN_REPOSITORY` names another). `tools/ci.sh` runs each CI step.
+(`-DLIR_DANNAN_REPOSITORY` names another); `-DLIR_SYSTEM_DANNAN=ON` uses the
+installed `libdannan-dev` instead and adds the install rules. `tools/ci.sh`
+runs each CI step.
+
+## Installing
+
+Debian packages for trixie, built with `tools/build-deb.sh`: for now
+`liblir-mqtt0.1`, the MQTT codec the stack links, and `liblir-dev`. The
+broker's own package comes when it serves clients. How they are built and
+versioned: [`docs/packaging.md`](docs/packaging.md).
 
 ## License
 

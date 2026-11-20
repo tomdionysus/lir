@@ -1,0 +1,16 @@
+#
+# Lir - The Message Broker
+#
+# Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+# Licensed under the GNU GPLv3 - see <https://www.gnu.org/licenses/gpl-3.0.html>
+#
+
+@PACKAGE_INIT@
+
+# lir::mqtt, the stack's MQTT codec (docs/contract.md, section 2). Dannan
+# by minor, at least the patch Lir was built against.
+include(CMakeFindDependencyMacro)
+find_dependency(dannan @LIR_DANNAN_TAG@ CONFIG)
+
+include("${CMAKE_CURRENT_LIST_DIR}/lirTargets.cmake")
+check_required_components(lir)

@@ -1,0 +1,51 @@
+#!/usr/bin/make -f
+#
+# Lir - The Message Broker
+#
+# Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+# Licensed under the GNU GPLv3 - see <https://www.gnu.org/licenses/gpl-3.0.html>
+#
+# The CMake install rules say where everything goes; this splits it between
+# the library and its development files. The library's package is named for
+# its SONAME, major.minor, and debian/control names it. Dannan is the
+# installed package (LIR_SYSTEM_DANNAN), never a copy.
+
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+include /usr/share/dpkg/architecture.mk
+
+MQTT := $(shell sed -n 's/^Package: \(liblir-mqtt[0-9].*\)/\1/p' debian/control)
+
+ifneq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
+TESTS = OFF
+else
+TESTS = ON
+endif
+
+%:
+	dh $@ --buildsystem=cmake --builddirectory=debian/build
+
+override_dh_auto_configure:
+	dh_auto_configure -- \
+		-DCMAKE_BUILD_TYPE=RelWithDebInfo \
+		-DLIR_SYSTEM_DANNAN=ON \
+		-DLIR_BUILD_TESTING=$(TESTS)
+
+# The test binary rather than ctest. Every connection the tests make, the
+# real MQTT clients' among them, is on the loopback interface.
+override_dh_auto_test:
+ifeq ($(TESTS),ON)
+	debian/build/lir_tests
+endif
+
+# A host built against this release depends on it or a later patch: a patch
+# may add to the ABI, never change it.
+override_dh_makeshlibs:
+	dh_makeshlibs -V
+
+# One path to each call: given several, dh_install takes the last as the
+# destination. The glob is quoted for dh_install to expand under debian/tmp.
+override_dh_install:
+	dh_install -p$(MQTT) 'usr/lib/$(DEB_HOST_MULTIARCH)/liblir_mqtt.so.*'
+	dh_install -pliblir-dev usr/include/lir
+	dh_install -pliblir-dev usr/lib/$(DEB_HOST_MULTIARCH)/liblir_mqtt.so
+	dh_install -pliblir-dev usr/lib/$(DEB_HOST_MULTIARCH)/cmake/lir
