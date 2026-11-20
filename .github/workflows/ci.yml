@@ -16,6 +16,12 @@ on:
   push:
     branches: [main, develop]
   pull_request:
+  # Builds the Debian packages of a release tag, for the apt repository.
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: The tag to package
+        required: true
 
 permissions:
   contents: read
@@ -23,6 +29,7 @@ permissions:
 jobs:
   linux:
     name: ${{ matrix.step }} (${{ matrix.arch }})
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     strategy:
@@ -88,6 +95,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # tags, for the package's version
+          ref: ${{ inputs.ref || github.ref }}
 
       - name: Trust the checkout
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -95,7 +103,13 @@ jobs:
       - name: deb
         run: tools/ci.sh deb
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb-${{ matrix.arch }}
+          path: build-deb/*.deb
+
   coverage:
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     container:
@@ -126,6 +140,7 @@ jobs:
           fail_ci_if_error: true
 
   macos:
+    if: github.event_name != 'workflow_dispatch'
     runs-on: macos-15
     timeout-minutes: 60
     steps:
