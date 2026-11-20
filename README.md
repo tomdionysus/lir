@@ -57,7 +57,7 @@ How the packages are built and versioned is in
 From CMake, with `liblir-dev` installed:
 
 ```cmake
-find_package(lir 0.1 CONFIG REQUIRED)
+find_package(lir 0.1.0 CONFIG REQUIRED)
 target_link_libraries(your_target PRIVATE lir::mqtt)
 ```
 
