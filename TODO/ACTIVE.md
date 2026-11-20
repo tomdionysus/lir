@@ -166,7 +166,10 @@ a build there starts from a fresh clone.
   `dannan::config`. The YAML is the source of truth; a flag or an
   environment variable may override any key, through `dannan::config`
   (the maintainer, 2026-11-20): key `a.b` is `--a-b` and `LIR_A_B`, so
-  `--log-level`, `LIR_LOG_LEVEL`, `--log-format`, `LIR_LOG_FORMAT`.
+  `--log-level`, `LIR_LOG_LEVEL`, `--log-format`, `LIR_LOG_FORMAT`. The
+  whole pattern (layer order: defaults, YAML, secrets.yaml, environment,
+  command line; the naming rule; the shared keys) is Dannan's
+  `docs/config.md`; the node follows it.
 - The stack negotiates through the coordinating session, which
   keeps the record (`../coordination/TODO/2026-11-20-cluster-stack-placement.md`).
   Before anything goes to the maintainer, ask whether the goals already answer it:
