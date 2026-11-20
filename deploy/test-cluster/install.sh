@@ -22,13 +22,16 @@
 # keeps the binaries each node has.
 #
 # The cluster key is made once and kept in build/test-cluster/cluster.key in
-# this checkout, never in the repository. Each node runs as lir from
-# /opt/lir-cluster under the lir-node systemd unit.
+# this checkout, never in the repository. Each node runs as LIR_DEPLOY_USER
+# (default lir) from LIR_DEPLOY_DIR (default /opt/lir-cluster) under the
+# lir-node systemd unit; the user must exist on every node.
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
 stage="$repo/build/test-cluster"
+dir=${LIR_DEPLOY_DIR:-/opt/lir-cluster}
+user=${LIR_DEPLOY_USER:-lir}
 build=$1
 shift
 
@@ -58,18 +61,19 @@ for node in "$@"; do
     [ "$other" = "$address" ] && continue
     bootstrap="${bootstrap:+$bootstrap, }$other:7537"
   done
-  sed -e "s/@NAME@/$name/" -e "s/@ADDRESS@/$address/" -e "s/@BOOTSTRAP@/$bootstrap/" "$here/node.yaml.in" > "$stage/node-$name.yaml"
+  sed -e "s/@NAME@/$name/" -e "s/@ADDRESS@/$address/" -e "s/@BOOTSTRAP@/$bootstrap/" -e "s|@DIR@|$dir|g" "$here/node.yaml.in" > "$stage/node-$name.yaml"
+  sed -e "s|@DIR@|$dir|g" -e "s/@USER@/$user/g" "$here/lir-node.service.in" > "$stage/lir-node.service"
 
   echo "== $name ($address)"
-  ssh root@"$address" 'install -d -o lir -g lir -m 0750 /opt/lir-cluster /opt/lir-cluster/bin /opt/lir-cluster/lib /opt/lir-cluster/state'
+  ssh root@"$address" "install -d -o $user -g $user -m 0750 $dir $dir/bin $dir/lib $dir/state"
   if [ -z "$config_only" ]; then
-    rsync -a --delete "$stage/bin/" root@"$address":/opt/lir-cluster/bin/
-    rsync -a --delete "$stage/lib/" root@"$address":/opt/lir-cluster/lib/
+    rsync -a --delete "$stage/bin/" root@"$address":"$dir/bin/"
+    rsync -a --delete "$stage/lib/" root@"$address":"$dir/lib/"
   fi
-  rsync -a "$stage/cluster.key" root@"$address":/opt/lir-cluster/cluster.key
-  rsync -a "$stage/node-$name.yaml" root@"$address":/opt/lir-cluster/node.yaml
-  rsync -a "$here/lir-node.service" root@"$address":/etc/systemd/system/lir-node.service
-  ssh root@"$address" 'chown -R lir:lir /opt/lir-cluster && chmod 0600 /opt/lir-cluster/cluster.key &&
+  rsync -a "$stage/cluster.key" root@"$address":"$dir/cluster.key"
+  rsync -a "$stage/node-$name.yaml" root@"$address":"$dir/node.yaml"
+  rsync -a "$stage/lir-node.service" root@"$address":/etc/systemd/system/lir-node.service
+  ssh root@"$address" "chown -R $user:$user $dir && chmod 0600 $dir/cluster.key && sync &&
     systemctl daemon-reload && systemctl enable lir-node >/dev/null 2>&1 && systemctl restart lir-node &&
-    sleep 2 && systemctl is-active lir-node'
+    sleep 2 && systemctl is-active lir-node"
 done

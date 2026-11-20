@@ -7,17 +7,17 @@
 
 # One node of the standing Lir cluster on the shared build servers
 # (README.md beside this file). Installed by install.sh as
-# /etc/systemd/system/lir-node.service; runs as lir from /opt/lir-cluster.
+# /etc/systemd/system/lir-node.service; runs as @USER@ from @DIR@.
 [Unit]
 Description=Lir node (standing cluster on the build servers)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-User=lir
-WorkingDirectory=/opt/lir-cluster
-Environment=LD_LIBRARY_PATH=/opt/lir-cluster/lib
-ExecStart=/opt/lir-cluster/bin/lir-node --config /opt/lir-cluster/node.yaml
+User=@USER@
+WorkingDirectory=@DIR@
+Environment=LD_LIBRARY_PATH=@DIR@/lib
+ExecStart=@DIR@/bin/lir-node --config @DIR@/node.yaml
 Nice=10
 Restart=on-failure
 RestartSec=5

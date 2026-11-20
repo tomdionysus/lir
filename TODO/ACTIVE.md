@@ -166,8 +166,7 @@ a build there starts from a fresh clone.
 
 ## The converged plan (2026-11-20)
 
-The stack's placement converged through the the coordinating session
-session (`../coordination/TODO/2026-11-20-cluster-stack-placement.md`,
+The stack's placement converged through the coordinating session (`../coordination/TODO/2026-11-20-cluster-stack-placement.md`,
 "The converged plan", "Lir"); Lir agreed, adding sessions on D1/D2 and
 in-flight and queues on D9, and Dannan's backoff in `lir::client`. For Lir:
 - **Dannan's next minor:** the simulation harness exported as

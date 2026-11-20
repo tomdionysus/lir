@@ -9,11 +9,11 @@
 # fills @NAME@, @ADDRESS@ and @BOOTSTRAP@ per node. The ports keep clear of
 # other sessions' test nodes, which use Dannan's default 7437.
 cluster:
-  key: /opt/lir-cluster/cluster.key
+  key: @DIR@/cluster.key
   bootstrap: [@BOOTSTRAP@]
 node:
   name: @NAME@
-  state: /opt/lir-cluster/state
+  state: @DIR@/state
   advertise: @ADDRESS@
   port: 7537
 mqtt:

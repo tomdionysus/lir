@@ -2,7 +2,8 @@
 
 The maintainer, 2026-11-13: install a Lir cluster on the shared arm64 build servers, use
 it to test Lir, and use it to coordinate work between the sessions that share
-them.
+them. The names and addresses here are placeholders (RFC 5737); the real ones
+are kept out of the repository, in the untracked `CLAUDE.local.md`.
 
 | Node | Address | Dannan | MQTT | HTTP |
 |---|---|---|---|---|
@@ -14,7 +15,7 @@ them.
 Any node serves any client; the cluster is one broker. Connect to whichever
 is up. The ports keep clear of other sessions' test nodes on Dannan's 7437.
 
-node-d (192.0.2.4; arm64, 4 cores, 4 GB RAM) joined as the fourth
+node-d (192.0.2.4, the smallest) joined as the fourth
 node at the maintainer's word (2026-11-15), reversing its earlier exclusion. Four
 nodes keep a majority (3 of 4) through any one loss; an even split, 2 and
 2, is a minority on both sides (Dannan's partition reading), so QoS 1 and 2
@@ -36,8 +37,7 @@ tools rather than by hand:
    in the background; it exits once the claim is yours). The queue is run
    by `claim-board-scheduler.service` beside `lir-node` on all four nodes,
    one acting and the others standing by; it only reads and writes the
-   board. The schedulers and the plugin are the the coordinating session
-   session's (`../coordination`).
+   board. The schedulers and the plugin are the coordinating session's (`../coordination`).
 4. Release your claim the moment you finish, and keep `until` honest.
 5. A session may also ask a machine's holder to make room (the maintainer,
    2026-11-14, reversing the earlier board-only rule). Post a note before
@@ -87,8 +87,10 @@ time, and Louhi and the coordinating session are told first.
 `install.sh` (beside this file) installs or upgrades every node from a Linux
 release build: `LIR_ONLY=<name>` does one node, for a rolling upgrade, and
 `LIR_CONFIG_ONLY=1` with `-` for the build installs only `node.yaml` (from
-`node.yaml.in`) and restarts. Its arguments are the build and the four
-`NAME=ADDRESS` pairs:
+`node.yaml.in`) and restarts. `LIR_DEPLOY_DIR` (default `/opt/lir-cluster`)
+and `LIR_DEPLOY_USER` (default `lir`, which must exist) say where and as whom
+each node runs; the unit is made from `lir-node.service.in`. Its arguments are
+the build and the four `NAME=ADDRESS` pairs:
 
 ```
 LIR_ONLY=node-b sh deploy/test-cluster/install.sh root@192.0.2.2:/root/lir-work/<build>/release \
@@ -102,18 +104,17 @@ On a node, `systemctl status lir-node` and `journalctl -u lir-node`.
 `$lir/cluster` says how many nodes are joined:
 `curl -sN -m 3 'http://192.0.2.1:8183/subscribe?filter=%24lir/cluster'`.
 
-A node lives in `/opt/lir-cluster`: `bin/lir-node`, `lib/` (Lir's and
+A node lives in `LIR_DEPLOY_DIR`, here `/opt/lir-cluster`: `bin/lir-node`, `lib/` (Lir's and
 Dannan's libraries), `node.yaml`, `cluster.key` (0600) and `state/`. `state/`
 holds the node's id and Dannan's agreed roster. Keep it: a node that starts
 with an empty one joins under a new id, and the old id stays a member until it
 is retired. Outside that directory a node needs:
 - `/etc/systemd/system/lir-node.service`, enabled;
-- the user `lir`, which owns the directory;
+- `LIR_DEPLOY_USER`, here `lir`, which owns the directory;
 - libc, libstdc++ and OpenSSL 3 from the OS;
 - `cgroup_enable=memory` on the kernel command line, so the unit's memory
   settings take effect.
-That is what a wipe of a build node has to keep (it was kept in the wipe of
-2026-11-19).
+That is what a wipe of a build node has to keep.
 
 Each node's `$lir/nodes/<id>` gives its partition reading: the members of
 Dannan's agreed roster, how many are reachable, and the ids it cannot reach.
