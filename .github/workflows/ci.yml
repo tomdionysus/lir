@@ -6,7 +6,7 @@
 #
 # tools/ci.sh's steps on Debian 13, as the nodes have it: the header and format
 # check; release builds on x86-64 and on arm64, as a Pi builds them; clang with
-# its thread-safety analysis; ASan and UBSan on both, TSan; the Lugh plugin;
+# its thread-safety analysis; ASan and UBSan on both, TSan;
 # coverage to Codecov; and a build and test on macOS. Runs on the Pi build servers and the
 # standing cluster stay by hand.
 name: CI
@@ -55,53 +55,6 @@ jobs:
 
       - name: ${{ matrix.step }}
         run: tools/ci.sh ${{ matrix.step }}
-
-  # The Lugh plugin (LIR_BUILD_LUGH), built and tested with Lugh's lugh_client.
-  # Lugh's repository is private: a read-only token for it is the repository
-  # secret LUGH_READ_TOKEN. Without it the job says so and builds nothing.
-  lugh:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    container:
-      image: debian:trixie
-    env:
-      HAS_LUGH_TOKEN: ${{ secrets.LUGH_READ_TOKEN != '' }}
-    steps:
-      - name: No token
-        if: env.HAS_LUGH_TOKEN != 'true'
-        run: echo "LUGH_READ_TOKEN is not set; the Lugh plugin is not built here."
-
-      - name: Install packages
-        if: env.HAS_LUGH_TOKEN == 'true'
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends \
-            g++ cmake ninja-build git ca-certificates openssl mosquitto-clients \
-            libboost-dev libssl-dev libyaml-cpp-dev libgtest-dev
-
-      - uses: actions/checkout@v4
-        if: env.HAS_LUGH_TOKEN == 'true'
-
-      # Lugh's develop with its history, so the pinned commit can be fetched
-      # from it.
-      - uses: actions/checkout@v4
-        if: env.HAS_LUGH_TOKEN == 'true'
-        with:
-          repository: tomdionysus/lugh
-          ref: develop
-          fetch-depth: 0
-          path: lugh-src
-          token: ${{ secrets.LUGH_READ_TOKEN }}
-
-      - name: Trust the checkouts
-        if: env.HAS_LUGH_TOKEN == 'true'
-        run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git config --global --add safe.directory "$GITHUB_WORKSPACE/lugh-src"
-
-      - name: lugh
-        if: env.HAS_LUGH_TOKEN == 'true'
-        run: LIR_LUGH_REPOSITORY="$GITHUB_WORKSPACE/lugh-src" tools/ci.sh lugh
 
   coverage:
     runs-on: ubuntu-24.04

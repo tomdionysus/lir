@@ -7,115 +7,142 @@
 
 #include <gtest/gtest.h>
 
+#include <string>
+
 #include "lir/mqtt/topic.h"
 
+// MQTT 5.0 sections 4.7 and 4.8.2, 3.1.1 section 4.7, statement by statement.
+// 3.1.1's statements are the same rules under other numbers, so each test
+// names both.
 namespace lir::mqtt {
 namespace {
 
-TEST(MqttTopic, NamesHaveNoWildcards) {
-  EXPECT_TRUE(valid_topic_name("a/b"));
-  EXPECT_TRUE(valid_topic_name("/"));
-  EXPECT_TRUE(valid_topic_name("$SYS/x"));
-  EXPECT_FALSE(valid_topic_name(""));
-  EXPECT_FALSE(valid_topic_name("a/+"));
-  EXPECT_FALSE(valid_topic_name("a/#"));
-  EXPECT_FALSE(valid_topic_name("a+b"));
+TEST(MqttTopic, MQTT_4_7_0_1_and_MQTT311_4_7_1_1_NoWildcardInATopicName) {
+  for (const char* name : {"sport/+", "sport/#", "+", "#", "a+b", "a#b", "sport/tennis+"}) EXPECT_FALSE(valid_topic_name(name)) << name;
+  for (const char* name : {"sport", "sport/tennis/player1", "/", "a//b", "$SYS/x"}) EXPECT_TRUE(valid_topic_name(name)) << name;
 }
 
-// Section 4.7.1: the specification's examples.
-TEST(MqttTopic, FilterRules) {
-  for (const auto* f : {"#", "+", "sport/#", "sport/tennis/#", "+/tennis/#", "sport/+/player1", "+/+", "/+", "a//b", "/"})
-    EXPECT_TRUE(valid_topic_filter(f)) << f;
-  for (const auto* f : {"", "sport/tennis#", "sport/tennis/#/ranking", "sport+", "#/a", "a/b+", "++"}) EXPECT_FALSE(valid_topic_filter(f)) << f;
+TEST(MqttTopic, MQTT_4_7_1_1_and_MQTT311_4_7_1_2_MultiLevelWildcardAloneAndLast) {
+  for (const char* filter : {"#", "sport/#", "sport/tennis/#", "/#", "+/#"}) EXPECT_TRUE(valid_topic_filter(filter)) << filter;
+  for (const char* filter : {"sport/tennis#", "sport/tennis/#/ranking", "#/a", "##", "a/#/", "#a"}) EXPECT_FALSE(valid_topic_filter(filter)) << filter;
 }
 
-// Section 4.7.1.2 and 4.7.1.3.
-TEST(MqttTopic, MatchingExamples) {
+TEST(MqttTopic, MQTT_4_7_1_1_and_MQTT311_4_7_1_2_MultiLevelWildcardMatchesParentAndChildren) {
   EXPECT_TRUE(matches("sport/tennis/player1/#", "sport/tennis/player1"));
   EXPECT_TRUE(matches("sport/tennis/player1/#", "sport/tennis/player1/ranking"));
   EXPECT_TRUE(matches("sport/tennis/player1/#", "sport/tennis/player1/score/wimbledon"));
   EXPECT_TRUE(matches("sport/#", "sport"));
+  EXPECT_TRUE(matches("#", "sport/tennis"));
+  EXPECT_TRUE(matches("#", "/"));
+  EXPECT_FALSE(matches("sport/tennis/player1/#", "sport/tennis/player2"));
+  EXPECT_FALSE(matches("sport/#", "sports"));
+}
+
+TEST(MqttTopic, MQTT_4_7_1_2_and_MQTT311_4_7_1_3_SingleLevelWildcardOccupiesALevel) {
+  for (const char* filter : {"+", "+/tennis/#", "sport/+/player1", "/+", "+/+", "sport/+"}) EXPECT_TRUE(valid_topic_filter(filter)) << filter;
+  for (const char* filter : {"sport+", "+sport", "sport/+tennis", "a/b+/c", "++"}) EXPECT_FALSE(valid_topic_filter(filter)) << filter;
+}
+
+TEST(MqttTopic, MQTT_4_7_1_2_and_MQTT311_4_7_1_3_SingleLevelWildcardMatchesOneLevel) {
   EXPECT_TRUE(matches("sport/tennis/+", "sport/tennis/player1"));
+  EXPECT_TRUE(matches("sport/tennis/+", "sport/tennis/player2"));
   EXPECT_FALSE(matches("sport/tennis/+", "sport/tennis/player1/ranking"));
-  EXPECT_TRUE(matches("sport/+", "sport/"));
   EXPECT_FALSE(matches("sport/+", "sport"));
+  EXPECT_TRUE(matches("sport/+", "sport/"));
   EXPECT_TRUE(matches("+/+", "/finance"));
   EXPECT_TRUE(matches("/+", "/finance"));
   EXPECT_FALSE(matches("+", "/finance"));
-  EXPECT_TRUE(matches("#", "a/b/c"));
-  EXPECT_TRUE(matches("a/b", "a/b"));
-  EXPECT_FALSE(matches("a/b", "a/b/c"));
-  EXPECT_FALSE(matches("a/b/c", "a/b"));
-  EXPECT_FALSE(matches("a/+", "a"));
+  EXPECT_TRUE(matches("+", ""));
 }
 
-// Section 4.7.2: '$' topics and leading wildcards.
-TEST(MqttTopic, DollarTopicsAndLeadingWildcards) {
-  EXPECT_FALSE(matches("#", "$SYS/monitor/Clients"));
+TEST(MqttTopic, MQTT_4_7_2_1_and_MQTT311_4_7_2_1_WildcardFirstNeverMatchesDollarTopics) {
+  EXPECT_FALSE(matches("#", "$SYS/broker/clients"));
+  EXPECT_FALSE(matches("#", "$SYS"));
   EXPECT_FALSE(matches("+/monitor/Clients", "$SYS/monitor/Clients"));
-  EXPECT_TRUE(matches("$SYS/#", "$SYS/monitor/Clients"));
+  EXPECT_FALSE(matches("+", "$lir"));
+  EXPECT_TRUE(matches("$SYS/#", "$SYS/broker/clients"));
   EXPECT_TRUE(matches("$SYS/monitor/+", "$SYS/monitor/Clients"));
+  // Only the first level is special.
+  EXPECT_TRUE(matches("a/+", "a/$b"));
+  EXPECT_TRUE(matches("a/#", "a/$b/c"));
 }
 
-TEST(MqttTopic, SharedSubscriptions) {
-  EXPECT_TRUE(is_shared("$share/g/a/b"));
-  EXPECT_FALSE(is_shared("$SYS/a"));
-  EXPECT_EQ(parse_shared("$share/consumers/sport/+"), (SharedFilter{"consumers", "sport/+"}));
+TEST(MqttTopic, MQTT_4_7_3_1_and_MQTT311_4_7_3_1_AtLeastOneCharacter) {
+  EXPECT_FALSE(valid_topic_name(""));
+  EXPECT_FALSE(valid_topic_filter(""));
+}
+
+TEST(MqttTopic, MQTT_4_7_3_2_and_MQTT311_4_7_3_2_NoNullCharacter) {
+  const std::string name("a\0b", 3);
+  EXPECT_FALSE(valid_topic_name(name));
+  EXPECT_FALSE(valid_topic_filter(name));
+  EXPECT_FALSE(valid_topic_filter(std::string("a/\0/#", 5)));
+}
+
+TEST(MqttTopic, MQTT_4_7_3_3_and_MQTT311_4_7_3_3_AtMost65535Bytes) {
+  EXPECT_TRUE(valid_topic_name(std::string(65535, 'a')));
+  EXPECT_FALSE(valid_topic_name(std::string(65536, 'a')));
+  EXPECT_TRUE(valid_topic_filter(std::string(65535, 'a')));
+  EXPECT_FALSE(valid_topic_filter(std::string(65534, 'a') + "/#"));
+}
+
+TEST(MqttTopic, MQTT_4_7_3_4_and_MQTT311_4_7_3_4_NoNormalisation) {
+  EXPECT_FALSE(matches("ACCOUNTS", "Accounts"));
+  EXPECT_FALSE(matches("a/", "a"));
+  EXPECT_FALSE(matches("a", "a/"));
+  EXPECT_FALSE(matches("a//b", "a/b"));
+  EXPECT_FALSE(matches(" a", "a"));
+  // A precomposed e-acute and an e with a combining acute are different.
+  EXPECT_FALSE(matches("caf\xC3\xA9", "cafe\xCC\x81"));
+  EXPECT_TRUE(matches("caf\xC3\xA9", "caf\xC3\xA9"));
+}
+
+TEST(MqttTopic, MQTT_4_8_2_1_SharedFilterNeedsAShareName) {
+  EXPECT_TRUE(is_shared("$share/g/a"));
+  EXPECT_FALSE(is_shared("$shared/g/a"));
+  EXPECT_FALSE(is_shared("share/g/a"));
+  EXPECT_FALSE(parse_shared("$share//a").has_value());
+  EXPECT_FALSE(parse_shared("$share/").has_value());
+  EXPECT_EQ(parse_shared("$share/g/a"), (SharedFilter{"g", "a"}));
+}
+
+TEST(MqttTopic, MQTT_4_8_2_2_ShareNameRulesAndTheFilterAfterIt) {
+  for (const char* bad : {"$share/g+/a", "$share/g#/a", "$share/+/a", "$share/#/a", "$share/g", "$share/g/", "$share/g/a#"}) {
+    EXPECT_FALSE(parse_shared(bad).has_value()) << bad;
+  }
+  EXPECT_EQ(parse_shared("$share/consumer1/sport/tennis/+"), (SharedFilter{"consumer1", "sport/tennis/+"}));
   EXPECT_EQ(parse_shared("$share/g/#"), (SharedFilter{"g", "#"}));
-  EXPECT_FALSE(parse_shared("$share/g"));
-  EXPECT_FALSE(parse_shared("$share//a"));
-  EXPECT_FALSE(parse_shared("$share/g+/a"));
-  EXPECT_FALSE(parse_shared("$share/g/"));
-  EXPECT_FALSE(parse_shared("$share/g/a#"));
-  EXPECT_FALSE(parse_shared("a/b"));
+  EXPECT_EQ(parse_shared("$share/g//a"), (SharedFilter{"g", "/a"}));
 }
 
-TEST(MqttTopic, Levels) {
-  EXPECT_EQ(levels("a/b"), (std::vector<std::string_view>{"a", "b"}));
-  EXPECT_EQ(levels("/a/"), (std::vector<std::string_view>{"", "a", ""}));
-  EXPECT_EQ(levels("x"), (std::vector<std::string_view>{"x"}));
+TEST(MqttTopic, HasWildcard) {
+  EXPECT_TRUE(has_wildcard("a/+"));
+  EXPECT_TRUE(has_wildcard("#"));
+  EXPECT_FALSE(has_wildcard("a/b"));
 }
 
-// A granted filter covers a requested one when every name the requested
-// filter matches, the granted one matches too.
-TEST(MqttTopic, CoversExactAndWildcards) {
-  EXPECT_TRUE(covers("a/b", "a/b"));
-  EXPECT_FALSE(covers("a/b", "a/c"));
+TEST(MqttTopic, LevelsKeepEmptyOnes) {
+  EXPECT_EQ(levels("a//b/"), (std::vector<std::string_view>{"a", "", "b", ""}));
+  EXPECT_EQ(levels(""), (std::vector<std::string_view>{""}));
+  EXPECT_EQ(levels("/"), (std::vector<std::string_view>{"", ""}));
+}
+
+TEST(MqttTopic, CoversIsMatchingBetweenFilters) {
+  EXPECT_TRUE(covers("#", "a/b"));
+  EXPECT_TRUE(covers("#", "a/#"));
+  EXPECT_TRUE(covers("a/#", "a"));
+  EXPECT_TRUE(covers("a/#", "a/+/c"));
   EXPECT_TRUE(covers("a/+", "a/b"));
   EXPECT_TRUE(covers("a/+", "a/+"));
-  EXPECT_FALSE(covers("a/b", "a/+"));
-  EXPECT_TRUE(covers("a/#", "a/b/c"));
-  EXPECT_TRUE(covers("a/#", "a/+/c"));
-  EXPECT_TRUE(covers("a/#", "a/#"));
-  EXPECT_TRUE(covers("#", "#"));
-  EXPECT_TRUE(covers("#", "a/+/#"));
+  EXPECT_TRUE(covers("+/+", "a/+"));
   EXPECT_FALSE(covers("a/+", "a/#"));
   EXPECT_FALSE(covers("a/+", "a/b/c"));
-  EXPECT_FALSE(covers("a/b/c", "a/b"));
-  EXPECT_FALSE(covers("a/b", "a/b/c"));
-  EXPECT_FALSE(covers("+/b", "#"));
-}
-
-TEST(MqttTopic, CoversTheParentThroughHash) {
-  // "a/#" matches "a" itself (section 4.7.1.2), so it covers a subscription to "a".
-  EXPECT_TRUE(covers("a/#", "a"));
-  EXPECT_TRUE(covers("a/b/#", "a/b"));
-  EXPECT_FALSE(covers("a/b/+", "a/b"));
-}
-
-TEST(MqttTopic, CoversKeepsEmptyLevels) {
-  EXPECT_TRUE(covers("a//b", "a//b"));
-  EXPECT_TRUE(covers("/+", "/x"));
-  EXPECT_FALSE(covers("a/b", "a//b"));
-}
-
-TEST(MqttTopic, CoversKeepsTheDollarRule) {
-  EXPECT_FALSE(covers("#", "$lir/nodes/x"));
-  EXPECT_FALSE(covers("+/nodes/+", "$lir/nodes/x"));
-  EXPECT_TRUE(covers("$lir/#", "$lir/nodes/x"));
-  EXPECT_TRUE(covers("$lir/+/+", "$lir/nodes/+"));
-  // A requested first-level wildcard matches no '$' name, so a granted one covers it.
-  EXPECT_TRUE(covers("#", "+/x"));
+  EXPECT_FALSE(covers("a/b", "a/+"));
+  EXPECT_FALSE(covers("+", "a/b"));
+  // The '$' rule holds between filters too.
+  EXPECT_FALSE(covers("#", "$SYS/#"));
+  EXPECT_FALSE(covers("+/x", "$SYS/x"));
+  EXPECT_TRUE(covers("$SYS/#", "$SYS/+"));
 }
 
 }  // namespace

@@ -1777,3 +1777,86 @@ MCP server was down; its CLI served.
 gate. It needs the MQTT 5.0 and 3.1.1 specifications' conformance
 statements and a pass over `test/`. The standing cluster is untouched. No
 claims held. `develop` pushed.
+
+## 2026-11-20: steps 2 to 4, and the rewrite begins
+
+- Step 2, the conformance gate (`60cf78d`): `docs/conformance.md`, 252
+  statements of 5.0 and 139 of 3.1.1 taken from the OASIS texts, each read
+  against the tests by four agents in parallel; every test they named was
+  checked to exist. 5.0: 84 tested, 84 partial, 82 none, 2 n/a. 3.1.1: 51,
+  64, 22, 2. Confirmed in the code: resends walk a map keyed by packet id,
+  so order breaks once ids wrap; a Subscription Identifier on a client's
+  PUBLISH is accepted; three MQTT 3.1 deviations.
+- Step 3, the mapping (`1c01cf9`): the 108 statements that span nodes in
+  twelve needs, each with its noun. Unknowns sent to Dannan and Dagda.
+  Dannan: client-id uniqueness is Dagda's store lease (two holders in a
+  split, the older connection ended at heal); acting at a time with nobody
+  connected has no noun, put to Tom; shared groups exact by one advert per
+  group up to the 64-advert bound, the rest put to Tom. Dagda: its queue is
+  open again (Tom ruled Macha's cutover is not its concern) and it will
+  answer the offline queue and the timed action.
+- Step 4, the second reader (`92ab3a0`): `TODO/2026-11-20-second-reader.md`;
+  two corrections taken (shared choice past the advert bound; order when a
+  publisher moves nodes).
+- Step 5: Tom rejected a question that split the work into "single-node
+  gaps" and "cross-node parts": "If you're asking about single-node
+  specific code, you've missed the whole point, Again." Then ruled the
+  rewrite from scratch, keeping the contract.
+- On `feature/rewrite` (local): `docs/contract.md` and the headers verbatim
+  under `docs/contract-v1/`; `lir/`, `tools/lir_node.cpp` and the old tests
+  removed (85 files); `CMakeLists.txt`, `lir/CMakeLists.txt`,
+  `lir/test/CMakeLists.txt` written for the skeleton; `tools/ci.sh` and the
+  CI workflow without the Lugh step; the README rewritten. The gate count
+  falls from 361 to 2 by Tom's ruling.
+
+**Handoff.** `feature/rewrite`, local. Next: the design of the new Lir, to
+Tom before code. The standing cluster is untouched and runs `e839b4a`.
+
+## 2026-11-20: the rewrite starts, and its MQTT codec
+
+Tom: "realistically you'll have to go for a rewrite from scratch. Store
+Lir's existing contract, because it's used by other systems, and start from
+scratch." Built on `feature/rewrite` and squashed onto `develop`.
+
+- **The contract,** stored: `docs/contract.md`, with the headers verbatim
+  under `docs/contract-v1/`. It now also holds lugh_client's use of the
+  topic grammar and the claim board's three HTTP endpoints.
+- **The old code removed:** `lir/`, `tools/lir_node.cpp` and the old tests,
+  85 files; it is in the history at `92ab3a0`. The gate count fell from 361
+  to the skeleton's 2 by Tom's ruling.
+- **The codec, `lir::mqtt`,** written test first, each test named by the
+  statement it proves and seen failing against stubs before the code:
+  - data representations;
+  - topics and shared filters;
+  - properties;
+  - every control packet of 5.0, 3.1.1 and 3.1.
+- **Tested against a real MQTT client** (Tom: "You will test with a real
+  MQTT client"). `mosquitto_pub` and `mosquitto_sub` at 5.0, 3.1.1 and 3.1
+  talk to a socket the test serves with Lir's codec: a QoS 1 publish with a
+  will, credentials and properties; a subscribe receiving QoS 2 from Lir;
+  and a refused connect.
+- **The conformance gate,** rebased on the rewrite and generated from test
+  names (`tools/conformance/`). 3.1.1 has 141 statements, not 139: two
+  misprinted identifiers were recovered. Proven so far: 66 of 5.0's 252,
+  48 of 3.1.1's 141, and 3 of 3.1's differences.
+- **The gate on corvus-uranus:**
+  - check, release, client, clang, ASan/UBSan and TSan all passed: 113
+    tests, no sanitizer report;
+  - coverage 99.9% of lines and 100% of functions;
+  - `lir::mqtt` builds alone with `LIR_BUILD_SERVER=OFF`.
+- **Settled with the stack** through the Lir Development Cluster session:
+  - Tom's Q1 to Q4;
+  - Dagda's answers on D6 and the offline queue;
+  - Dannan's items 8, 17, 24, 25 and 31;
+  - the topic grammar staying in `lir::mqtt`, which `lugh_client` will
+    link;
+  - the shared admin UI in Lugh;
+  - every dependant's requirements: `TODO/2026-11-20-requirements.md`.
+- **The design of the rest:** `TODO/2026-11-20-rewrite-design.md`.
+
+**Handoff.** Next, step 2 of the design: the connection, authentication
+and delivery across nodes, on Dannan 0.10.0's `dannan::testing` once it is
+tagged, tested on the simulated cluster and against real clients. Owed
+before 0.1.0: Debian packaging and libFuzzer targets for the codec. Tell
+Lugh the develop commit to pin. Set `fail_ci_if_error` once a Codecov upload
+is seen to succeed. The standing cluster is untouched and runs `e839b4a`.

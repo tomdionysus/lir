@@ -6,48 +6,23 @@
 #
 
 add_executable(lir_tests
-  auth_scopes_test.cpp
-  auth_tokens_test.cpp
-  broker_test.cpp
-  client_test.cpp
-  client_certificate_test.cpp
-  cluster_balance_test.cpp
-  cluster_test.cpp
-  cluster_codec_test.cpp
-  cluster_sequence_test.cpp
-  cluster_stored_test.cpp
-  edge_test.cpp
-  http_test.cpp
+  interop_mosquitto_test.cpp
   mqtt_packet_test.cpp
   mqtt_properties_test.cpp
   mqtt_topic_test.cpp
   mqtt_wire_test.cpp
-  process_test.cpp
-  rules_test.cpp
-  shard_test.cpp
-  sn_dtls_test.cpp
-  sn_gateway_test.cpp
-  sn_packet_test.cpp
-  subs_trie_test.cpp
-  system_test.cpp
   version_test.cpp
-  websocket_test.cpp
 )
-target_link_libraries(lir_tests PRIVATE lir lir_client GTest::gtest_main lir_warnings)
-if(LIR_BUILD_LUGH)
-  target_sources(lir_tests PRIVATE auth_lugh_test.cpp)
-endif()
+target_link_libraries(lir_tests PRIVATE lir GTest::gtest_main lir_warnings)
 # Dannan's fixtures (temp_dir.h) write only inside Lir's build tree.
 target_compile_definitions(lir_tests PRIVATE DANNAN_TEST_TEMP_ROOT="${PROJECT_BINARY_DIR}/test-tmp")
 
-# The process test runs lir-node as a child, against the mosquitto clients
-# where they are installed.
-find_program(LIR_MOSQUITTO_PUB mosquitto_pub)
-find_program(LIR_MOSQUITTO_SUB mosquitto_sub)
-target_compile_definitions(lir_tests PRIVATE LIR_NODE_BINARY="$<TARGET_FILE:lir-node>" LIR_MOSQUITTO_PUB="${LIR_MOSQUITTO_PUB}"
-                                             LIR_MOSQUITTO_SUB="${LIR_MOSQUITTO_SUB}")
-add_dependencies(lir_tests lir-node)
-
-# The TLS test makes its certificate with the openssl command.
-find_program(LIR_OPENSSL openssl HINTS /opt/local/bin)
-target_compile_definitions(lir_tests PRIVATE LIR_OPENSSL="${LIR_OPENSSL}")
+# A real MQTT client (Tom, 2026-11-20: "You will test with a real MQTT
+# client"): the mosquitto command-line clients, required, never skipped.
+find_program(LIR_MOSQUITTO_PUB mosquitto_pub REQUIRED)
+find_program(LIR_MOSQUITTO_SUB mosquitto_sub REQUIRED)
+target_compile_definitions(lir_tests PRIVATE LIR_MOSQUITTO_PUB="${LIR_MOSQUITTO_PUB}" LIR_MOSQUITTO_SUB="${LIR_MOSQUITTO_SUB}")
+# Dannan's child-process fixture uses a pseudo-terminal: libutil on Linux.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_link_libraries(lir_tests PRIVATE util)
+endif()
