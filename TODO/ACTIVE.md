@@ -215,6 +215,10 @@ Nothing here is started before the audit's findings have been to the maintainer.
   built from source and instrumented, the maintainer, 2026-11-20; checked
   with nm), and the deb step installs Dannan's packages with Dannan's
   `tools/ci.sh install-debs <tag>` instead of building them itself.
+  Before repinning, read 0.10.0's changelog and release notes against
+  Lir's code: a new API that replaces a workaround, a helper that replaces
+  code of Lir's own, a fixed bug Lir worked around. The repin commit says
+  what changed and what was kept, and why (the maintainer, 2026-11-20).
 - **Dannan 0.11.0:** the stream carrier (item 17's `inject`,
   `StreamDirectory`), which step 2's connections are tested on.
 - **Dannan, later:** the `DatagramListener`, for the MQTT-SN DTLS gateway
