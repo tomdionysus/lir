@@ -35,7 +35,7 @@ the rewrite works from:
   [`docs/contract.md`](docs/contract.md).
 
 The withdrawn code, its features and its README are in the history at
-`92ab3a0` on `develop`. The standing test cluster still runs it (`e839b4a`) and
+`e809114` on `develop`. The standing test cluster still runs it (`4762186`) and
 stays as it is until the maintainer says otherwise; `deploy/test-cluster/README.md` is how
 to look after it.
 

@@ -2,7 +2,7 @@
 
 Rewritten on 2026-11-20 after the maintainer's corrections. The first version, a plan
 to audit the code piece by piece against five rules, is in the history at
-`a0a6945`. Nothing here is done.
+`d005e79`. Nothing here is done.
 
 ## The goal
 
@@ -385,7 +385,7 @@ offered to the board from it.
 
 ## Guarded publish
 
-Withdrawn (the maintainer, 2026-11-19; the design is at `9712275`). It is redrawn
+Withdrawn (the maintainer, 2026-11-19; the design is at `003906a`). It is redrawn
 only after the work above, as a question in the same form: which nouns is
 it built on? What is known: a register per topic in Dannan's agreement, so
 a guard over a filter needs Dannan's atomic commit across names; acceptor

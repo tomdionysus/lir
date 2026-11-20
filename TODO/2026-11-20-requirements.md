@@ -318,7 +318,7 @@ except as D9 uses it.
 
 ## To Lugh
 
-### A. Used, by the old plugin at `92ab3a0`
+### A. Used, by the old plugin at `e809114`
 
 - **`lugh/client/verifier.h`:** `Verifier`, and its `AccessToken` result
   (`lir/auth/lugh.cpp:17`).
@@ -365,8 +365,8 @@ waiting. Key fetches happen beforehand, off the strand, as today.
 
 The rewrite keeps `docs/contract.md`. Two facts every dependant must know:
 
-1. **A pinned commit keeps working.** Louhi's `6268fef` builds and runs
-   against the standing cluster's old Lir (`e839b4a`) until it moves its
+1. **A pinned commit keeps working.** Louhi's `e40dd2e` builds and runs
+   against the standing cluster's old Lir (`4762186`) until it moves its
    pin.
 2. **The rewrite is functional for a dependant only when the nouns its
    use needs have shipped:**
@@ -414,7 +414,7 @@ Lir's answer:
 
 ### Louhi's answer (2026-11-20)
 
-- **Uses**, pinned at `6268fef`:
+- **Uses**, pinned at `e40dd2e`:
   - `Client`: construct, `on_state`, `start`, `stop`, `publish`.
   - `ClientConfig`: `nodes` (the roster), `tls.trust`, `client_id`,
     `password` (called at each CONNECT), `version`, `will`.

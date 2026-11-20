@@ -2,7 +2,7 @@
 
 Last updated: 2026-11-19. `COMPLETED.md` is the record. This file was
 rewritten on 2026-11-19 around the audit; what it carried before is in the
-history at `5a6769f` and in `COMPLETED.md`'s archives.
+history at `53afd98` and in `COMPLETED.md`'s archives.
 
 ## The goal
 
@@ -72,7 +72,7 @@ answer, unchecked, and three things it does not know.
    realistically you'll have to go for a rewrite from scratch. Store Lir's
    existing contract, because it's used by other systems, and start from
    scratch."
-6. **The rewrite**, on `feature/rewrite` (local, from `92ab3a0`). Done
+6. **The rewrite**, on `feature/rewrite` (local, from `e809114`). Done
    there: the contract stored ([`docs/contract.md`](../docs/contract.md),
    headers verbatim under `docs/contract-v1/`); every source but the
    version files removed; a skeleton that builds `lir` and `lir_tests`
@@ -99,9 +99,9 @@ Dannan is pinned at `0.9.2`. Nothing of Dagda or Lugh is linked yet. The
 build nodes have `mosquitto-clients` on node-d only; the others need it before
 Lir's tests run there.
 
-The old code is in the history at `92ab3a0`.
+The old code is in the history at `e809114`.
 
-**The standing cluster** runs `e839b4a` on Dannan 0.9.2 on all four build nodes,
+**The standing cluster** runs `4762186` on Dannan 0.9.2 on all four build nodes,
 majority 4 of 4, and carries the claim board. It runs the code under audit.
 It stays as it is: nothing is added to it and no new behaviour is offered
 from it. How to check, upgrade and configure it is
@@ -222,7 +222,7 @@ Nothing here is started before the audit's findings have been to the maintainer.
   `lugh_client` and is not that release.
 - **OASIS:** an approved MQTT-SN 2.0 Committee Specification.
 - **Owed to others:** `lir::client` is used by Louhi, Lugh's
-  principal-events publisher and Mimir's Lugh plugin, at pin `6b23268` or
+  principal-events publisher and Mimir's Lugh plugin, at pin `987a5f4` or
   later. QoS 2, aliases and user properties come on request.
 
 Not taken: Dependabot's moves of `actions/checkout` and

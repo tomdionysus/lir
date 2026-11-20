@@ -24,5 +24,5 @@ How it is kept:
   the OASIS texts by `extract.py`.
 - Lir was rewritten from scratch on 2026-11-20. The gate of the withdrawn
   code (its verdicts, read against tests that no longer exist) is in the
-  history at `60cf78d`. What it found stands: of 5.0's statements 84 were
+  history at `529a7ce`. What it found stands: of 5.0's statements 84 were
   tested then, and almost none across nodes.

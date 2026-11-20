@@ -3,7 +3,7 @@
 The maintainer, 2026-11-20: Lir is rewritten from scratch, and its existing contract is
 stored, because other systems use it. This file is that contract: what the
 rewrite must still provide, so that nothing built on Lir breaks. The code it
-was taken from is `develop` at `92ab3a0`; nothing else of that code binds the
+was taken from is `develop` at `e809114`; nothing else of that code binds the
 rewrite.
 
 The headers named below are kept verbatim under
@@ -15,7 +15,7 @@ the systems that use it are told before it lands.
 
 | System | Uses | Pinned at |
 |---|---|---|
-| Louhi | `lir::client` and the `lir::mqtt` types it exposes, fetched with `LIR_BUILD_SERVER=OFF` (`../louhi/CMakeLists.txt:75-82`, `louhi/events/lir.cpp`) | `6268fef` |
+| Louhi | `lir::client` and the `lir::mqtt` types it exposes, fetched with `LIR_BUILD_SERVER=OFF` (`../louhi/CMakeLists.txt:75-82`, `louhi/events/lir.cpp`) | `e40dd2e` |
 | Lugh | Its principal-events publisher is to use `lir::client` (`ACTIVE.md`, "Owed to others"); its topic-scope grammar for Lir (`lugh/scopes/topic_scope.h`) | not yet linked |
 | Mimir | Its Lugh plugin is to use `lir::client` (named in Mimir's design only) | not yet linked |
 | Lugh's `lugh_client` | `lir::mqtt`'s topic grammar (`topic.h`: validity, matching, coverage, shared filters) for its topic-scope checks; one copy, settled by the stack on 2026-11-20 (placement item 58) | to come |
@@ -111,7 +111,7 @@ by these; Dannan's roster is the one list of Lir's nodes (the maintainer, 2026-1
 - **The operator's side** (the `lir-node` command line, `config.yaml`, the
   HTTP API, the rules engine, MQTT-SN's predefined topics as retained
   messages under `$lir/mqttsn/topics/`) is described in the old README at
-  `92ab3a0`. It is Lir's product, built again from the design's sections
+  `e809114`. It is Lir's product, built again from the design's sections
   (`TODO/2026-11-04-lir-sections.md`), and not a contract with another
   system.
 
