@@ -1944,3 +1944,18 @@ On node-a (arm64):
 The coordinator has asked Dannan for one shared entry point that builds
 and installs its debs from a tag. Until it exists, Lir's `deb` step does
 that itself.
+
+## 2026-11-20: use after move, checked
+
+Lugh found an argument moved from inside the same call that read it. C++
+leaves the order of evaluation open, and GCC on x86-64 read the argument
+after the move. At the coordinator's request, clang-tidy's
+`bugprone-use-after-move` ran over all 14 of Lir's sources on
+node-a and found nothing. The check was first shown to catch
+Lugh's shape, so the zero is real.
+
+`tools/ci.sh tidy` configures with clang, builds nothing, and runs the
+check with warnings as errors. CI runs it on every push.
+
+All 15 CI jobs are green at `0f7d428` (run 44692880068), among them
+`tidy`, `fuzz`, `package`, and `deb` on both architectures.
