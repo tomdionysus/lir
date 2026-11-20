@@ -146,10 +146,11 @@ a build there starts from a fresh clone.
   Only minor or patch versions are bumped (the maintainer): the major stays 0 until
   he says.
 
-  The release badge is kept. Lir's first, `0.1.0`, is cut when the
-  rewrite's broker serves clients across nodes (step 2 of the design, with
-  its stated limits), not before: until then Lir is a codec, and a version
-  would promise a broker it is not. The fuzz targets (`lir/fuzz/`,
+  The release badge is kept. Lir's first, `0.1.0`, is the codec alone (the
+  maintainer, 2026-11-20: "Lir should have a release with tags"), and its
+  README and notes say the broker is not yet functional; the release in
+  which the broker serves clients across nodes (step 2 of the design, with
+  its stated limits) is the next minor, `0.2.0`. The fuzz targets (`lir/fuzz/`,
   `tools/ci.sh fuzz`) and the packages (`docs/packaging.md`,
   `tools/ci.sh deb`) exist. Still owed as the pieces arrive:
   `liblir-client0.1` with `lir::client` (tell Louhi the names and the
