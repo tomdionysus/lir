@@ -1,29 +1,8 @@
-# The premise, and the audit of what is built (2026-11-19)
+# The plan: Lir built on Dannan (2026-11-20)
 
-The maintainer, 2026-11-19, after withdrawing Lir's guarded-publish design: "you need a
-plan to keep what is good, and rewrite the rest. This is dangerous, because
-the temptation will be to keep code which was written with a fundamentally
-flawed premise."
-
-This file is that plan. Nothing in it is done yet. It is the first work of
-the next session.
-
-## What went wrong
-
-The guarded-publish design (2026-11-19, in the history at `9712275`) was
-four workarounds for things Dannan and Dagda had not shipped, each put to
-The maintainer as a choice his rules had already settled:
-
-| The design | the maintainer's answer |
-|---|---|
-| A whole tree in one agreement register, to get round a one-name limit | Wait for multi-name commits |
-| Agreed state in Lir's memory, or a file of Lir's own | Wait for Dagda |
-| A fixed set of four nodes, moved by an operator | "Leaderless does not mean 'group of immovable leaders'." |
-| Perhaps restart all four nodes together | "You need to replan." |
-
-The maintainer: "The questions you're asking me mean you haven't understood what Lir is
-supposed to do." The same habit of mind wrote the cluster that runs today,
-so that code is suspect until it is shown otherwise.
+Rewritten on 2026-11-20 after the maintainer's corrections. The first version, a plan
+to audit the code piece by piece against five rules, is in the history at
+`a0a6945`. Nothing here is done.
 
 ## The goal
 
@@ -31,146 +10,188 @@ The maintainer, 2026-11-03 night: "It must expose a MQTT interface and support a
 functionality. But, it needs to be distributed, multimaster, clustered, using
 Dannan as the network layer."
 
-## The premise
+## Built on Dannan, not using Dannan
 
-Five statements a piece of Lir can be checked against. The first four are
-The maintainer's rules, with where each was given. The fifth is the Lir session's own
-reading of them, and is marked so. The maintainer confirms or corrects this list before
-any code is judged by it.
+The maintainer, 2026-11-19 and 20: Lir is Dannan-based. Dannan has no special nodes, so
+Lir has none. And more than "uses Dannan": "built on Dannan".
 
-1. **No node is special.** Every node is a broker and any node does any
-   operation. No node is picked out by configuration, by an operator, or by
-   a rule such as "the lowest id". (the maintainer, 2026-11-03 night: multimaster;
-   2026-11-19: "Leaderless does not mean 'group of immovable leaders'.")
-2. **Lir replicates and persists nothing itself.** What must survive a node
-   lives in Dagda. (The stack's rule 2.)
-3. **Membership and placement are Dannan's.** Lir keeps no node list and
-   chooses no replica set of its own. (The stack's rule 1; the maintainer, 2026-11-15:
-   "that's what Dannan is FOR".)
-4. **Nothing stands in for a primitive that has not shipped.** When Dannan
-   or Dagda lacks something, Lir waits and tells that project what it needs.
-   (the maintainer, 2026-11-15, on agreement; 2026-11-19, on the design above.)
-5. **Nothing acknowledges a guarantee it does not have.** (The Lir session's
-   reading, from the maintainer's durability decision of 2026-11-04: QoS 1 and 2 are
-   Replicated.)
+- **Using Dannan** is what was built. Lir is its own distributed system that
+  calls Dannan as a library: a `cluster` subsystem with its own routes for
+  snapshots, session take-over and session mirroring, its own placement key
+  for standbys, its own de-duplication, its own rule for which node
+  publishes the cluster's summary.
+- **Built on Dannan** is the goal. Dannan is the distributed system, and
+  Lir is MQTT expressed in its terms. Being leaderless, membership,
+  placement, what happens in a split, how state moves as nodes come and go:
+  none of these is Lir's to design. Lir inherits them by being made of
+  Dannan's nouns, and Dagda's for what persists. The maintainer's design said so from
+  the start: "It introduces no cluster-wide state of its own ... The table
+  is the whole contract" (`2026-11-03-lir-plan.md`, "What Lir takes from
+  Dannan").
 
-And one rule of operation, the maintainer's (2026-11-19): the cluster is never stopped
-as a whole to change it.
+What follows:
 
-## The question this plan cannot answer
+1. The question for every piece is "which Dannan or Dagda noun is this?" A
+   piece whose answer is "none, it is Lir's own mechanism" is wrong by
+   construction, however well it works and whatever its tests say.
+2. A gap is never Lir's to fill. If MQTT needs something no noun provides,
+   that is a need for Dannan or Dagda, built once there for every hosted
+   system. Lir waits. No interim, no stopgap, and no such option is put to
+   The maintainer.
+3. Lir contains no kind of node that Dannan does not have. A design that
+   needs a special node, a fixed set, or an operator to say where state
+   lives has misread Dannan. The remedy is to read how Dannan already does
+   it. (The withdrawn guarded-publish design read Dannan's agreement
+   "genesis" as a permanent home. It is a starting point used once; slots
+   then move with the roster.)
+4. Nothing acknowledges a guarantee it does not have.
+5. The cluster is never stopped as a whole to change it.
 
-The cluster that runs today is the "interim" the maintainer approved on 2026-11-04:
-sessions mirrored to standbys now, Dagda later; retained values on every
-node; PUBACK on acceptance. The Lir session does not know whether the maintainer sees
-the flaw as that interim itself, or only as the habit of adding new
-workarounds to it. The two lead to very different amounts of rewriting. It
-is the first thing to settle, and it is asked once, plainly, with nothing
-built meanwhile.
+## The one real question
 
-## The audit
+The maintainer, 2026-11-20: "what is required to implement full MQTT that Dannan does
+not already provide, AND how would you do that building on top of Dannan?"
 
-Each component goes in one of three bins. The bin sets who has to prove
-what.
+The Lir session's first answer follows. **It is not yet checked against
+Dannan's and Dagda's contracts**: it comes from Lir's records and Dannan's
+agreement header. Step 1 of the work below checks every row.
 
-**Bin 1: no cluster assumptions.** Kept, after a check that nothing from
-the cluster has leaked in.
-- `lir/mqtt/` (the codec), `lir/subs/` (the trie), `lir/sn/packet.*` (the
-  MQTT-SN codec), `lir/auth/scopes.*`, `lir/rules/` (the compiler and its
-  conditions and actions), `lir/shard/` (pure functions).
+**Per connection, with no cluster in it. Lir's own.** The codec; the
+CONNECT, QoS 1 and QoS 2 exchanges; packet ids; keep-alive; receive
+maximum; topic aliases; subscription options and identifiers; enhanced
+authentication; topic filter matching (the trie). Dannan provides the
+listeners under it.
 
-**Bin 2: one-node broker behaviour.** Kept only where a behaviour traces to
-a numbered statement of the MQTT specification, not to what the cluster
-happened to need.
-- `lir/broker/` without its cluster side, `lir/edge/`, `lir/http/`,
-  `lir/sn/gateway.*`, `lir/auth/tokens.*` and `lugh.*`, `lir/client/`,
-  `lir/contract/`.
+**Across nodes:**
 
-**Bin 3: anything that touches state on more than one node.** Assumed
-wrong, and rewritten, unless the design statement it stands on can be
-shown. Passing tests are not that proof.
-- `lir/cluster/` whole, the broker's cluster side (`ClusterHooks`,
-  `SessionImage`, `inject`, `apply_retained`, `import`, `adopt`,
-  `surrender`), `lir/system/` (what it publishes about the cluster, and
-  who publishes it), `tools/lir_node.cpp` where it assembles them.
-
-## What is already suspected
-
-Read from the record and confirmed present in the code on 2026-11-19; none
-is yet judged.
-
-| What | Where | Statement |
+| MQTT needs | Built on | State |
 |---|---|---|
-| Session standbys: Lir's own mirror of each session to other nodes, on its own route and its own placement key | `lir/cluster/cluster.cpp:392`, `flush_mirrors` at `413`; route `0x4C03` | 2, 3, 4 |
-| Retained values held on every node, with a snapshot fetched by a node that joins | `lir/cluster/cluster.cpp`, route `0x4C00` | 2, 4 |
-| PUBACK and PUBREC on acceptance at the publishing node | `lir/broker/broker.cpp` | 5 |
-| "The Lir node with the lowest id" publishes `$lir/cluster` and the roster events | `lir/system/system.cpp:245`, `publisher()` | 1 |
-| The MQTT-SN gateway drives OpenSSL's DTLS itself | `lir/sn/gateway.cpp` | 4 |
-| Shared groups spread on Lir's own channel and handed out in turn by the publishing node | `lir/cluster/cluster.cpp`, `lir.groups`, route `0x4C02` | to be judged |
-| Server Reference: a node counts the clients it has sent each other node | `lir/cluster/balance.*` | to be judged |
-| `SequenceBlocks` and the stored entry forms, built ahead of Dagda | `lir/cluster/sequence.*`, `codec.*` | to be judged |
+| QoS 0 delivery to subscribers on other nodes | An at-most-once channel, interest by prefix | Dannan has it |
+| Order per publisher | The channel's per-origin sequence | Dannan has it |
+| Wildcard filters | Dannan routes by literal prefix; Lir's trie matches at the receiving node. A filter with no literal prefix (`#`, `+/x`) receives everything. Correct, not cheap. | Dannan has it |
+| QoS 1 surviving a node's death | Dagda's log | Waits on Dagda |
+| QoS 2 exactly once | The log's retired dots, for the window | Waits on Dagda |
+| Retained messages, and wildcard reads of them | Dagda's register-map space and its keys-changed notice | Waits on Dagda |
+| Session state resumable at any node | A Dagda space keyed by client id, placed by Dannan | Waits on Dagda |
+| System topics | Each node answers `$lir/...` for its own clients from its own view of Dannan's roster and adverts. Nothing is replicated, so no node is "the publisher". | To check; needs only Dannan |
+| Shared subscriptions | The publishing node picks the member with Dannan's placement function over the group's members, keyed by the message. No counters, no group state. | To check; needs only Dannan |
+| A will when the client's node dies | The will is in the session's Dagda state. Every replica that sees the node leave fires it under one deterministic dot, so duplicates collapse. No node is chosen. | To check; waits on Dagda |
+
+**Not known.** the maintainer: "It's OK to say 'I don't know'."
+
+1. **One connection per client id.** A second CONNECT with an id must end
+   the first, wherever it is. Perhaps a channel named for the client id
+   that the holding node subscribes to; perhaps a Dagda lease on the id.
+   Not known which. In a split both sides hold the id whatever is chosen.
+2. **The subscriptions of an offline session.** While a client is away,
+   something must match publishes against its filters and queue them. No
+   node has the client, so whose interest is it? If the session's replicas
+   hold it, several nodes append the same message, and it is not known how
+   that de-duplicates under Dagda's rule that a dot's origin is its
+   appender. This may be a noun that does not exist: an interest that
+   outlives the node that declared it.
+3. **Endings by time with nobody connected:** session expiry, will delay,
+   expiry of a queued message. Dagda's expiry per key may cover the first.
+   The other two are not known.
+
+So the first answer to the question is short: topic matching, which is
+Lir's and local, and possibly one new noun for item 2. Nearly everything
+Lir built as its own mechanism has a home already, or waits for one in
+Dagda.
+
+## How much of MQTT Lir supports now
+
+Not known as a measured figure, and that is itself a finding.
+
+- By the record, on one node every feature of MQTT 3.1, 3.1.1 and 5.0 is
+  built and has tests named for behaviours (`COMPLETED.md`, 2026-11-04,
+  steps 2 and 3 and "the specification's MAYs"; 61 tests in
+  `broker_test.cpp`).
+- Lir's own rule is that "supports MQTT" is defined by named gates, the
+  specification's conformance statements, each tested. **No such gate
+  exists.** No source or test file names a conformance statement (the
+  specification's `[MQTT-x.y.z-n]` identifiers), and no list maps
+  statements to tests. So "all of MQTT" is felt, which is what the rule
+  forbids, and the README's "each tested" is not shown.
+- Across nodes the features work, but several do not give the guarantee
+  MQTT states: a QoS 1 or 2 publish is acknowledged before anything but
+  the publishing node holds it; a session's last 100 ms of change is lost
+  with its node; retained values are lost if every node restarts.
+
+## The work, in order
+
+Nothing is built or deleted before step 5.
+
+1. **Read the contracts.** Dannan's `Context` and Dagda's, whole, through
+   basemind, and each project's capability statement. Correct every row of
+   the table above against what is actually there. This is reading what
+   they provide, not investigating their code.
+2. **The conformance gate.** List every normative statement of MQTT 5.0
+   and 3.1.1 (and what 3.1 differs in), each by its identifier, in one
+   file. Against each: the test that proves it, or "none". Mark which
+   statements bear on more than one node. This measures how much of MQTT
+   Lir supports, on one node, and it is the gate the project's rule always
+   asked for. It needs no build.
+3. **The mapping.** For each statement that bears on more than one node,
+   and each row of the table: the noun it is built on, or the need. Put
+   the three unknowns, and anything else found, to the Dannan and Dagda
+   sessions as needs, in MQTT's terms, without proposing their design.
+4. **A second reader.** A fresh agent, given the maintainer's design, this file and
+   the contracts, and none of Lir's conclusions, answers the one real
+   question independently. The differences go to the maintainer.
+5. **To the maintainer:** the conformance figure, the mapping, the needs, and what
+   of the present code is the thin mapping and what is Lir's own
+   mechanism.
+6. **Then code**, tests first, on a clean branch from the contracts.
+   What needs only Dannan can be built then. What waits on Dagda waits.
 
 ## Guards against keeping what should go
 
-The Lir session wrote this code and its 361 tests pass. Both pull towards
-keeping it. So:
+The maintainer, 2026-11-19: "the temptation will be to keep code which was written
+with a fundamentally flawed premise." The Lir session wrote that code and
+its 361 tests pass. Both pull towards keeping it.
 
-1. **The premise is fixed first.** No code is read for the audit until the maintainer
-   has confirmed the list above. An audit done first would shape the list
-   to fit the code.
-2. **Keeping is what needs a reason.** For bin 3 the written finding is "the
-   design statement this stands on is ...", or it is rewritten.
-3. **Tests do not argue for the code under them.** A test that pins an
-   interim behaviour (standbys, PUBACK on acceptance, the lowest node) is
-   rewritten to the right behaviour and its count kept. The standing rule
-   that a test is never deleted is not a reason to keep the code a test
-   exercises. This reading of the rule is the Lir session's and is put to
-   The maintainer with the audit.
-4. **The cluster is rewritten on a clean branch from the contracts**, not
-   edited in place, which would keep its shape.
-5. **A second reader.** A fresh agent given only the design, the premise
-   and the code, and none of the Lir session's conclusions, audits bin 2
-   and bin 3 as well. Where the two differ, it goes to the maintainer.
-6. **Lines and tests kept are never reported as a success.**
-7. **Report before fixing.** The audit's findings go to the maintainer whole before
-   anything is deleted or rewritten.
+1. `lir/cluster/` is not audited piece by piece for what can stay. It is
+   Lir's own distributed system and by construction should mostly not
+   exist. What replaces it is written from the mapping, and should be
+   small enough that there is little in it to get wrong.
+2. Tests do not argue for the code under them. A test that pins one of
+   Lir's own mechanisms is rewritten to the behaviour MQTT requires, and
+   its count kept. Whether "a test is never deleted" allows that is put
+   to the maintainer with step 5.
+3. Lines and tests kept are never reported as a success.
+4. Findings go to the maintainer whole before anything is deleted or rewritten.
 
-## The order
+## What is already known to be Lir's own mechanism
 
-1. Ask the maintainer the question above, and for his word on the premise.
-2. The audit, by bin, written into this file as findings: kept and why, or
-   rewritten and what the right form waits on.
-3. The second reader's audit, and the differences.
-4. To the maintainer: the findings and the rewrite's order.
-5. Only then code, tests first.
+Confirmed present on 2026-11-19. Each is Lir doing what a noun should do.
 
-What the rewrite will wait on is already known in part: Dagda's slices 1 to
-4 (step 5, paused by the maintainer until Macha runs on Dagda), and Dannan's atomic
-commit across names for anything guarded. Until then the right form of some
-parts cannot be built, and by statement 4 nothing is built in its place.
+| What | Where |
+|---|---|
+| Session standbys: each session mirrored to other nodes on Lir's own route and placement key | `lir/cluster/cluster.cpp:392`, `flush_mirrors` at `413`; route `0x4C03` |
+| Retained values on every node, with a snapshot fetched by a node that joins | `lir/cluster/cluster.cpp`; route `0x4C00` |
+| Session take-over asked of every node | `lir/cluster/cluster.cpp`; route `0x4C01` |
+| De-duplication of QoS 1 and 2 by origin, incarnation and sequence | `lir/cluster/cluster.cpp` |
+| "The Lir node with the lowest id" publishes `$lir/cluster` and the roster events: a special node | `lir/system/system.cpp:245`, `publisher()` |
+| Shared groups spread on `lir.groups` and handed out in turn | `lir/cluster/cluster.cpp`; route `0x4C02` |
+| PUBACK and PUBREC on acceptance | `lir/broker/broker.cpp` |
+| The MQTT-SN gateway drives DTLS itself | `lir/sn/gateway.cpp` |
+| `SequenceBlocks` and the stored entry forms, built ahead of Dagda | `lir/cluster/sequence.*`, `codec.*` |
 
 ## The standing cluster
 
-It runs the code under audit and carries the claim board. It stays as it is
-until the maintainer says otherwise. Nothing is added to it, and no new behaviour is
+It runs that code and carries the claim board. It stays as it is until
+The maintainer says otherwise. Nothing is added to it, and no new behaviour is
 offered to the board from it.
 
-## Guarded publish, as replanned
+## Guarded publish
 
-It comes after step 5, on three things Lir does not have and does not
-build:
-- a register per topic in Dannan's agreement, so a guard over a filter is
-  one change naming several registers: Dannan's atomic commit across names
-  (its plan, item 7);
-- acceptor state on Dagda's node-local log
-  (`../dannan/TODO/2026-11-15-agreement-design.md`, "Where a persisting
-  store lives");
-- replica sets from Dannan's placement, an agreed topic's set being its
-  topic shard's replicas, moved by Dannan's `transfer()` as they move.
-
-What the board asked for is
+Withdrawn (the maintainer, 2026-11-19; the design is at `9712275`). It is redrawn
+only after the work above, as a question in the same form: which nouns is
+it built on? What is known: a register per topic in Dannan's agreement, so
+a guard over a filter needs Dannan's atomic commit across names; acceptor
+state in Dagda; replica sets that follow Dannan's placement. What the
+board asked for is
 `../coordination/TODO/2026-11-15-claim-board-0.4.0.md`, part 1.
-Needs to tell Dannan, not yet sent: the atomic commit, as a user beside
-Mimir and Kvasir; a running cluster starting to use agreement one node at
-a time (today the genesis set is node configuration, and a node whose
-table differs is refused at join); and whose rule it is that replica sets
-follow placement.
+Whether a running cluster can start using agreement one node at a time is
+a question for the Dannan session, not a gap Lir has shown.

@@ -1719,3 +1719,27 @@ gate stands at 361 (`e839b4a`).
 question to the maintainer, then the audit. Nothing is built before the audit's
 findings have been to him. The standing cluster is untouched and runs
 `e839b4a`. No claims held. `develop` pushed.
+
+## 2026-11-20: the plan rewritten: built on Dannan
+
+No code changed; nothing built or run. The gate stands at 361.
+
+- The maintainer: Dannan has no special nodes, so Lir has none; and Lir is "built on
+  Dannan", not merely using it. His only real question: what does full MQTT
+  require that Dannan does not already provide, and how is that built on
+  top of Dannan?
+- `TODO/2026-11-19-premise-and-audit.md` rewritten around that question
+  (the first version is at `a0a6945`): Lir's first answer as a table, not
+  yet checked against the contracts; three things not known (one
+  connection per client id, the subscriptions of an offline session,
+  endings by time with nobody connected); and the work in order.
+- Found when the maintainer asked how much of MQTT Lir supports now: it is not
+  measured. No source or test names a conformance statement and no list
+  maps statements to tests, though the project's rule defines "supports
+  MQTT" by exactly that. The README no longer says "each tested".
+- `ACTIVE.md`, `CLAUDE.md` and the README brought into line.
+
+**Handoff.** Start at `ACTIVE.md`, "Resume here": read the contracts,
+write the conformance gate, map needs to nouns, a second reader, then
+The maintainer. Nothing is built or deleted before that. The standing cluster is
+untouched. No claims held. `develop` pushed.
