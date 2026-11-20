@@ -112,6 +112,49 @@ listeners under it.
    or Dannan, not yet known which: something that acts when a key's time
    ends with no node holding the client.
 
+## The mapping (step 3, 2026-11-20)
+
+The gate marks 108 statements (70 of 5.0, 38 of 3.1.1) as bearing on more
+than one node. They fall into twelve needs. Each is MQTT's need, the noun
+it is built on, and where that noun stands. Identifiers are 5.0's unless
+marked 3.1.1.
+
+| # | MQTT needs | Statements | Built on | Stands |
+|---|---|---|---|---|
+| 1 | A session's state survives its connection and resumes at any node; Clean Start discards it; Session Present says which | 3.1.2-4 to -6, 3.1.2-23, 3.2.2-2, -3, 4.1.0-1, -2, 4.2.0-1; 3.1.1: 3.1.2-4 to -6, 3.2.2-2, -3, 4.1.0-1 | Dagda `replicas(N)` head space (D1) with k-level commits (D2), keyed by client id; Lir's merge | Waits on Dagda |
+| 2 | In-flight QoS 1 and 2 state: unacknowledged until acked, resent with DUP in first-sent order on reconnect, wherever it reconnects; packet ids not reused while in flight; QoS 2's exactly-once on receipt | 2.2.1-4, 3.3.1-1, 4.3.2-3, -4, 4.3.3-3 to -10, 4.4.0-1, 4.6.0-1 (3.1.1); 3.1.1: 2.3.1-4, 3.3.1-1, 4.3.2-1, 4.3.3-1, 4.4.0-1 | Dagda log (D9): the entry is the message, its acks carry the stage (PUBLISH sent with its id, PUBREC, PUBREL, PUBCOMP); first-sent order is the log's per-origin order; QoS 2 receipt is the retired dot within the window | Waits on Dagda |
+| 3 | Messages matching an offline session's subscriptions are queued for it | 4.5.0-1; 3.1.1: 3.1.2-5, 4.5.0-1 | Dagda log, a stream per client id. Who appends is unknown 2 | Waits on Dagda, and unknown 2 |
+| 4 | Retained messages: replaced, cleared by an empty payload, sent on SUBSCRIBE by Retain Handling, RETAIN flag by Retain As Published | 3.3.1-5 to -13, 3.8.4-4; 3.1.1: 3.3.1-5 to -8, -10 to -12 | Dagda register map (D6), its keys-changed notice for each node's index of retained topics, values read from holders at SUBSCRIBE | Waits on Dagda |
+| 5 | A message reaches every matching subscriber on every node, its properties unaltered and in order, the topic matching the filter; overlapping subscriptions of one session by its own rule; granted QoS caps delivery | 3.3.2-3 to -5, -15 to -18, -20, 3.3.4-1 to -5, 3.8.4-8; 3.1.1: 3.3.2-3, 3.8.4-6 | Dannan channels (`notify` for QoS 0, `stream` for QoS 1 and 2 while both nodes live) carrying the message whole; matching and the overlap rule run where the session is, since one session's subscriptions are on one node | Dannan has it |
+| 6 | Message Expiry counts the time the message waited, wherever it waited | 3.3.2-5, -6, 4.3.3-7 | Dannan `hlc()` gives every node one time to measure against; the log entry carries the expiry (D9) | Dannan has the clock; the queue waits on Dagda |
+| 7 | Order per publisher, per topic, across nodes | 4.6.0-5, -6; 3.1.1: 4.6.0-5, -6 | Live: the `stream` channel's per-origin sequence. Queued: the log's per-origin order | Dannan has it to the replay buffer's bound; the rest waits on Dagda |
+| 8 | One connection per client id: a second CONNECT ends the first, wherever it is | 3.1.3-2, 3.1.4-3, -4; 3.1.1: 3.1.3-2, 3.1.4-2, -3 | Unknown 1 | Not known |
+| 9 | An assigned client id is unique across the cluster | 3.1.3-6, -7, 3.2.2-16 | Dannan's node id with its sealed counter (`Identity::advance_counter`), or an `hlc()` stamp: unique with no word between nodes | Dannan has it |
+| 10 | Wills: stored with the session, published when the connection ends (as retained if asked), after the Will Delay unless the session resumes, discarded on a normal DISCONNECT, user properties in order | 3.1.2-7, -8, -10, -14, -15, 3.1.3-9, -10, 3.14.4-3; 3.1.1: 3.1.2-8, -10, -12, -16, -17, 3.14.4-3 | The will in the session's state (need 1); published by the connection's node when the connection ends; by the session's replicas when the node dies (the roster's `left`); a delay or a session expiry with nobody connected is unknown 3 | Waits on Dagda, and unknown 3 |
+| 11 | SUBACK once subscribed; after UNSUBSCRIBE no new messages, in-flight ones finished | 3.8.4-1, 3.10.4-2, -3; 3.1.1: 3.8.4-1, 3.10.4-1 to -3 | SUBACK on Dannan's pushed interest (decided 2026-11-16); unsubscribe withdraws interest, and what still arrives is filtered where the session is; in-flight ones are need 2 | Dannan has it; in-flight waits on Dagda |
+| 12 | Shared subscriptions: each member at its own QoS; a QoS 2 delivery finished with the member that started it; not sent to another member once that session ends; a refusal (0x80 or above) discards | 4.8.2-3 to -6 | The node by `placement::rendezvous` over the nodes with interest in the group (step 1); the member's in-flight state is need 2 | Dannan has the choice; the rest waits on Dagda |
+
+Three statements were marked "many" by the mappers but need no node but
+one: 3.3.4-6 (refusing a Subscription Identifier on an inbound PUBLISH),
+and 3.1.1's 4.8.0-2 (closing on a transient error) and 3.10.4-1
+(comparing filters character by character). They stay in the gate as
+marked; the mapping counts them as local.
+
+What this says:
+- **Needs only Dannan, and present in `0.9.2`:** 5, 9, the choice in 12,
+  the SUBACK and UNSUBSCRIBE of 11, live ordering in 7, the clock in 6.
+  These can be built on the clean branch at step 6 without waiting.
+- **Waits on Dagda's slices 2 to 4:** 1, 2, 3, 4, 10, and the queued
+  parts of 6, 7, 11 and 12. That is every guarantee MQTT makes past one
+  connection's life.
+- **Not known, the needs to state to Dannan and Dagda:** unknown 1 (8),
+  unknown 2 (who appends to an offline session's queue, 3), unknown 3
+  (something acts when a session's or a will's time ends with nobody
+  connected, 10).
+- Nothing in the table is Lir's own mechanism. What Lir writes is the
+  codec, the per-connection exchanges, matching, the overlap rule, and
+  the merge of its session space.
+
 ## What the contracts hold (step 1, 2026-11-20)
 
 Read whole: Dannan `0.9.2`'s `context.h`, `agree/agreement.h`,

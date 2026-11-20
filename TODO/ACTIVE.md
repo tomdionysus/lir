@@ -55,8 +55,12 @@ answer, unchecked, and three things it does not know.
    3.1.1: 139, 51 tested, 64 partial, 22 none, 2 n/a; 38 on more than one
    node. Two defects confirmed (resend order, a Subscription Identifier
    on an inbound PUBLISH) and three 3.1 deviations, none fixed.
-3. Map each cross-node need to its noun, or state the need to the Dannan
-   or Dagda session.
+3. ~~Map each cross-node need to its noun, or state the need.~~ Done
+   2026-11-20: the plan's "The mapping", twelve needs over the 108
+   statements. Needs only Dannan: delivery, assigned ids, shared choice,
+   SUBACK and UNSUBSCRIBE, live order, the expiry clock. Waits on Dagda:
+   every guarantee past one connection. Unknowns 1 to 3 sent to the
+   Dannan and Dagda sessions the same day, nothing asked of them now.
 4. Have a fresh agent answer the real question independently.
 5. Take all of it to the maintainer.
 6. Only then code, tests first, on a clean branch.
