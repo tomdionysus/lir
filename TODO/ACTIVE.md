@@ -49,10 +49,12 @@ answer, unchecked, and three things it does not know.
    hold". Shared subscriptions corrected (placement picks nodes, not
    members); the three unknowns sharpened; nothing Lir waits on from
    Dagda is in its contract yet.
-2. Write the conformance gate: every normative statement of MQTT 5.0 and
-   3.1.1 by its identifier, with the test that proves it or "none". No
-   such list exists today, so how much of MQTT Lir supports is not
-   measured.
+2. ~~Write the conformance gate.~~ Done 2026-11-20:
+   [`docs/conformance.md`](../docs/conformance.md). 5.0: 252 statements,
+   84 tested, 84 partial, 82 none, 2 n/a; 70 bear on more than one node.
+   3.1.1: 139, 51 tested, 64 partial, 22 none, 2 n/a; 38 on more than one
+   node. Two defects confirmed (resend order, a Subscription Identifier
+   on an inbound PUBLISH) and three 3.1 deviations, none fixed.
 3. Map each cross-node need to its noun, or state the need to the Dannan
    or Dagda session.
 4. Have a fresh agent answer the real question independently.
