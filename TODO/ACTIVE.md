@@ -44,8 +44,11 @@ provide, and how is that built on top of Dannan? The plan holds Lir's first
 answer, unchecked, and three things it does not know.
 
 **Do this, in this order.** Build and delete nothing until step 6.
-1. Read Dannan's and Dagda's contracts whole, and correct the plan's table
-   against them.
+1. ~~Read Dannan's and Dagda's contracts whole, and correct the plan's
+   table against them.~~ Done 2026-11-20: the plan's "What the contracts
+   hold". Shared subscriptions corrected (placement picks nodes, not
+   members); the three unknowns sharpened; nothing Lir waits on from
+   Dagda is in its contract yet.
 2. Write the conformance gate: every normative statement of MQTT 5.0 and
    3.1.1 by its identifier, with the test that proves it or "none". No
    such list exists today, so how much of MQTT Lir supports is not

@@ -52,9 +52,9 @@ What follows:
 Tom, 2026-11-20: "what is required to implement full MQTT that Dannan does
 not already provide, AND how would you do that building on top of Dannan?"
 
-The Lir session's first answer follows. **It is not yet checked against
-Dannan's and Dagda's contracts**: it comes from Lir's records and Dannan's
-agreement header. Step 1 of the work below checks every row.
+The Lir session's first answer follows, corrected on 2026-11-20 against the
+contracts (step 1, below; the section "What the contracts hold" says what
+was read).
 
 **Per connection, with no cluster in it. Lir's own.** The codec; the
 CONNECT, QoS 1 and QoS 2 exchanges; packet ids; keep-alive; receive
@@ -66,33 +66,91 @@ listeners under it.
 
 | MQTT needs | Built on | State |
 |---|---|---|
-| QoS 0 delivery to subscribers on other nodes | An at-most-once channel, interest by prefix | Dannan has it |
-| Order per publisher | The channel's per-origin sequence | Dannan has it |
-| Wildcard filters | Dannan routes by literal prefix; Lir's trie matches at the receiving node. A filter with no literal prefix (`#`, `+/x`) receives everything. Correct, not cheap. | Dannan has it |
-| QoS 1 surviving a node's death | Dagda's log | Waits on Dagda |
-| QoS 2 exactly once | The log's retired dots, for the window | Waits on Dagda |
-| Retained messages, and wildcard reads of them | Dagda's register-map space and its keys-changed notice | Waits on Dagda |
-| Session state resumable at any node | A Dagda space keyed by client id, placed by Dannan | Waits on Dagda |
-| System topics | Each node answers `$lir/...` for its own clients from its own view of Dannan's roster and adverts. Nothing is replicated, so no node is "the publisher". | To check; needs only Dannan |
-| Shared subscriptions | The publishing node picks the member with Dannan's placement function over the group's members, keyed by the message. No counters, no group state. | To check; needs only Dannan |
-| A will when the client's node dies | The will is in the session's Dagda state. Every replica that sees the node leave fires it under one deterministic dot, so duplicates collapse. No node is chosen. | To check; waits on Dagda |
+| QoS 0 delivery to subscribers on other nodes | A `notify` channel (CONTROL, at most once, dropped under pressure), interest by prefix | Dannan has it |
+| Order per publisher | QoS 0: `notify` has no sequence, but deliveries are posted in order per origin to a strand, with drops, which QoS 0 allows. QoS 1 and 2 while both nodes live: a `stream` channel's sequence per origin and destination, gaps refilled from a bounded replay buffer. A gap the buffer no longer holds, or the origin's restart (a new incarnation restarts the sequence), is reported as lost: past that, order and delivery are the log's. | Dannan has it, to the replay buffer's bound |
+| Wildcard filters | Dannan routes by literal prefix; Lir's trie matches at the receiving node. A filter with no literal prefix (`#`, `+/x`) receives everything, and so does a node whose prefixes exceed the interest advert's 1 KiB: Dannan coarsens it to the empty prefix. Correct, not cheap. | Dannan has it |
+| QoS 1 surviving a node's death | Dagda's log (design D9) | Waits on Dagda: not in its contract; slices 2 to 4 paused until Macha's cutover |
+| QoS 2 exactly once | The log's retired dots, for the window | Waits on Dagda, as above |
+| Retained messages, and wildcard reads of them | Dagda's register-map space (D6) and its keys-changed notice (`watch_keys`). The ordering stamp: Dannan `0.9.2` has `Context::hlc()`; D6 is written for (Lamport, node id). Which one is Tom's open question. | Waits on Dagda: today's notice (`Heads::watch`, `changed`) serves only every-node and node-local spaces |
+| Session state resumable at any node | A Dagda `replicas(N)` head space (D1) with k-level commits (D2) | Waits on Dagda: `replicas: N` is refused today, naming L2 |
+| System topics | Each node answers `$lir/...` for its own clients from its own view: the roster watch, adverts, `Telemetry`, the partition reading. Nothing is replicated, so no node is "the publisher". | Needs only Dannan; all present in `0.9.2` |
+| Shared subscriptions | Corrected: Dannan's placement functions choose among nodes (`NodeRecord`s), not among a group's members. So the publishing node picks a node by `placement::rendezvous` over the nodes whose interest holds the group's prefix, keyed by the message, and that node gives it to one of its own members. Even across nodes, not across members; MQTT asks no fairness. A node the publish missed (`Published::missed`) gives way to the next in rendezvous order. No counters, no group state. | Needs only Dannan |
+| A will when the client's node dies | The will is in the session's Dagda state. The trigger is Dannan's roster watch: every node sees a `left` once the node is unheard for `dead_after`. Every replica that sees it fires the will under one deterministic dot, so duplicates collapse. A split makes the other side "leave" while its clients are still connected there, so their wills fire: a guarantee question for Tom. | Waits on Dagda |
 
 **Not known.** Tom: "It's OK to say 'I don't know'."
 
 1. **One connection per client id.** A second CONNECT with an id must end
-   the first, wherever it is. Perhaps a channel named for the client id
-   that the holding node subscribes to; perhaps a Dagda lease on the id.
-   Not known which. In a split both sides hold the id whatever is chosen.
+   the first, wherever it is (`[MQTT-3.1.4-3]`). Two nouns could carry it,
+   and which is not known:
+   - Dannan's agreement, a register per client id naming its holder. One
+     holder exactly, but a minority side is refused, so no client could
+     connect there: that contradicts "both sides of a split serve". Its
+     acceptor state is the hosted system's to keep, so it waits on Dagda.
+   - A channel the holding node subscribes to under the client id. Best
+     effort, and both sides of a split hold the id. One prefix per
+     connected client overflows the 1 KiB interest advert, which then
+     reads as everything, so at any size every take-over goes to every
+     node.
+   Dagda's `Leases` are not a third: they live in one node's memory today.
 2. **The subscriptions of an offline session.** While a client is away,
    something must match publishes against its filters and queue them. No
-   node has the client, so whose interest is it? If the session's replicas
-   hold it, several nodes append the same message, and it is not known how
-   that de-duplicates under Dagda's rule that a dot's origin is its
-   appender. This may be a noun that does not exist: an interest that
-   outlives the node that declared it.
+   node has the client, so whose interest is it? A candidate, unchecked
+   with Dagda: the publishing node matches every session's filters (each
+   node knowing them from the session space's key notices, as it knows
+   retained topics) and appends to the session's queue under its own
+   message dot. One appender per message, so nothing to de-duplicate, and
+   Dagda's rule that a dot's origin is its appender holds. Its cost is
+   every node holding every session's filters. Otherwise it is a noun
+   that does not exist: an interest that outlives the node that declared
+   it.
 3. **Endings by time with nobody connected:** session expiry, will delay,
-   expiry of a queued message. Dagda's expiry per key may cover the first.
-   The other two are not known.
+   expiry of a queued message. A queued message: a log entry carries its
+   expiry (D9). A session: the register map's expiry per key (D6), but an
+   expired key "is dropped with no commit", so nothing is told, and
+   session expiry and will delay must each publish a will when they end.
+   Dannan's only timer is `Time::after`, on one node. So a need, to Dagda
+   or Dannan, not yet known which: something that acts when a key's time
+   ends with no node holding the client.
+
+## What the contracts hold (step 1, 2026-11-20)
+
+Read whole: Dannan `0.9.2`'s `context.h`, `agree/agreement.h`,
+`net/fanout.h` and `placement/placement.h` (the `../dannan` checkout is
+another session's feature branch, older than the tag, so the tag was read);
+Dagda's `context.h` at `0.3.2`, contract version 2 at slice 1; and Dagda's
+`TODO/2026-11-13-three-systems-design.md` for what it has designed for Lir.
+
+Dannan `0.9.2`, as it bears on MQTT:
+- Channels: `notify`, `stream` and `bulk` as in the table. No exactly-once
+  contract and no order across origins. One interest advert per channel,
+  at most 1 KiB; a node carries at most 64 adverts of 1 KiB.
+- Nodes: the roster watch (`joined`, `left` after `dead_after`,
+  `changed`), adverts with a pushed form that returns who holds them, the
+  partition reading against the agreed roster, `members()`, and placement
+  as pure functions of a key and a list of nodes.
+- Agreement: a register per name, leaderless, from any node; the acceptor
+  state kept by the hosted system's `AcceptorStore`, in memory or durably;
+  one name per change until Dannan's atomic commit (several throws); a
+  strict read refused on a minority side; `Outcome::unknown` when a retry
+  cannot tell whether the change took.
+- `hlc()`: one hybrid logical clock per node, shared by every hosted
+  system, never repeating across restarts.
+- Nothing durable, and no timer across nodes.
+
+Dagda's contract today holds Objects, Claims, Tickets, every-node and
+node-local head spaces with the change notice, and Leases in one node's
+memory. It does not hold any noun Lir's table waits on: `replicas(N)`
+spaces (D1), k-level commits (D2), head-backed leases (D5), the register
+map (D6), or logs (D9). Those are slices 2 to 4, paused by Tom until
+Macha runs on Dagda.
+
+Found on the way:
+- Lir does not link Dagda at all today: nothing in its CMake names it,
+  though `CLAUDE.md` says it links Dannan and Dagda.
+- Dagda's design for Lir (a log per shard, a lease per shard whose holder
+  Lir computes, a session space per shard with a take-over counter) was
+  written from Lir's answers of 2026-11-13 and 14, before the premise.
+  It is re-read at step 3 against the premise, not taken as given.
 
 So the first answer to the question is short: topic matching, which is
 Lir's and local, and possibly one new noun for item 2. Nearly everything
