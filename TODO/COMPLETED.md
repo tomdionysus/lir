@@ -1871,3 +1871,35 @@ took two fixes to the real-client test, each found by CI's macOS job:
 
 Codecov receives coverage with the token Tom set, and a failed upload now
 fails CI. Lugh pins `62b2004` for `lir::mqtt`.
+
+## 2026-11-20: the codec's fuzz targets
+
+Three libFuzzer targets in `lir/fuzz/`, one for each parser of what a
+client sends. Each one checks the codec against itself, beyond surviving
+the input:
+- `packet`: every input is read as each of the three versions. Whatever
+  decodes must encode, and the encoding must decode to the same packet.
+  The fixed header must read the same from any prefix of the stream, and a
+  maximum below the packet's size must refuse it as `packet_too_large`.
+- `properties`: a block at each place. Whatever reads must write to the
+  size `properties_size` gives, then read back the same.
+- `topic`: `covers` must agree with `matches` for a name, and coverage must
+  carry through to what the covered filter matches. A shared filter must
+  rebuild from its parts, and the levels must rejoin to the topic.
+
+The shape is Lugh's: plain `LLVMFuzzerTestOneInput` files, with no
+harness of their own. Dannan's harness is not exported, so nothing is
+duplicated. `LIR_BUILD_FUZZING` instruments everything with ASan and
+UBSan, Dannan included, and only Lir's code for libFuzzer's coverage.
+`lir/fuzz/seeds.py` writes the corpus by hand from the specification,
+not from Lir's encoder. `tools/ci.sh fuzz` runs the three targets side
+by side, `LIR_FUZZ_SECONDS` each; CI runs it for 60 seconds on a push.
+The targets run as separate processes because libFuzzer's `-fork` driver
+leaks memory of its own, which LeakSanitizer reported on the first run;
+that report would have hidden a leak in Lir's code.
+
+On corvus-jupiter, 60 seconds each, clang 19, no finding:
+- packet: 350,630 runs; the corpus grew from 26 seeds to 311 units in
+  the first run, plus 1.18 million in fork mode;
+- properties: 1.27 million;
+- topic: 2.58 million.
