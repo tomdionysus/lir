@@ -61,7 +61,11 @@ answer, unchecked, and three things it does not know.
    SUBACK and UNSUBSCRIBE, live order, the expiry clock. Waits on Dagda:
    every guarantee past one connection. Unknowns 1 to 3 sent to the
    Dannan and Dagda sessions the same day, nothing asked of them now.
-4. Have a fresh agent answer the real question independently.
+4. ~~Have a fresh agent answer the real question independently.~~ Done
+   2026-11-20: `2026-11-20-second-reader.md`, its differences in the
+   plan's "The second reader". Two corrections taken: shared choice holds
+   only while interest fits the advert, and order when a publisher moves
+   between nodes is a fourth unknown.
 5. Take all of it to Tom.
 6. Only then code, tests first, on a clean branch.
 
@@ -105,8 +109,14 @@ Nothing here is started before the audit's findings have been to Tom.
 - **Dagda:** slices 1 to 4 of its three-systems design, each tagged on
   Lir's Dannan, with contract v2 frozen at slice 4. Slice 0 is done (the
   log passes the PUBACK mark on a Pi; `COMPLETED.md`, "Archived from
-  ACTIVE.md, 2026-11-19"). Slice 1 is on Dagda's develop, untagged. Paused
-  by Tom until Macha runs on Dagda. Step 5's design is
+  ACTIVE.md, 2026-11-19"). Slice 1 is in Dagda `0.3.1`. No longer paused:
+  Tom ruled on 2026-11-20 that Macha's cutover is not Dagda's concern
+  (Macha builds on Dagda `0.3.2`), so Dagda's queue is open, Louhi's asks
+  first, then Lir's. Dagda will answer unknowns 2 and 3 (the plan).
+  Relayed by Louhi, 2026-11-20: Tom ruled that Dagda's release after
+  `0.3.2` brings a durable `AcceptorStore` for Dannan's agreement, for
+  every hosted system; Context v2 reads (one key, a prefix with paging);
+  and a caught-up signal per space. Step 5's design is
   [`2026-11-13-step5-design.md`](2026-11-13-step5-design.md); it builds on
   the interim's shape and is re-read against the premise in the audit.
 - **Dannan 0.9.3** (after the Macha cutover): the hybrid clock's ceiling is

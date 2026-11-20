@@ -92,6 +92,20 @@ listeners under it.
      reads as everything, so at any size every take-over goes to every
      node.
    Dagda's `Leases` are not a third: they live in one node's memory today.
+
+   **Dannan's answer (2026-11-20):** the noun is Dagda's store lease,
+   whose design names "MQTT client-ID uniqueness" as a user
+   (`../dannan/TODO/2026-11-02-dannan-plan.md:171`, shape at `:161-165`,
+   `:219`): `acquire` returns holder, epoch and since; a newcomer asks
+   who holds the id and reaches that node with `Routes::call`; every
+   action carries the epoch and a lower one is refused. In a split both
+   sides serve: the side without the holder takes the lease at epoch+1
+   after the absence window, so two holders coexist, and at heal the
+   higher epoch wins and the other connection is ended. So under a split
+   `[MQTT-3.1.4-3]` is met at heal, not at the second CONNECT, which no
+   design without a majority can better. Head-backed leases are Dagda's
+   D5, not shipped. This retires unknown 1 into "waits on Dagda", with a
+   stated limit for Tom.
 2. **The subscriptions of an offline session.** While a client is away,
    something must match publishes against its filters and queue them. No
    node has the client, so whose interest is it? A candidate, unchecked
@@ -111,6 +125,14 @@ listeners under it.
    Dannan's only timer is `Time::after`, on one node. So a need, to Dagda
    or Dannan, not yet known which: something that acts when a key's time
    ends with no node holding the client.
+
+   **Dannan's answer (2026-11-20):** nothing in either design covers it.
+   It could be composed of existing nouns: a lease per will, whose holder
+   arms `Time::after` at a deadline kept in a head space, re-armed by a
+   take-over at epoch+1, the publish carrying the epoch. In a split that
+   is at least once, not once. Dannan has put to Tom whether that is
+   acceptable and whose noun it is, recommending the lease composition,
+   and will relay his answer.
 
 ## The mapping (step 3, 2026-11-20)
 
@@ -132,7 +154,7 @@ marked 3.1.1.
 | 9 | An assigned client id is unique across the cluster | 3.1.3-6, -7, 3.2.2-16 | Dannan's node id with its sealed counter (`Identity::advance_counter`), or an `hlc()` stamp: unique with no word between nodes | Dannan has it |
 | 10 | Wills: stored with the session, published when the connection ends (as retained if asked), after the Will Delay unless the session resumes, discarded on a normal DISCONNECT, user properties in order | 3.1.2-7, -8, -10, -14, -15, 3.1.3-9, -10, 3.14.4-3; 3.1.1: 3.1.2-8, -10, -12, -16, -17, 3.14.4-3 | The will in the session's state (need 1); published by the connection's node when the connection ends; by the session's replicas when the node dies (the roster's `left`); a delay or a session expiry with nobody connected is unknown 3 | Waits on Dagda, and unknown 3 |
 | 11 | SUBACK once subscribed; after UNSUBSCRIBE no new messages, in-flight ones finished | 3.8.4-1, 3.10.4-2, -3; 3.1.1: 3.8.4-1, 3.10.4-1 to -3 | SUBACK on Dannan's pushed interest (decided 2026-11-16); unsubscribe withdraws interest, and what still arrives is filtered where the session is; in-flight ones are need 2 | Dannan has it; in-flight waits on Dagda |
-| 12 | Shared subscriptions: each member at its own QoS; a QoS 2 delivery finished with the member that started it; not sent to another member once that session ends; a refusal (0x80 or above) discards | 4.8.2-3 to -6 | The node by `placement::rendezvous` over the nodes with interest in the group (step 1); the member's in-flight state is need 2 | Dannan has the choice; the rest waits on Dagda |
+| 12 | Shared subscriptions: each member at its own QoS; a QoS 2 delivery finished with the member that started it; not sent to another member once that session ends; a refusal (0x80 or above) discards | 4.8.2-3 to -6 | The node by `placement::rendezvous` over the nodes with interest in the group (step 1); the member's in-flight state is need 2 | Dannan has the choice while each node's interest fits its 1 KiB advert; past it, not known (step 4); the rest waits on Dagda |
 
 Three statements were marked "many" by the mappers but need no node but
 one: 3.3.4-6 (refusing a Subscription Identifier on an inbound PUBLISH),
@@ -154,6 +176,52 @@ What this says:
 - Nothing in the table is Lir's own mechanism. What Lir writes is the
   codec, the per-connection exchanges, matching, the overlap rule, and
   the merge of its session space.
+
+## The second reader (step 4, 2026-11-20)
+
+A fresh agent, given Tom's design and the contracts and none of Lir's
+conclusions, answered the question in
+[`2026-11-20-second-reader.md`](2026-11-20-second-reader.md). It agrees
+on the shape: transport, matching, the SUBACK hold, live order and the
+clock need only Dannan; everything MQTT keeps past a connection waits on
+Dagda's unshipped nouns. Where it differs:
+
+1. **Shared subscriptions are not as easy as the mapping says.** It
+   finds no one-of-group noun. Its point that holds: choosing a node by
+   rendezvous over the nodes with interest in the group works only while
+   each node's interest fits the 1 KiB advert. Past that the advert reads
+   as everything, every node seems to have members, and the choice can
+   land where there are none. The mapping's need 12 is corrected to
+   "needs only Dannan while interest fits the advert; past it, not
+   known", and that is a need to state to Dannan.
+2. **Order when a publisher moves.** A client that reconnects on another
+   node publishes from a new origin, and nothing orders its last messages
+   through the old node before its first through the new. Not in the
+   mapping; added as a fourth unknown. (Its other ordering point, order
+   across publishers on one topic, is not what `[MQTT-4.6.0-6]` asks:
+   MQTT's order is per publisher.)
+3. **Wills when a node dies:** "left the roster" cannot tell dead from
+   cut off. The same as the mapping's split question for Tom.
+4. **Retained order after a heal:** last writer by `hlc()` converges, but
+   whether that is MQTT's "last" is Tom's (already waiting on him), and
+   the clock's bound on how far ahead a stamp may run is not resolved.
+5. **Offline queues:** it adds a second shape (a log per topic, each
+   session reading from its own position) beside the mapping's (the
+   publisher appends to each session's queue). Dagda is answering which
+   fits.
+6. **Agreement's acceptor state and who moves its slots** as the roster
+   changes. The first is answered (Dagda's next release brings a durable
+   `AcceptorStore`, relayed by Louhi). The second matters only if Lir
+   uses agreement; Dannan's answer to unknown 1 is a lease instead.
+
+It also lists where Tom's design of 2026-11-03 disagrees with the rules:
+shard primaries and a per-shard lease, a wildcard index Lir keeps and
+replicates itself, the interim mirrors and PUBACK on acceptance, the
+take-over counter in Lir's merge, round-robin at a primary, a Lamport
+counter where Dannan ships a hybrid clock, QoS 2 bounded by a
+de-duplication window, and epoch fencing written by Lir. These go to Tom
+whole: each is either a noun now (lease, register map, `hlc()`) or Lir's
+own mechanism.
 
 ## What the contracts hold (step 1, 2026-11-20)
 
