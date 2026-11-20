@@ -80,9 +80,11 @@ Run the test binary rather than `ctest`. `tools/ci.sh <step>` is one CI step
 on Debian 13, as the nodes have it: `check` (the header block and the
 format), `release`, `clang`, `asan`, `tsan`, `coverage`, `client` (the codec
 and the client alone) and `lugh` (the plugin on). Hosted CI
-(`.github/workflows/ci.yml`) runs each on every push to `main` and `develop`,
-with release and ASan on x86-64 and on arm64, and a build and test on macOS.
-CodeQL analyses every push. The `lugh` job needs the repository secret
+(`.github/workflows/ci.yml`) runs each on a push to `main` or `develop` and on
+a pull request, never for a change to markdown alone, with release and ASan
+on x86-64 and on arm64, and a build and test on macOS; a newer push cancels
+the run it supersedes. A feature branch is gated on the build nodes. CodeQL
+analyses each push to `main` and once a week. The `lugh` job needs the repository secret
 `LUGH_READ_TOKEN`.
 
 The project's own sessions build and test on the shared build servers

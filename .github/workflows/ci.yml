@@ -13,9 +13,12 @@
 name: CI
 
 on:
+  # Feature branches gate on the build nodes; markdown never builds.
   push:
-    branches: [main, develop]
+    branches: [develop, main]
+    paths-ignore: ['TODO/**', 'docs/**', '**/*.md']
   pull_request:
+    paths-ignore: ['TODO/**', 'docs/**', '**/*.md']
   # Builds the Debian packages of a release tag, for the apt repository.
   workflow_dispatch:
     inputs:
@@ -25,6 +28,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   linux:
