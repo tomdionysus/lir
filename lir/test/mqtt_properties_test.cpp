@@ -7,132 +7,186 @@
 
 #include <gtest/gtest.h>
 
+#include <stdexcept>
+#include <string>
+#include <vector>
+
 #include "lir/mqtt/properties.h"
 
+// MQTT 5.0 section 2.2.2: the property block. Bytes are written out as the
+// specification lays them down, never only round-tripped through the codec.
 namespace lir::mqtt {
 namespace {
 
 using dannan::net::Reader;
 using dannan::net::Writer;
 
-Properties round_trip(const Properties& in, PropertyPlace place) {
-  Writer w;
-  write_properties(w, in, place);
-  EXPECT_EQ(w.data().size(), properties_size(in));
-  Reader r(w.data());
-  auto out = read_properties(r, place);
-  EXPECT_EQ(r.remaining(), 0u);
+Properties read(const Bytes& bytes, PropertyPlace place) {
+  Reader reader(bytes);
+  Properties out = read_properties(reader, place);
+  EXPECT_EQ(reader.remaining(), 0u);
   return out;
 }
 
-Properties decode_block(const Bytes& block, PropertyPlace place) {
-  Reader r(block);
-  return read_properties(r, place);
-}
-
-TEST(MqttProperties, EmptyIsOneZeroByte) {
-  Writer w;
-  write_properties(w, {}, PropertyPlace::publish);
-  EXPECT_EQ(w.data(), (Bytes{0x00}));
-}
-
-TEST(MqttProperties, ConnackRoundTrip) {
-  Properties p;
-  p.session_expiry_interval = 3600;
-  p.assigned_client_identifier = "auto-1";
-  p.server_keep_alive = 30;
-  p.receive_maximum = 100;
-  p.topic_alias_maximum = 10;
-  p.maximum_qos = 1;
-  p.retain_available = 1;
-  p.maximum_packet_size = 1 << 20;
-  p.wildcard_subscription_available = 1;
-  p.subscription_identifier_available = 1;
-  p.shared_subscription_available = 1;
-  p.reason_string = "ok";
-  p.server_reference = "other:1883";
-  p.response_information = "resp/";
-  p.authentication_method = "SCRAM";
-  p.authentication_data = Bytes{1, 2, 3};
-  p.user_properties = {{"a", "1"}, {"a", "2"}, {"b", ""}};
-  EXPECT_EQ(round_trip(p, PropertyPlace::connack), p);
-}
-
-TEST(MqttProperties, PublishRoundTripWithSeveralSubscriptionIdentifiers) {
-  Properties p;
-  p.payload_format_indicator = 1;
-  p.message_expiry_interval = 60;
-  p.content_type = "application/json";
-  p.response_topic = "reply/here";
-  p.correlation_data = Bytes{9, 9};
-  p.subscription_identifiers = {1, 268435455};
-  p.topic_alias = 5;
-  EXPECT_EQ(round_trip(p, PropertyPlace::publish), p);
-}
-
-TEST(MqttProperties, WillRoundTrip) {
-  Properties p;
-  p.will_delay_interval = 10;
-  p.message_expiry_interval = 20;
-  EXPECT_EQ(round_trip(p, PropertyPlace::will), p);
-}
-
-// Section 2.2.2.2: a property not valid for the packet is a protocol error.
-TEST(MqttProperties, NotAllowedHereIsProtocolError) {
-  // Topic alias (0x23) inside a CONNECT.
+uint8_t refusal(const Bytes& bytes, PropertyPlace place) {
   try {
-    decode_block(Bytes{0x03, 0x23, 0x00, 0x01}, PropertyPlace::connect);
-    FAIL();
-  } catch (const MalformedPacket& e) {
-    EXPECT_EQ(e.reason(), reason::protocol_error);
+    read(bytes, place);
+  } catch (const MalformedPacket& error) {
+    return error.reason();
   }
-  Properties p;
-  p.will_delay_interval = 1;
-  Writer w;
-  EXPECT_THROW(write_properties(w, p, PropertyPlace::publish), std::invalid_argument);
+  return reason::success;
 }
 
-TEST(MqttProperties, RepeatedPropertyIsProtocolError) {
-  // Two message expiry intervals.
-  EXPECT_THROW(decode_block(Bytes{0x0A, 0x02, 0, 0, 0, 1, 0x02, 0, 0, 0, 2}, PropertyPlace::publish), MalformedPacket);
+Bytes write(const Properties& properties, PropertyPlace place) {
+  Writer writer;
+  write_properties(writer, properties, place);
+  return writer.take();
 }
 
-TEST(MqttProperties, UserPropertyMayRepeat) {
-  const auto p = decode_block(Bytes{0x0B, 0x26, 0, 1, 'k', 0, 0, 0x26, 0, 0, 0, 0}, PropertyPlace::publish);
-  ASSERT_EQ(p.user_properties.size(), 2u);
+TEST(MqttProperties, MQTT_2_2_2_1_LengthIsAVariableByteIntegerOfWhatFollows) {
+  EXPECT_EQ(read({0x00}, PropertyPlace::publish), Properties{});
+  // Message Expiry Interval 10: length 5, then 0x02 and four bytes.
+  const Properties expiry = read({0x05, 0x02, 0x00, 0x00, 0x00, 0x0A}, PropertyPlace::publish);
+  EXPECT_EQ(expiry.message_expiry_interval, 10u);
+  EXPECT_EQ(write(expiry, PropertyPlace::publish), (Bytes{0x05, 0x02, 0x00, 0x00, 0x00, 0x0A}));
+  EXPECT_EQ(properties_size(expiry), 6u);
+  // A length past what follows, or short of a whole property.
+  EXPECT_EQ(refusal({0x06, 0x02, 0x00, 0x00, 0x00, 0x0A}, PropertyPlace::publish), reason::malformed_packet);
+  EXPECT_EQ(refusal({0x03, 0x02, 0x00, 0x00}, PropertyPlace::publish), reason::malformed_packet);
+  // A length that needs two bytes: 130 bytes of correlation data.
+  Properties big;
+  big.correlation_data = Bytes(127, 0x55);
+  const Bytes encoded = write(big, PropertyPlace::publish);
+  EXPECT_EQ(encoded[0], 0x82);
+  EXPECT_EQ(encoded[1], 0x01);
+  EXPECT_EQ(read(encoded, PropertyPlace::publish), big);
 }
 
-TEST(MqttProperties, OneSubscriptionIdentifierPerSubscribe) {
-  EXPECT_THROW(decode_block(Bytes{0x04, 0x0B, 0x01, 0x0B, 0x02}, PropertyPlace::subscribe), MalformedPacket);
-  Properties p;
-  p.subscription_identifiers = {1, 2};
-  Writer w;
-  EXPECT_THROW(write_properties(w, p, PropertyPlace::subscribe), std::invalid_argument);
+TEST(MqttProperties, MQTT_1_5_7_1_StringPairsAreBothUtf8) {
+  // User Property "a" = "b".
+  const Properties pair = read({0x07, 0x26, 0x00, 0x01, 'a', 0x00, 0x01, 'b'}, PropertyPlace::publish);
+  ASSERT_EQ(pair.user_properties.size(), 1u);
+  EXPECT_EQ(pair.user_properties[0], (std::pair<std::string, std::string>{"a", "b"}));
+  EXPECT_EQ(refusal({0x07, 0x26, 0x00, 0x01, 0xFF, 0x00, 0x01, 'b'}, PropertyPlace::publish), reason::malformed_packet);
+  EXPECT_EQ(refusal({0x07, 0x26, 0x00, 0x01, 'a', 0x00, 0x01, 0x00}, PropertyPlace::publish), reason::malformed_packet);
+  Properties bad;
+  bad.user_properties = {{"a", std::string("\xC0\x80", 2)}};
+  Writer writer;
+  EXPECT_THROW(write_properties(writer, bad, PropertyPlace::publish), std::invalid_argument);
 }
 
-TEST(MqttProperties, ValuesOutOfRange) {
-  EXPECT_THROW(decode_block(Bytes{0x02, 0x0B, 0x00}, PropertyPlace::subscribe), MalformedPacket);      // subscription id 0
-  EXPECT_THROW(decode_block(Bytes{0x03, 0x21, 0x00, 0x00}, PropertyPlace::connect), MalformedPacket);  // receive maximum 0
-  EXPECT_THROW(decode_block(Bytes{0x05, 0x27, 0, 0, 0, 0}, PropertyPlace::connect), MalformedPacket);  // maximum packet size 0
-  EXPECT_THROW(decode_block(Bytes{0x03, 0x23, 0x00, 0x00}, PropertyPlace::publish), MalformedPacket);  // topic alias 0
-  EXPECT_THROW(decode_block(Bytes{0x02, 0x01, 0x02}, PropertyPlace::publish), MalformedPacket);        // payload format 2
-  EXPECT_THROW(decode_block(Bytes{0x02, 0x24, 0x02}, PropertyPlace::connack), MalformedPacket);        // maximum QoS 2
+TEST(MqttProperties, UserPropertiesKeepOrderAndRepeats) {
+  Properties many;
+  many.user_properties = {{"k", "1"}, {"a", "2"}, {"k", "3"}};
+  EXPECT_EQ(read(write(many, PropertyPlace::publish), PropertyPlace::publish).user_properties, many.user_properties);
 }
 
-TEST(MqttProperties, UnknownPropertyIsProtocolError) { EXPECT_THROW(decode_block(Bytes{0x02, 0x7F, 0x00}, PropertyPlace::publish), MalformedPacket); }
+TEST(MqttProperties, APropertyOutOfItsPlaceIsAProtocolError) {
+  // Topic Alias belongs to PUBLISH only; Session Expiry Interval never to PUBLISH.
+  EXPECT_EQ(refusal({0x03, 0x23, 0x00, 0x01}, PropertyPlace::connect), reason::protocol_error);
+  EXPECT_EQ(refusal({0x05, 0x11, 0x00, 0x00, 0x00, 0x01}, PropertyPlace::publish), reason::protocol_error);
+  EXPECT_EQ(refusal({0x02, 0x24, 0x01}, PropertyPlace::connect), reason::protocol_error);
+  EXPECT_EQ(refusal({0x05, 0x18, 0x00, 0x00, 0x00, 0x01}, PropertyPlace::connect), reason::protocol_error);
+  // Will Delay Interval is a will's.
+  EXPECT_EQ(read({0x05, 0x18, 0x00, 0x00, 0x00, 0x01}, PropertyPlace::will).will_delay_interval, 1u);
+  Properties alias;
+  alias.topic_alias = 1;
+  Writer writer;
+  EXPECT_THROW(write_properties(writer, alias, PropertyPlace::connect), std::invalid_argument);
+}
 
-TEST(MqttProperties, BlockPastPacketIsMalformed) {
-  try {
-    decode_block(Bytes{0x05, 0x02, 0x00}, PropertyPlace::publish);
-    FAIL();
-  } catch (const MalformedPacket& e) {
-    EXPECT_EQ(e.reason(), reason::malformed_packet);
+TEST(MqttProperties, AnUnknownIdentifierIsMalformed) { EXPECT_EQ(refusal({0x02, 0x7F, 0x00}, PropertyPlace::publish), reason::malformed_packet); }
+
+TEST(MqttProperties, AnyPropertyButTheRepeatableOnesTwiceIsAProtocolError) {
+  EXPECT_EQ(refusal({0x04, 0x01, 0x00, 0x01, 0x01}, PropertyPlace::publish), reason::protocol_error);
+  // A Subscription Identifier: at most one on a SUBSCRIBE, several on a PUBLISH.
+  EXPECT_EQ(refusal({0x04, 0x0B, 0x01, 0x0B, 0x02}, PropertyPlace::subscribe), reason::protocol_error);
+  EXPECT_EQ(read({0x04, 0x0B, 0x01, 0x0B, 0x02}, PropertyPlace::publish).subscription_identifiers, (std::vector<uint32_t>{1, 2}));
+}
+
+TEST(MqttProperties, ValuesOutOfRangeAreProtocolErrors) {
+  // Payload Format Indicator, Maximum QoS and the CONNACK flags are 0 or 1.
+  EXPECT_EQ(refusal({0x02, 0x01, 0x02}, PropertyPlace::publish), reason::protocol_error);
+  EXPECT_EQ(refusal({0x02, 0x24, 0x02}, PropertyPlace::connack), reason::protocol_error);
+  EXPECT_EQ(refusal({0x02, 0x25, 0x02}, PropertyPlace::connack), reason::protocol_error);
+  EXPECT_EQ(refusal({0x02, 0x17, 0x02}, PropertyPlace::connect), reason::protocol_error);
+  EXPECT_EQ(refusal({0x02, 0x19, 0x02}, PropertyPlace::connect), reason::protocol_error);
+  // Receive Maximum and Maximum Packet Size may not be zero.
+  EXPECT_EQ(refusal({0x03, 0x21, 0x00, 0x00}, PropertyPlace::connect), reason::protocol_error);
+  EXPECT_EQ(refusal({0x05, 0x27, 0x00, 0x00, 0x00, 0x00}, PropertyPlace::connect), reason::protocol_error);
+  // A Subscription Identifier of 0.
+  EXPECT_EQ(refusal({0x02, 0x0B, 0x00}, PropertyPlace::subscribe), reason::protocol_error);
+}
+
+TEST(MqttProperties, MQTT_3_3_2_8_TopicAliasZeroIsRefused) {
+  EXPECT_EQ(refusal({0x03, 0x23, 0x00, 0x00}, PropertyPlace::publish), reason::topic_alias_invalid);
+  Properties zero;
+  zero.topic_alias = 0;
+  Writer writer;
+  EXPECT_THROW(write_properties(writer, zero, PropertyPlace::publish), std::invalid_argument);
+}
+
+TEST(MqttProperties, MQTT_3_3_2_13_and_14_ResponseTopicIsATopicName) {
+  EXPECT_EQ(read({0x04, 0x08, 0x00, 0x01, 'r'}, PropertyPlace::publish).response_topic, "r");
+  EXPECT_EQ(refusal({0x04, 0x08, 0x00, 0x01, '#'}, PropertyPlace::publish), reason::protocol_error);
+  EXPECT_EQ(refusal({0x04, 0x08, 0x00, 0x01, '+'}, PropertyPlace::will), reason::protocol_error);
+  EXPECT_EQ(refusal({0x04, 0x08, 0x00, 0x01, 0xFF}, PropertyPlace::publish), reason::malformed_packet);
+}
+
+TEST(MqttProperties, MQTT_3_3_2_19_ContentTypeIsUtf8) {
+  EXPECT_EQ(read({0x04, 0x03, 0x00, 0x01, 't'}, PropertyPlace::publish).content_type, "t");
+  EXPECT_EQ(refusal({0x04, 0x03, 0x00, 0x01, 0xFE}, PropertyPlace::publish), reason::malformed_packet);
+}
+
+TEST(MqttProperties, EveryPropertyRoundTripsAtItsPlace) {
+  Properties connack;
+  connack.session_expiry_interval = 60;
+  connack.assigned_client_identifier = "id";
+  connack.server_keep_alive = 30;
+  connack.authentication_method = "m";
+  connack.authentication_data = Bytes{1, 2};
+  connack.response_information = "ri";
+  connack.server_reference = "other:1883";
+  connack.reason_string = "why";
+  connack.receive_maximum = 10;
+  connack.topic_alias_maximum = 5;
+  connack.maximum_qos = 1;
+  connack.retain_available = 0;
+  connack.user_properties = {{"x", "y"}};
+  connack.maximum_packet_size = 1024;
+  connack.wildcard_subscription_available = 1;
+  connack.subscription_identifier_available = 0;
+  connack.shared_subscription_available = 1;
+  EXPECT_EQ(read(write(connack, PropertyPlace::connack), PropertyPlace::connack), connack);
+
+  Properties publish;
+  publish.payload_format_indicator = 1;
+  publish.message_expiry_interval = 100;
+  publish.content_type = "text/plain";
+  publish.response_topic = "reply/here";
+  publish.correlation_data = Bytes{9, 8, 7};
+  publish.subscription_identifiers = {1, varint_max};
+  publish.topic_alias = 3;
+  EXPECT_EQ(read(write(publish, PropertyPlace::publish), PropertyPlace::publish), publish);
+  EXPECT_FALSE(publish.empty());
+  EXPECT_TRUE(Properties{}.empty());
+
+  Properties connect;
+  connect.session_expiry_interval = 0;
+  connect.authentication_method = "m";
+  connect.request_problem_information = 0;
+  connect.request_response_information = 1;
+  connect.receive_maximum = 100;
+  connect.maximum_packet_size = 65536;
+  connect.topic_alias_maximum = 0;
+  EXPECT_EQ(read(write(connect, PropertyPlace::connect), PropertyPlace::connect), connect);
+
+  // The size is what is written, for every property.
+  for (const auto& [properties, place] :
+       {std::pair{connack, PropertyPlace::connack}, std::pair{publish, PropertyPlace::publish}, std::pair{connect, PropertyPlace::connect}}) {
+    EXPECT_EQ(properties_size(properties), write(properties, place).size());
   }
-}
-
-TEST(MqttProperties, ValueRunningPastBlockIsMalformed) {
-  // The block says 2 bytes; a message expiry interval needs 1 + 4.
-  EXPECT_THROW(decode_block(Bytes{0x02, 0x02, 0x00, 0x00, 0x00, 0x00}, PropertyPlace::publish), MalformedPacket);
+  EXPECT_EQ(properties_size(Properties{}), 1u);
 }
 
 }  // namespace

@@ -66,15 +66,40 @@ answer, unchecked, and three things it does not know.
    plan's "The second reader". Two corrections taken: shared choice holds
    only while interest fits the advert, and order when a publisher moves
    between nodes is a fourth unknown.
-5. Take all of it to the maintainer.
-6. Only then code, tests first, on a clean branch.
+5. ~~Take all of it to the maintainer.~~ the maintainer, 2026-11-20, on being asked whether
+   to close "single-node gaps" first: "If you're asking about single-node
+   specific code, you've missed the whole point, Again." Then: "I think
+   realistically you'll have to go for a rewrite from scratch. Store Lir's
+   existing contract, because it's used by other systems, and start from
+   scratch."
+6. **The rewrite**, on `feature/rewrite` (local, from `92ab3a0`). Done
+   there: the contract stored ([`docs/contract.md`](../docs/contract.md),
+   headers verbatim under `docs/contract-v1/`); every source but the
+   version files removed; a skeleton that builds `lir` and `lir_tests`
+   (2 tests). The design, drafted 2026-11-20:
+   [`2026-11-20-rewrite-design.md`](2026-11-20-rewrite-design.md), with
+   The maintainer. Then code, tests first, every MQTT statement tested on Dannan's
+   simulation harness, one node being only a cluster of one. There is no single-node Lir.
 
-**State.** `develop` is pushed and nothing is unmerged. No code changed on
-2026-11-19. Dannan is pinned at `0.9.2` and Lugh at `dbb0573` (plugin only).
-The last gate was on node-b at `e839b4a`, 2026-11-17: `tools/ci.sh
-release` 361 passed, none skipped; hosted CI fully green (run 44200063109).
-`tools/ci.sh lugh` was 343 at the 0.8.0 repin. These counts say the code
-does what its tests say. They do not say the code is right.
+**State (2026-11-20).** `develop` holds the rewrite's start and its MQTT
+codec, squashed from `feature/rewrite`:
+- the contract, stored (`docs/contract.md`);
+- `lir::mqtt` whole: data representations, topics, properties, every
+  control packet of 5.0, 3.1.1 and 3.1;
+- the conformance gate, generated from the tests' names.
+
+Its gate on node-d:
+- `tools/ci.sh` check, release, client, clang, ASan and UBSan, and TSan:
+  113 tests, no sanitizer report;
+- 9 of them against a real client, mosquitto at all three versions;
+- coverage 99.9% of lines (the one line left is a closing brace gcov
+  counts for allocation failure) and 100% of functions.
+
+Dannan is pinned at `0.9.2`. Nothing of Dagda or Lugh is linked yet. The
+build nodes have `mosquitto-clients` on node-d only; the others need it before
+Lir's tests run there.
+
+The old code is in the history at `92ab3a0`.
 
 **The standing cluster** runs `e839b4a` on Dannan 0.9.2 on all four build nodes,
 majority 4 of 4, and carries the claim board. It runs the code under audit.
@@ -100,7 +125,64 @@ a build there starts from a fresh clone.
 - Never keep a node list (the maintainer, 2026-11-15).
 - A problem in Dannan, Dagda or Lugh goes to that project's session. Lir
   does not investigate or patch their code (the maintainer, 2026-11-19).
+- The maintainer, 2026-11-20, to the stack: features and milestones are built on
+  branches and land on `develop` as one squash commit each, on
+  completion. Every build and test runs on the cluster. Sanitizers run
+  only when a feature or milestone is complete, before its merge, or to
+  diagnose a bug nothing else has found. Test once and be done; no
+  repeated runs and no mutants unless a change is small or high-risk. No
+  flaky test is tolerated: a test that fails at random is investigated.
+  The repository is public, so its GitHub CI is kept working, with all
+  relevant badges. No cluster core is ever held idle, for any reason:
+  copy evidence off and release. Coverage is kept at about 100% of all
+  code, measured (`tools/ci.sh coverage`) before each merge.
+- Releases (the maintainer, 2026-11-20): once current work is done, a version is cut
+  as follows:
+  1. The docs are rationalised; the README is about installation and use.
+  2. Debian packages are built.
+  3. The full tests run, sanitizers and fuzzing included.
+  4. The version is tagged `x.y.z`, merged to `main`, and pushed.
+
+  Only minor or patch versions are bumped (the maintainer): the major stays 0 until
+  he says.
+
+  The release badge is kept. Lir's first, `0.1.0`, is cut when the
+  rewrite's broker serves clients across nodes (step 2 of the design, with
+  its stated limits), not before: until then Lir is a codec, and a version
+  would promise a broker it is not. Owed before it:
+  - Debian packaging (none exists);
+  - libFuzzer targets for the codec (none in the rewrite yet).
+- The stack negotiates through the coordinating session, which
+  keeps the record (`../coordination/TODO/2026-11-20-cluster-stack-placement.md`).
+  Before anything goes to the maintainer, ask whether the goals already answer it:
+  no duplication; the deepest shared dependency owns what two or more
+  need; no special role or node; failures never the user's problem. Only
+  what the group cannot settle goes to the maintainer (the maintainer, 2026-11-20).
 - Report findings before fixing.
+
+## The converged plan (2026-11-20)
+
+The stack's placement converged through the the coordinating session
+session (`../coordination/TODO/2026-11-20-cluster-stack-placement.md`,
+"The converged plan", "Lir"); Lir agreed, adding sessions on D1/D2 and
+in-flight and queues on D9, and Dannan's backoff in `lir::client`. For Lir:
+- **Dannan's next minor:** the simulation harness exported as
+  `dannan::testing` (`DANNAN_BUILD_TESTING_EXPORT`), and a per-peer answer
+  bound that settles the SUBACK hold (L2).
+- **Dagda:** D6, the register map, first, then D5, its leases. For the
+  retained stamp, Dannan adds `HlcClock::admit`.
+- **Lugh:** scope parsing and checks in `lugh_client`, anonymous mode
+  included; Lir's needs sent to it.
+- **The maintainer answered (2026-11-20, in Dannan's session):** Q1, HTTP and JSON
+  move into Dannan, on Boost.JSON; Q2, the register map orders by (hlc
+  stamp, node id); Q3, Dannan's DNS responder gives plain clients an
+  address that survives a node; Q4, retirement stays an operator command.
+  Dannan holds until the maintainer says go.
+- **Dagda's D6 review (2026-11-20):** retained values need no index of
+  Lir's: D6 opens capable("lir") once D1 exists, with get and list read
+  locally; a register may name objects, and the head's reachability frees
+  a superseded one; `RegisterMap::now()` is the expiry clock. A QoS 1 or 2
+  retained PUBACK waits on D2's replicated commit.
 
 ## What waits, and on whom
 
@@ -156,7 +238,14 @@ at step 5.
 
 ## Decisions
 
-Not reopened without asking the maintainer. Those of 2026-11-04 that set up the
+Not reopened without asking the maintainer.
+
+- (2026-11-20, the maintainer) Lir is rewritten from scratch. Its contract with other
+  systems is stored and kept (`docs/contract.md`); nothing else of the old
+  code binds the rewrite, and its tests go with it (the gate count falls
+  from 361 to the skeleton's 2 by this ruling, not as a finding). There is
+  no single-node Lir: one node is a cluster of one, and no work, test or
+  question is split by "one node" and "many". Those of 2026-11-04 that set up the
 interim cluster are marked: they are Lir's own mechanisms, and what
 becomes of them goes to the maintainer with the plan's findings.
 

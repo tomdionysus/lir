@@ -7,101 +7,99 @@
 
 #include "lir/mqtt/topic.h"
 
-#include <algorithm>
-
 namespace lir::mqtt {
 
 namespace {
 
 constexpr std::string_view share_prefix = "$share/";
-constexpr size_t topic_max = 65535;
+
+// What every name and filter must be [MQTT-4.7.3-1] to [MQTT-4.7.3-3].
+bool plausible(std::string_view text) noexcept { return !text.empty() && text.size() <= 65535 && text.find('\0') == std::string_view::npos; }
+
+// A filter whose first character is a wildcard never matches, or covers, a
+// name or filter whose first character is '$' [MQTT-4.7.2-1].
+bool hidden_from(std::string_view filter, std::string_view other) noexcept {
+  return !other.empty() && other.front() == '$' && !filter.empty() && (filter.front() == '+' || filter.front() == '#');
+}
+
+// The next level of `text` from `position`, and where the one after starts
+// (npos past the last level).
+std::string_view next_level(std::string_view text, size_t& position) noexcept {
+  const size_t slash = text.find('/', position);
+  const std::string_view level = text.substr(position, slash == std::string_view::npos ? std::string_view::npos : slash - position);
+  position = slash == std::string_view::npos ? std::string_view::npos : slash + 1;
+  return level;
+}
 
 }  // namespace
 
-std::vector<std::string_view> levels(std::string_view topic) {
-  std::vector<std::string_view> out;
-  size_t start = 0;
-  while (true) {
-    const size_t slash = topic.find('/', start);
-    if (slash == std::string_view::npos) {
-      out.push_back(topic.substr(start));
-      return out;
-    }
-    out.push_back(topic.substr(start, slash - start));
-    start = slash + 1;
-  }
-}
-
-bool has_wildcard(std::string_view filter) noexcept { return filter.find_first_of("+#") != std::string_view::npos; }
-
-bool valid_topic_name(std::string_view name) noexcept { return !name.empty() && name.size() <= topic_max && !has_wildcard(name); }
+bool valid_topic_name(std::string_view name) noexcept { return plausible(name) && !has_wildcard(name); }
 
 bool valid_topic_filter(std::string_view filter) noexcept {
-  if (filter.empty() || filter.size() > topic_max) return false;
-  const auto parts = levels(filter);
-  for (size_t i = 0; i < parts.size(); ++i) {
-    const auto level = parts[i];
-    if (level.find('#') != std::string_view::npos && (level != "#" || i + 1 != parts.size())) return false;
-    if (level.find('+') != std::string_view::npos && level != "+") return false;
+  if (!plausible(filter)) return false;
+  size_t position = 0;
+  while (position != std::string_view::npos) {
+    const std::string_view level = next_level(filter, position);
+    if (level == "#") {
+      if (position != std::string_view::npos) return false;  // '#' is the last level [MQTT-4.7.1-1]
+    } else if (level != "+" && has_wildcard(level)) {
+      return false;  // a wildcard occupies its whole level [MQTT-4.7.1-2]
+    }
   }
   return true;
 }
+
+bool has_wildcard(std::string_view filter) noexcept { return filter.find_first_of("+#") != std::string_view::npos; }
 
 bool is_shared(std::string_view filter) noexcept { return filter.starts_with(share_prefix); }
 
 std::optional<SharedFilter> parse_shared(std::string_view filter) {
   if (!is_shared(filter)) return std::nullopt;
-  const auto rest = filter.substr(share_prefix.size());
+  const std::string_view rest = filter.substr(share_prefix.size());
   const size_t slash = rest.find('/');
-  if (slash == std::string_view::npos || slash == 0) return std::nullopt;
-  const auto group = rest.substr(0, slash);
-  if (group.find_first_of("+#") != std::string_view::npos) return std::nullopt;
-  const auto inner = rest.substr(slash + 1);
+  if (slash == std::string_view::npos) return std::nullopt;  // the ShareName is followed by '/' [MQTT-4.8.2-2]
+  const std::string_view group = rest.substr(0, slash);
+  if (group.empty() || has_wildcard(group)) return std::nullopt;  // [MQTT-4.8.2-1], [MQTT-4.8.2-2]
+  const std::string_view inner = rest.substr(slash + 1);
   if (!valid_topic_filter(inner)) return std::nullopt;
   return SharedFilter{std::string(group), std::string(inner)};
 }
 
 bool matches(std::string_view filter, std::string_view name) noexcept {
-  if (!name.empty() && name.front() == '$' && !filter.empty() && (filter.front() == '+' || filter.front() == '#')) return false;
+  if (hidden_from(filter, name)) return false;
   size_t f = 0;
   size_t n = 0;
-  while (true) {
-    const size_t f_end = std::min(filter.find('/', f), filter.size());
-    const size_t n_end = std::min(name.find('/', n), name.size());
-    const auto f_level = filter.substr(f, f_end - f);
-    // '#' matches this level and everything under it, and the parent too.
-    if (f_level == "#") return true;
-    if (f_level != "+" && f_level != name.substr(n, n_end - n)) return false;
-    const bool f_last = f_end == filter.size();
-    const bool n_last = n_end == name.size();
-    if (f_last && n_last) return true;
-    if (n_last) {
-      // "a/#" matches "a": the only filter level left may be '#'.
-      return filter.substr(f_end + 1) == "#";
-    }
-    if (f_last) return false;
-    f = f_end + 1;
-    n = n_end + 1;
+  while (f != std::string_view::npos) {
+    const std::string_view wanted = next_level(filter, f);
+    if (wanted == "#") return true;  // the parent and every level below it
+    if (n == std::string_view::npos) return false;
+    const std::string_view level = next_level(name, n);
+    if (wanted != "+" && wanted != level) return false;  // byte for byte [MQTT-4.7.3-4]
   }
+  return n == std::string_view::npos;
 }
 
 bool covers(std::string_view granted, std::string_view requested) {
-  const auto g = levels(granted);
-  const auto r = levels(requested);
-  for (size_t i = 0; i < g.size(); ++i) {
-    const bool first_dollar = i == 0 && !r.empty() && r[0].starts_with('$');
-    if (g[i] == "#") return !first_dollar;
-    // The requested filter ended here: it matches the name of its own
-    // levels, which a longer granted filter matches only through a "#" next.
-    if (i >= r.size()) return false;
-    if (r[i] == "#") return false;
-    if (g[i] == "+") {
-      if (first_dollar) return false;
-      continue;
-    }
-    if (r[i] == "+" || g[i] != r[i]) return false;
+  if (hidden_from(granted, requested)) return false;
+  size_t g = 0;
+  size_t r = 0;
+  while (g != std::string_view::npos) {
+    const std::string_view grant = next_level(granted, g);
+    if (grant == "#") return true;
+    if (r == std::string_view::npos) return false;
+    const std::string_view asked = next_level(requested, r);
+    if (asked == "#") return false;  // only '#' covers '#'
+    if (grant == "+") continue;      // '+' covers one level, '+' included
+    if (asked == "+" || grant != asked) return false;
   }
-  return g.size() == r.size();
+  return r == std::string_view::npos;
+}
+
+std::vector<std::string_view> levels(std::string_view topic) {
+  std::vector<std::string_view> out;
+  size_t position = 0;
+  while (position != std::string_view::npos) out.push_back(next_level(topic, position));
+  return out;
 }
 
 }  // namespace lir::mqtt

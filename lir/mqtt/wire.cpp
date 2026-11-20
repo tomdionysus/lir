@@ -11,15 +11,36 @@
 
 namespace lir::mqtt {
 
-void malformed(const std::string& what) { throw MalformedPacket(reason::malformed_packet, what); }
+namespace {
 
+// Dannan's reader throws its own DecodeError on a short buffer; MQTT names
+// that a malformed packet, so every read here checks first.
+void need(const dannan::net::Reader& reader, size_t count) {
+  if (reader.remaining() < count) malformed("packet ends inside a field");
+}
+
+uint16_t length_of(dannan::net::Reader& reader) {
+  need(reader, 2);
+  const uint16_t length = reader.u16();
+  need(reader, length);
+  return length;
+}
+
+void write_length(dannan::net::Writer& writer, size_t size) {
+  if (size > 65535) throw std::length_error("MQTT string or binary data over 65,535 bytes");
+  writer.u16(static_cast<uint16_t>(size));
+}
+
+}  // namespace
+
+void malformed(const std::string& what) { throw MalformedPacket(reason::malformed_packet, what); }
 void protocol_error(const std::string& what) { throw MalformedPacket(reason::protocol_error, what); }
 
 void write_varint(dannan::net::Writer& writer, uint32_t value) {
-  if (value > varint_max) throw std::length_error("variable byte integer over 268,435,455");
+  if (value > varint_max) throw std::invalid_argument("variable byte integer over 268,435,455");
   do {
-    auto byte = static_cast<uint8_t>(value % 128);
-    value /= 128;
+    auto byte = static_cast<uint8_t>(value & 0x7F);
+    value >>= 7;
     if (value > 0) byte |= 0x80;
     writer.u8(byte);
   } while (value > 0);
@@ -27,17 +48,16 @@ void write_varint(dannan::net::Writer& writer, uint32_t value) {
 
 uint32_t read_varint(dannan::net::Reader& reader) {
   uint32_t value = 0;
-  uint32_t multiplier = 1;
-  for (int i = 0; i < 4; ++i) {
-    if (reader.remaining() == 0) malformed("variable byte integer runs past the packet");
+  for (int index = 0; index < 4; ++index) {
+    need(reader, 1);
     const uint8_t byte = reader.u8();
-    value += static_cast<uint32_t>(byte & 0x7F) * multiplier;
+    value |= static_cast<uint32_t>(byte & 0x7F) << (7 * index);
     if ((byte & 0x80) == 0) {
-      // The encoding is the minimum number of bytes (section 1.5.5).
-      if (i > 0 && byte == 0) malformed("variable byte integer not in its shortest form");
+      // A last byte of zero after the first adds nothing: not the minimum
+      // number of bytes [MQTT-1.5.5-1].
+      if (index > 0 && byte == 0) malformed("variable byte integer not in its shortest form");
       return value;
     }
-    multiplier *= 128;
   }
   malformed("variable byte integer longer than four bytes");
 }
@@ -50,67 +70,74 @@ size_t varint_size(uint32_t value) noexcept {
 }
 
 bool valid_utf8(std::string_view text) noexcept {
-  size_t i = 0;
-  while (i < text.size()) {
-    const auto lead = static_cast<uint8_t>(text[i]);
-    uint32_t code = 0;
-    size_t length = 0;
+  const auto* bytes = reinterpret_cast<const uint8_t*>(text.data());
+  const size_t size = text.size();
+  size_t index = 0;
+  while (index < size) {
+    const uint8_t lead = bytes[index];
+    if (lead == 0x00) return false;
     if (lead < 0x80) {
-      if (lead == 0) return false;
-      ++i;
+      ++index;
       continue;
-    } else if ((lead & 0xE0) == 0xC0) {
-      code = lead & 0x1Fu;
-      length = 2;
-    } else if ((lead & 0xF0) == 0xE0) {
-      code = lead & 0x0Fu;
-      length = 3;
-    } else if ((lead & 0xF8) == 0xF0) {
-      code = lead & 0x07u;
-      length = 4;
+    }
+    size_t count = 0;
+    // The bounds of the second byte, which rule out overlong forms, the
+    // surrogates and anything past U+10FFFF (RFC 3629, section 4).
+    uint8_t low = 0x80;
+    uint8_t high = 0xBF;
+    if (lead >= 0xC2 && lead <= 0xDF) {
+      count = 1;
+    } else if (lead == 0xE0) {
+      count = 2;
+      low = 0xA0;
+    } else if (lead == 0xED) {
+      count = 2;
+      high = 0x9F;
+    } else if ((lead >= 0xE1 && lead <= 0xEC) || lead == 0xEE || lead == 0xEF) {
+      count = 2;
+    } else if (lead == 0xF0) {
+      count = 3;
+      low = 0x90;
+    } else if (lead >= 0xF1 && lead <= 0xF3) {
+      count = 3;
+    } else if (lead == 0xF4) {
+      count = 3;
+      high = 0x8F;
     } else {
       return false;
     }
-    if (i + length > text.size()) return false;
-    for (size_t k = 1; k < length; ++k) {
-      const auto next = static_cast<uint8_t>(text[i + k]);
-      if ((next & 0xC0) != 0x80) return false;
-      code = (code << 6) | (next & 0x3Fu);
+    if (size - index - 1 < count) return false;
+    if (bytes[index + 1] < low || bytes[index + 1] > high) return false;
+    for (size_t next = 2; next <= count; ++next) {
+      if ((bytes[index + next] & 0xC0) != 0x80) return false;
     }
-    // Overlong forms, surrogates and anything past U+10FFFF are not UTF-8.
-    if ((length == 2 && code < 0x80) || (length == 3 && code < 0x800) || (length == 4 && code < 0x10000)) return false;
-    if (code >= 0xD800 && code <= 0xDFFF) return false;
-    if (code > 0x10FFFF) return false;
-    i += length;
+    index += count + 1;
   }
   return true;
 }
 
 void write_string(dannan::net::Writer& writer, std::string_view value) {
-  if (!valid_utf8(value)) throw std::invalid_argument("string is not valid MQTT UTF-8");
-  write_binary(writer, {reinterpret_cast<const uint8_t*>(value.data()), value.size()});
+  if (value.size() > 65535) throw std::length_error("MQTT string over 65,535 bytes");
+  if (!valid_utf8(value)) throw std::invalid_argument("MQTT string is not well-formed UTF-8 without U+0000");
+  write_length(writer, value.size());
+  writer.raw({reinterpret_cast<const uint8_t*>(value.data()), value.size()});
 }
 
 std::string read_string(dannan::net::Reader& reader) {
-  if (reader.remaining() < 2) malformed("string length runs past the packet");
-  const uint16_t length = reader.u16();
-  if (reader.remaining() < length) malformed("string runs past the packet");
+  const uint16_t length = length_of(reader);
   const auto view = reader.view(length);
-  std::string value(reinterpret_cast<const char*>(view.data()), view.size());
-  if (!valid_utf8(value)) malformed("string is not valid UTF-8");
-  return value;
+  std::string out(reinterpret_cast<const char*>(view.data()), view.size());
+  if (!valid_utf8(out)) malformed("string is not well-formed UTF-8 without U+0000");
+  return out;
 }
 
 void write_binary(dannan::net::Writer& writer, std::span<const uint8_t> value) {
-  if (value.size() > 65535) throw std::length_error("string or binary data over 65,535 bytes");
-  writer.u16(static_cast<uint16_t>(value.size()));
+  write_length(writer, value.size());
   writer.raw(value);
 }
 
 Bytes read_binary(dannan::net::Reader& reader) {
-  if (reader.remaining() < 2) malformed("binary length runs past the packet");
-  const uint16_t length = reader.u16();
-  if (reader.remaining() < length) malformed("binary data runs past the packet");
+  const uint16_t length = length_of(reader);
   return reader.raw(length);
 }
 

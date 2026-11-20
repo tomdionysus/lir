@@ -117,6 +117,19 @@ listeners under it.
    every node holding every session's filters. Otherwise it is a noun
    that does not exist: an interest that outlives the node that declared
    it.
+
+   **Settled with Dagda (2026-11-20):** the candidate fits D9. The node
+   where a PUBLISH lands matches every session's filters and appends under
+   its own message dot to the queue log's k replicas; a retried publish
+   lands once. The queue log is per shard, the stream key the client id.
+   Since one message often matches several offline sessions in a shard,
+   D9's identity becomes (stream, dot), and acks and retire name both.
+   Reconnect reads the stream, then acks and retires. Every node keeps
+   every session's filters from the session space's key notices and
+   paged reads at join; that cost goes into Dagda's slice 0 measurement
+   (Lir's working figure: 40,000 sessions on 4 nodes, a third offline,
+   about 5 filters each). If too large, the fallback is matching by the
+   shard's lease holder, a duty that moves, one hop more.
 3. **Endings by time with nobody connected:** session expiry, will delay,
    expiry of a queued message. A queued message: a log entry carries its
    expiry (D9). A session: the register map's expiry per key (D6), but an
@@ -133,6 +146,18 @@ listeners under it.
    is at least once, not once. Dannan has put to the maintainer whether that is
    acceptable and whose noun it is, recommending the lease composition,
    and will relay his answer.
+
+   **Dagda's answer (2026-11-20), under the maintainer's no-duplication rule** (a
+   piece goes into a shared dependency only when two or more projects
+   need it): Louhi and Lugh do not need it, so the action is Lir's to
+   compose, not a Dagda noun. Lir builds it from nouns only: a Dagda
+   head-backed lease per will or session (D5, which Lir, Lugh and Louhi
+   all need), its deadline in a Dagda head space, the holder arming
+   Dannan's `Time::after`, a take-over at epoch+1 re-arming it, and the
+   publish carrying (key, epoch) so a duplicate is dropped. At least once
+   across a split. For the maintainer: whether a composition of nouns, with no
+   state or mechanism of Lir's own, meets the premise's "a gap is never
+   Lir's to fill". Lir reads it as yes. It waits on D5 either way.
 
 ## The mapping (step 3, 2026-11-20)
 
