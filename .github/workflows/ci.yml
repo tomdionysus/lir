@@ -7,7 +7,7 @@
 # tools/ci.sh's steps on Debian 13, as the nodes have it: the header and format
 # check; release builds on x86-64 and on arm64, as a build node builds them; clang with
 # its thread-safety analysis; ASan and UBSan on both, TSan; the libFuzzer
-# targets; the installed package and its consumer; the Debian packages on
+# targets; clang-tidy's use-after-move; the installed package and its consumer; the Debian packages on
 # both, lintian clean; coverage to Codecov; and a build and test on macOS. Runs on the build servers and the
 # standing cluster stay by hand.
 name: CI
@@ -38,6 +38,7 @@ jobs:
           - { step: asan, arch: arm64, runner: ubuntu-24.04-arm }
           - { step: tsan, arch: x86-64, runner: ubuntu-24.04 }
           - { step: fuzz, arch: x86-64, runner: ubuntu-24.04 }
+          - { step: tidy, arch: x86-64, runner: ubuntu-24.04 }
           - { step: package, arch: x86-64, runner: ubuntu-24.04 }
     env:
       # Each fuzz target's time on a push; a release runs them longer by hand.
@@ -53,7 +54,7 @@ jobs:
           apt-get install -y --no-install-recommends \
             g++ clang clang-format cmake ninja-build git ca-certificates openssl mosquitto-clients \
             libboost-dev libssl-dev libyaml-cpp-dev libgtest-dev \
-            libclang-rt-19-dev  # clang's sanitizer and libFuzzer runtimes
+            libclang-rt-19-dev clang-tidy  # clang's sanitizer and libFuzzer runtimes; tidy
 
       - uses: actions/checkout@v4
 

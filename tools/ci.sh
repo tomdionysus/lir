@@ -17,6 +17,8 @@
 #   tools/ci.sh coverage   a coverage build's tests; lcov report build-ci/coverage.info
 #   tools/ci.sh fuzz       each libFuzzer target (lir/fuzz/) from its seeds, under ASan and UBSan,
 #                          LIR_FUZZ_SECONDS each (default 60); a finding lands in build-ci/fuzz/findings/
+#   tools/ci.sh tidy       clang-tidy's bugprone-use-after-move over Lir's every source, tests and fuzz
+#                          targets included; configures, builds nothing
 #   tools/ci.sh package    Dannan installed at its tag, then Lir against it, installed, and a
 #                          consumer (test/package) built from the prefix alone
 #   tools/ci.sh deb        Dannan's packages from its tag by its own tools/build-deb.sh, installed;
@@ -130,6 +132,18 @@ case "$step" in
       exit 1
     fi
     ;;
+  tidy)
+    # An argument moved from in the same call that reads it is read in an
+    # order C++ leaves open; GCC on x86-64 reads it after the move (found in
+    # Lugh, 2026-11-20). LIR_TIDY_CMAKE adds configure arguments.
+    tidy=$(command -v run-clang-tidy || command -v run-clang-tidy-19)
+    binary=$(command -v clang-tidy || command -v clang-tidy-19)
+    # shellcheck disable=SC2086
+    CXX=clang++ cmake -S "$top" -B "$out/tidy" -G Ninja -DLIR_BUILD_TESTING=ON -DLIR_BUILD_FUZZING=ON \
+      -DLIR_DANNAN_REPOSITORY="$LIR_DANNAN_REPOSITORY" ${LIR_TIDY_CMAKE:-}
+    "$tidy" -quiet -clang-tidy-binary "$binary" -p "$out/tidy" -j "$jobs" -checks='-*,bugprone-use-after-move' \
+      -warnings-as-errors='*' "^$top/(lir|test)/"
+    ;;
   package)
     rm -rf "$out/package"
     prefix="$out/package/prefix"
@@ -157,7 +171,7 @@ case "$step" in
     lintian --fail-on error,warning build-deb/*.changes
     ;;
   *)
-    echo "usage: tools/ci.sh check|release|client|clang|asan|tsan|coverage|fuzz|package|deb" >&2
+    echo "usage: tools/ci.sh check|release|client|clang|asan|tsan|coverage|fuzz|tidy|package|deb" >&2
     exit 2
     ;;
 esac
