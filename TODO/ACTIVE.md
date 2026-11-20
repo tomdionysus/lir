@@ -209,7 +209,15 @@ Nothing here is started before the audit's findings have been to the maintainer.
   written only for stamps issued (the maintainer, 2026-11-19), so an idle node writes
   nothing. Lir changes nothing for it: repin, gate, then a rolling upgrade
   once the maintainer approves.
-- **Dannan 0.10.0:** the `DatagramListener`, for the MQTT-SN DTLS gateway
+- **Dannan 0.10.0 (tagged without the stream carrier):** on repinning,
+  `tools/ci.sh asan` and `tsan` set `DANNAN_SANITIZE=address` and `thread`
+  beside the global flags (every stack library a sanitizer build links is
+  built from source and instrumented, the maintainer, 2026-11-20; checked
+  with nm), and the deb step installs Dannan's packages with Dannan's
+  `tools/ci.sh install-debs <tag>` instead of building them itself.
+- **Dannan 0.11.0:** the stream carrier (item 17's `inject`,
+  `StreamDirectory`), which step 2's connections are tested on.
+- **Dannan, later:** the `DatagramListener`, for the MQTT-SN DTLS gateway
   (then `edge::server_context` and `verified_certificate(SSL*)` go), and the
   peer-witnessed high-water mark for the clock.
 - **Dannan, no date:** the atomic commit across names, which guarded
