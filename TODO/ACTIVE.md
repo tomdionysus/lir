@@ -149,12 +149,13 @@ a build there starts from a fresh clone.
   The release badge is kept. Lir's first, `0.1.0`, is cut when the
   rewrite's broker serves clients across nodes (step 2 of the design, with
   its stated limits), not before: until then Lir is a codec, and a version
-  would promise a broker it is not. Owed before it: Debian packaging,
-  to the stack's convention (the coordinator, 2026-11-20: debhelper
-  from `debian/` as Dagda and Manannan have it, `lib<name><abi>` plus
-  `-dev` for `lir_mqtt` and `lir_client`, `scripts/build-deb.sh`,
-  lintian clean, `docs/packaging.md`). The fuzz targets exist
-  (`lir/fuzz/`, `tools/ci.sh fuzz`).
+  would promise a broker it is not. The fuzz targets (`lir/fuzz/`,
+  `tools/ci.sh fuzz`) and the packages (`docs/packaging.md`,
+  `tools/ci.sh deb`) exist. Still owed as the pieces arrive:
+  `liblir-client0.1` with `lir::client` (tell Louhi the names and the
+  commit), and the broker's `lir` package (node binary, config.yaml
+  conffile, secrets.yaml from postinst, unit installed disabled, `lir`
+  system user, dashboard under /usr/share/lir) when it serves clients.
 - The stack negotiates through the Lir Development Cluster session, which
   keeps the record (`../lir-develop-cluster/TODO/2026-11-20-cluster-stack-placement.md`).
   Before anything goes to Tom, ask whether the goals already answer it:

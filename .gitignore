@@ -1,5 +1,14 @@
 /build/
 /build-*/
+# What scripts/build-deb.sh and debhelper write.
+/debian/changelog
+/debian/build/
+/debian/tmp/
+/debian/.debhelper/
+/debian/debhelper-build-stamp
+/debian/files
+/debian/*.substvars
+/debian/liblir*/
 CLAUDE.local.md
 .basemind/
 .DS_Store

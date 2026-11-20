@@ -1903,3 +1903,47 @@ On corvus-jupiter, 60 seconds each, clang 19, no finding:
   the first run, plus 1.18 million in fork mode;
 - properties: 1.27 million;
 - topic: 2.58 million.
+
+GitHub's fuzz job failed at first: Debian trixie's `clang` package leaves
+out `libclang-rt-19-dev`, which libFuzzer needs. `ad78a57` installs it, and
+CI is fully green there (run 44691325265, twelve jobs).
+
+## 2026-11-20: the Debian packages
+
+`lir::mqtt` is now packaged to the stack's convention. The coordinator
+settled that convention on 2026-11-20, and where Lir took Dannan's
+practice over the message's wording, the coordinator accepted it.
+- **Packages:** `liblir-mqtt0.1`, named for its SONAME
+  `liblir_mqtt.so.0.1`, and `liblir-dev`, which holds the headers and the
+  CMake config (`find_package(lir)` gives `lir::mqtt`). Each has debug
+  symbols.
+- **Build:** debhelper from `debian/` drives the CMake build, with
+  `dh_makeshlibs -V`. The packages build only against the installed
+  `libdannan-dev`, which `-DLIR_SYSTEM_DANNAN=ON` finds with
+  `find_package`. The install rules exist only in that mode, so a project
+  that fetches Lir with its own Dannan target never meets them.
+- **Script:** `tools/build-deb.sh` is Dannan's in shape. Versions come
+  from `git describe`; on develop the version is `0.1.0+git.g<hash>`. The
+  script refuses a build when the tag and `project()` disagree, or when
+  the library package does not match major.minor.
+- **CI steps:**
+  - `tools/ci.sh package` installs Dannan at its tag, then Lir into a
+    prefix, and builds `test/package/consumer` from the prefix alone.
+  - `tools/ci.sh deb` runs in a clean trixie. It builds Dannan's debs from
+    the 0.9.2 tag with Dannan's own `tools/build-deb.sh` (nocheck) and
+    installs them. Then it builds Lir's, with the tests inside the build,
+    and runs `lintian --fail-on error,warning`.
+  - CI runs `package` on x86-64, and `deb` on x86-64 and arm64.
+- **Docs:** `docs/packaging.md`; the README says how to install.
+
+On corvus-jupiter (arm64):
+- `package` passed: the consumer linked `lir::mqtt` from the prefix.
+- `deb` passed, in a `debian:trixie` container. Docker there remaps root,
+  so the container clones the tree into its own filesystem.
+  `liblir-mqtt0.1_0.1.0+git.g55aefd4`, `liblir-dev` and the dbgsym package
+  were built; all 113 tests passed inside the build, the real mosquitto
+  clients included; lintian reported nothing.
+
+The coordinator has asked Dannan for one shared entry point that builds
+and installs its debs from a tag. Until it exists, Lir's `deb` step does
+that itself.

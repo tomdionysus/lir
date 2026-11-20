@@ -25,6 +25,9 @@ option(LIR_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 # to it (docs/contract.md, section 3).
 option(LIR_BUILD_SERVER "Build the broker and the tests; off builds only lir::mqtt and lir::client" ON)
 option(LIR_BUILD_FUZZING "Build the libFuzzer targets (lir/fuzz/), with clang" OFF)
+# On: Dannan is the installed package (find_package), never a copy, and Lir's
+# install rules are defined, as the Debian build has it (docs/packaging.md).
+option(LIR_SYSTEM_DANNAN "Build against the installed Dannan and define the install rules" OFF)
 
 find_package(Boost 1.83 CONFIG REQUIRED COMPONENTS headers)
 find_package(OpenSSL 3 REQUIRED COMPONENTS Crypto SSL)
@@ -46,8 +49,13 @@ set(LIR_DANNAN_REPOSITORY "${CMAKE_CURRENT_SOURCE_DIR}/../dannan" CACHE STRING "
 # already exists.
 set(LIR_DANNAN_TAG "0.9.2")
 include(FetchContent)
+include(GNUInstallDirs)
 # A project that fetches Lir has its own Dannan already: one Dannan a process.
-if(NOT TARGET dannan::dannan)
+# The installed one is found by minor, at least the pinned patch (Dannan's
+# SameMinorVersion).
+if(LIR_SYSTEM_DANNAN)
+  find_package(dannan ${LIR_DANNAN_TAG} CONFIG REQUIRED)
+elseif(NOT TARGET dannan::dannan)
   FetchContent_Declare(dannan GIT_REPOSITORY "${LIR_DANNAN_REPOSITORY}" GIT_TAG "${LIR_DANNAN_TAG}")
   set(DANNAN_BUILD_TESTING OFF CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(dannan)
