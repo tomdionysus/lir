@@ -9,6 +9,8 @@
 
 #include <stdexcept>
 
+#include "dannan/encoding/base.h"
+
 namespace lir::mqtt {
 
 namespace {
@@ -69,52 +71,9 @@ size_t varint_size(uint32_t value) noexcept {
   return 4;
 }
 
-bool valid_utf8(std::string_view text) noexcept {
-  const auto* bytes = reinterpret_cast<const uint8_t*>(text.data());
-  const size_t size = text.size();
-  size_t index = 0;
-  while (index < size) {
-    const uint8_t lead = bytes[index];
-    if (lead == 0x00) return false;
-    if (lead < 0x80) {
-      ++index;
-      continue;
-    }
-    size_t count = 0;
-    // The bounds of the second byte, which rule out overlong forms, the
-    // surrogates and anything past U+10FFFF (RFC 3629, section 4).
-    uint8_t low = 0x80;
-    uint8_t high = 0xBF;
-    if (lead >= 0xC2 && lead <= 0xDF) {
-      count = 1;
-    } else if (lead == 0xE0) {
-      count = 2;
-      low = 0xA0;
-    } else if (lead == 0xED) {
-      count = 2;
-      high = 0x9F;
-    } else if ((lead >= 0xE1 && lead <= 0xEC) || lead == 0xEE || lead == 0xEF) {
-      count = 2;
-    } else if (lead == 0xF0) {
-      count = 3;
-      low = 0x90;
-    } else if (lead >= 0xF1 && lead <= 0xF3) {
-      count = 3;
-    } else if (lead == 0xF4) {
-      count = 3;
-      high = 0x8F;
-    } else {
-      return false;
-    }
-    if (size - index - 1 < count) return false;
-    if (bytes[index + 1] < low || bytes[index + 1] > high) return false;
-    for (size_t next = 2; next <= count; ++next) {
-      if ((bytes[index + next] & 0xC0) != 0x80) return false;
-    }
-    index += count + 1;
-  }
-  return true;
-}
+// RFC 3629 is Dannan's (overlong forms, surrogates and values past U+10FFFF
+// refused); MQTT adds only U+0000.
+bool valid_utf8(std::string_view text) noexcept { return text.find('\0') == std::string_view::npos && dannan::encoding::valid_utf8(text); }
 
 void write_string(dannan::net::Writer& writer, std::string_view value) {
   if (value.size() > 65535) throw std::length_error("MQTT string over 65,535 bytes");

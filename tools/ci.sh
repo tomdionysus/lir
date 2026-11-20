@@ -58,6 +58,15 @@ configure() {
   cmake --build "$out/$dir" -j "$jobs"
 }
 
+# Fails unless the sanitizer build's libdannan calls the runtime: a gate that
+# links an uninstrumented Dannan checks only Lir.
+instrumented() {
+  library=$(find "$out/$1" -name 'libdannan.so.*' -type f | head -n 1)
+  count=$(nm -D --undefined-only "$library" | grep -c "$2" || true)
+  echo "$library: $count $2 symbols"
+  [ "$count" -gt 0 ]
+}
+
 case "$step" in
   check)
     cd "$top"
@@ -83,13 +92,19 @@ case "$step" in
     "$out/clang/lir_tests"
     ;;
   asan)
+    # DANNAN_SANITIZE builds Dannan instrumented the same way; the check
+    # proves it before the suite runs.
     flags="-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined"
-    configure asan -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLIR_WARNINGS_AS_ERRORS=OFF -DCMAKE_CXX_FLAGS="$flags" -DCMAKE_EXE_LINKER_FLAGS="$flags" -DCMAKE_SHARED_LINKER_FLAGS="$flags"
+    configure asan -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLIR_WARNINGS_AS_ERRORS=OFF -DDANNAN_SANITIZE=address -DCMAKE_CXX_FLAGS="$flags" \
+      -DCMAKE_EXE_LINKER_FLAGS="$flags" -DCMAKE_SHARED_LINKER_FLAGS="$flags"
+    instrumented asan __asan_
     ASAN_OPTIONS=detect_stack_use_after_return=1 UBSAN_OPTIONS=print_stacktrace=1 "$out/asan/lir_tests"
     ;;
   tsan)
     flags="-fsanitize=thread -fno-omit-frame-pointer"
-    configure tsan -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLIR_WARNINGS_AS_ERRORS=OFF -DCMAKE_CXX_FLAGS="$flags" -DCMAKE_EXE_LINKER_FLAGS="$flags" -DCMAKE_SHARED_LINKER_FLAGS="$flags"
+    configure tsan -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLIR_WARNINGS_AS_ERRORS=OFF -DDANNAN_SANITIZE=thread -DCMAKE_CXX_FLAGS="$flags" \
+      -DCMAKE_EXE_LINKER_FLAGS="$flags" -DCMAKE_SHARED_LINKER_FLAGS="$flags"
+    instrumented tsan __tsan_
     TSAN_OPTIONS="halt_on_error=1 second_deadlock_stack=1" "$out/tsan/lir_tests"
     ;;
   coverage)
@@ -161,10 +176,10 @@ case "$step" in
     LD_LIBRARY_PATH="$prefix/lib:$prefix/lib64:$prefix/lib/$(gcc -print-multiarch 2>/dev/null || true)" "$out/package/consumer/consumer"
     ;;
   deb)
+    # Dannan's packages by Dannan's own step, at the pinned tag.
     rm -rf "$out/deb"
     git clone --quiet --depth 1 --branch "$dannan_tag" "$LIR_DANNAN_REPOSITORY" "$out/deb/dannan"
-    (cd "$out/deb/dannan" && apt-get build-dep -y ./ && DEB_BUILD_OPTIONS="nocheck parallel=$jobs" tools/build-deb.sh)
-    apt-get install -y "$out"/deb/dannan/build-deb/libdannan*.deb
+    DANNAN_REPOSITORY="$LIR_DANNAN_REPOSITORY" "$out/deb/dannan/tools/ci.sh" install-debs "$dannan_tag"
     cd "$top"
     apt-get build-dep -y ./
     DEB_BUILD_OPTIONS="parallel=$jobs" tools/build-deb.sh
