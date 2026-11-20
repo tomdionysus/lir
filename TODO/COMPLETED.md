@@ -1860,3 +1860,14 @@ tagged, tested on the simulated cluster and against real clients. Owed
 before 0.1.0: Debian packaging and libFuzzer targets for the codec. Tell
 Lugh the develop commit to pin. Set `fail_ci_if_error` once a Codecov upload
 is seen to succeed. The standing cluster is untouched and runs `e839b4a`.
+
+**After the merge (2026-11-20).** Hosted CI on `develop` is fully green at
+`37f72f9` (run 44672757084): eleven jobs, macOS among them. Getting there
+took two fixes to the real-client test, each found by CI's macOS job:
+- the test server now closes after a client's DISCONNECT, as a broker
+  does;
+- Homebrew's `mosquitto_pub` ends with a plain close rather than a
+  DISCONNECT, which the test now allows.
+
+Codecov receives coverage with the token Tom set, and a failed upload now
+fails CI. Lugh pins `62b2004` for `lir::mqtt`.
