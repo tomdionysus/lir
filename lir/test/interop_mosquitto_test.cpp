@@ -14,6 +14,8 @@
 
 #include <chrono>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <variant>
@@ -85,14 +87,21 @@ class Server {
       if (const auto frame = read_frame(_buffer, 1 << 20); frame && _buffer.size() >= frame->size()) {
         const Bytes bytes(_buffer.begin(), _buffer.begin() + static_cast<std::ptrdiff_t>(frame->size()));
         _buffer.erase(_buffer.begin(), _buffer.begin() + static_cast<std::ptrdiff_t>(frame->size()));
+        ++_read;
         return decode(bytes, version);
       }
-      if (!ready(_connection)) throw std::runtime_error("the client sent nothing more");
+      if (!ready(_connection)) throw std::runtime_error("the client sent nothing more after " + std::to_string(_read) + " packets");
       uint8_t chunk[4096];
       const ssize_t got = ::recv(_connection, chunk, sizeof(chunk), 0);
-      if (got <= 0) throw std::runtime_error("the client closed the connection");
+      if (got <= 0) throw std::runtime_error("the client closed the connection after " + std::to_string(_read) + " packets");
       _buffer.insert(_buffer.end(), chunk, chunk + got);
     }
+  }
+
+  // What a broker does once the client's DISCONNECT is in: closes its end.
+  void close() {
+    if (_connection >= 0) ::close(_connection);
+    _connection = -1;
   }
 
   void send(const Packet& packet, Version version) {
@@ -115,7 +124,26 @@ class Server {
   int _connection = -1;
   uint16_t _port = 0;
   Bytes _buffer;
+  size_t _read = 0;
 };
+
+// The client's own account (its stderr), for a failure's message: CI keeps no
+// files.
+std::string contents(const std::filesystem::path& path) {
+  std::ifstream in(path);
+  return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+}
+
+// Runs a test's exchange; a failure inside it is reported with the client's
+// output rather than as a bare exception.
+template <class Body>
+void exchange(const std::filesystem::path& log, Body&& body) {
+  try {
+    body();
+  } catch (const std::exception& error) {
+    ADD_FAILURE() << error.what() << "\nthe client said:\n" << contents(log);
+  }
+}
 
 std::filesystem::path log_for(const std::string& name) {
   const std::filesystem::path dir = std::filesystem::path(DANNAN_TEST_TEMP_ROOT) / "interop";
@@ -179,40 +207,44 @@ TEST_P(MosquittoInterop, PublishAtQoS1WithAWill) {
     argv.insert(argv.end(),
                 {"-D", "connect", "session-expiry-interval", "60", "-D", "publish", "user-property", "k", "v", "-D", "publish", "content-type", "text/plain"});
   }
-  dannan::test::ChildProcess client(argv, log_for("pub-" + level(version)));
-  server.accept();
+  const auto log = log_for("pub-" + level(version));
+  dannan::test::ChildProcess client(argv, log);
+  exchange(log, [&] {
+    server.accept();
 
-  const auto connect = std::get<Connect>(server.next(version));
-  EXPECT_EQ(connect.version, version);
-  EXPECT_EQ(connect.client_id, "lir-interop-pub");
-  EXPECT_EQ(connect.keep_alive, 30);
-  EXPECT_EQ(connect.username, "user");
-  EXPECT_EQ(connect.password, bytes_of("secret"));
-  ASSERT_TRUE(connect.will.has_value());
-  EXPECT_EQ(connect.will->topic, "gone/pub");
-  EXPECT_EQ(connect.will->payload, bytes_of("bye"));
-  EXPECT_EQ(connect.will->qos, QoS::at_least_once);
-  EXPECT_TRUE(connect.will->retain);
-  if (version == Version::v5) {
-    EXPECT_EQ(connect.properties.session_expiry_interval, 60u);
-  }
-  server.send(Connack{false, reason::success, {}}, version);
+    const auto connect = std::get<Connect>(server.next(version));
+    EXPECT_EQ(connect.version, version);
+    EXPECT_EQ(connect.client_id, "lir-interop-pub");
+    EXPECT_EQ(connect.keep_alive, 30);
+    EXPECT_EQ(connect.username, "user");
+    EXPECT_EQ(connect.password, bytes_of("secret"));
+    ASSERT_TRUE(connect.will.has_value());
+    EXPECT_EQ(connect.will->topic, "gone/pub");
+    EXPECT_EQ(connect.will->payload, bytes_of("bye"));
+    EXPECT_EQ(connect.will->qos, QoS::at_least_once);
+    EXPECT_TRUE(connect.will->retain);
+    if (version == Version::v5) {
+      EXPECT_EQ(connect.properties.session_expiry_interval, 60u);
+    }
+    server.send(Connack{false, reason::success, {}}, version);
 
-  const auto publish = std::get<Publish>(server.next(version));
-  EXPECT_EQ(publish.topic, "a/b");
-  EXPECT_EQ(publish.payload, bytes_of("hello"));
-  EXPECT_EQ(publish.qos, QoS::at_least_once);
-  EXPECT_TRUE(publish.retain);
-  EXPECT_FALSE(publish.dup);
-  EXPECT_NE(publish.packet_id, 0);
-  if (version == Version::v5) {
-    EXPECT_EQ(publish.properties.content_type, "text/plain");
-    EXPECT_EQ(publish.properties.user_properties, (std::vector<std::pair<std::string, std::string>>{{"k", "v"}}));
-  }
-  server.send(Ack{PacketType::puback, publish.packet_id, reason::success, {}}, version);
+    const auto publish = std::get<Publish>(server.next(version));
+    EXPECT_EQ(publish.topic, "a/b");
+    EXPECT_EQ(publish.payload, bytes_of("hello"));
+    EXPECT_EQ(publish.qos, QoS::at_least_once);
+    EXPECT_TRUE(publish.retain);
+    EXPECT_FALSE(publish.dup);
+    EXPECT_NE(publish.packet_id, 0);
+    if (version == Version::v5) {
+      EXPECT_EQ(publish.properties.content_type, "text/plain");
+      EXPECT_EQ(publish.properties.user_properties, (std::vector<std::pair<std::string, std::string>>{{"k", "v"}}));
+    }
+    server.send(Ack{PacketType::puback, publish.packet_id, reason::success, {}}, version);
 
-  EXPECT_TRUE(std::holds_alternative<Disconnect>(server.next(version)));
-  EXPECT_EQ(client.wait(steady_clock::now() + patience), 0) << "mosquitto_pub did not accept Lir's CONNACK and PUBACK";
+    EXPECT_TRUE(std::holds_alternative<Disconnect>(server.next(version)));
+    server.close();
+  });
+  EXPECT_EQ(client.wait(steady_clock::now() + patience), 0) << "mosquitto_pub did not accept Lir's CONNACK and PUBACK; it said:\n" << contents(log);
 }
 
 // mosquitto_sub: a SUBSCRIBE with a wildcard, Lir's SUBACK, then a message
@@ -225,32 +257,36 @@ TEST_P(MosquittoInterop, SubscribeAndReceiveWhatLirSends) {
   dannan::test::ChildProcess client({LIR_MOSQUITTO_SUB, "-h", "127.0.0.1", "-p", std::to_string(server.port()), "-V", level(version), "-i", "lir-interop-sub",
                                      "-q", "2", "-t", "a/+", "-C", "1", "-v"},
                                     log_for("sub-" + level(version)));
-  server.accept();
+  const auto log = log_for("sub-" + level(version));
+  exchange(log, [&] {
+    server.accept();
 
-  const auto connect = std::get<Connect>(server.next(version));
-  EXPECT_EQ(connect.client_id, "lir-interop-sub");
-  server.send(Connack{false, reason::success, {}}, version);
+    const auto connect = std::get<Connect>(server.next(version));
+    EXPECT_EQ(connect.client_id, "lir-interop-sub");
+    server.send(Connack{false, reason::success, {}}, version);
 
-  const auto subscribe = std::get<Subscribe>(server.next(version));
-  ASSERT_EQ(subscribe.subscriptions.size(), 1u);
-  EXPECT_EQ(subscribe.subscriptions[0].filter, "a/+");
-  EXPECT_EQ(subscribe.subscriptions[0].qos, qos);
-  server.send(Suback{subscribe.packet_id, {}, {reason::granted_qos_2}}, version);
+    const auto subscribe = std::get<Subscribe>(server.next(version));
+    ASSERT_EQ(subscribe.subscriptions.size(), 1u);
+    EXPECT_EQ(subscribe.subscriptions[0].filter, "a/+");
+    EXPECT_EQ(subscribe.subscriptions[0].qos, qos);
+    server.send(Suback{subscribe.packet_id, {}, {reason::granted_qos_2}}, version);
 
-  Publish message{false, qos, false, "a/x", 7, {}, bytes_of("world")};
-  if (version == Version::v5) message.properties.user_properties = {{"from", "lir"}};
-  server.send(message, version);
-  const auto pubrec = std::get<Ack>(server.next(version));
-  EXPECT_EQ(pubrec.type, PacketType::pubrec);
-  EXPECT_EQ(pubrec.packet_id, 7);
-  server.send(Ack{PacketType::pubrel, 7, reason::success, {}}, version);
-  const auto pubcomp = std::get<Ack>(server.next(version));
-  EXPECT_EQ(pubcomp.type, PacketType::pubcomp);
-  EXPECT_EQ(pubcomp.packet_id, 7);
+    Publish message{false, qos, false, "a/x", 7, {}, bytes_of("world")};
+    if (version == Version::v5) message.properties.user_properties = {{"from", "lir"}};
+    server.send(message, version);
+    const auto pubrec = std::get<Ack>(server.next(version));
+    EXPECT_EQ(pubrec.type, PacketType::pubrec);
+    EXPECT_EQ(pubrec.packet_id, 7);
+    server.send(Ack{PacketType::pubrel, 7, reason::success, {}}, version);
+    const auto pubcomp = std::get<Ack>(server.next(version));
+    EXPECT_EQ(pubcomp.type, PacketType::pubcomp);
+    EXPECT_EQ(pubcomp.packet_id, 7);
 
-  EXPECT_EQ(client.line(steady_clock::now() + patience), "a/x world");
-  EXPECT_TRUE(std::holds_alternative<Disconnect>(server.next(version)));
-  EXPECT_EQ(client.wait(steady_clock::now() + patience), 0) << "mosquitto_sub did not accept Lir's packets";
+    EXPECT_EQ(client.line(steady_clock::now() + patience), "a/x world");
+    EXPECT_TRUE(std::holds_alternative<Disconnect>(server.next(version)));
+    server.close();
+  });
+  EXPECT_EQ(client.wait(steady_clock::now() + patience), 0) << "mosquitto_sub did not accept Lir's packets; it said:\n" << contents(log);
 }
 
 // A refusal Lir encodes, read by the real client: it must give up rather than
