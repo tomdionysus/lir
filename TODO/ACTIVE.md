@@ -186,7 +186,11 @@ In short (the maintainer, 2026-11-19 and 20):
   and tested on (feature/stream-carrier, first in line; no date).
 - **Dannan 0.11.0, also:** JSON (item 24's Boost.JSON half), for every
   system topic's payload: moved forward from 0.12.0 by the maintainer
-  (2026-11-22, Decisions), HTTP left in 0.12.0; Dannan told.
+  (2026-11-22, Decisions), HTTP left in 0.12.0; Dannan has it in its plan
+  and will send the header when its branch opens, before its gate, for
+  Lir to check against the system topics. Dannan's order: its relay test
+  fixes, then 0.10.3 (a patch for Dagda; read its changelog when tagged),
+  then 0.11.0. No date.
 - **Dagda 0.4.0** (on Dannan 0.10.0): D6, the register map, for retained
   messages; read its notes when it lands. Then D5 (leases), D1 and D2
   (replicated spaces, a caught-up signal per space), D9 (the log).
