@@ -12,19 +12,22 @@
 // the covered filter matches, a shared filter is its parts, and the levels
 // are the topic.
 
-#include <cstddef>
-#include <cstdint>
-#include <cstdlib>
+#include <span>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include "dannan/fuzz/fuzz.h"
+#include "lir/fuzz/seeds.h"
 #include "lir/mqtt/topic.h"
 #include "lir/mqtt/wire.h"
 
 namespace {
 
 using namespace lir::mqtt;
+
+void fail(const char* what) { throw std::logic_error(std::string("topic: ") + what); }
 
 bool plain_filter(std::string_view filter) { return valid_topic_filter(filter) && !is_shared(filter); }
 
@@ -35,26 +38,24 @@ void check_one(std::string_view topic) {
     if (index > 0) joined += '/';
     joined += parts[index];
   }
-  if (joined != topic) std::abort();
+  if (joined != topic) fail("the grammar disagrees with itself");
 
   if (valid_topic_name(topic)) {
-    if (has_wildcard(topic) || !valid_topic_filter(topic)) std::abort();
-    if (!matches(topic, topic)) std::abort();
+    if (has_wildcard(topic) || !valid_topic_filter(topic)) fail("the grammar disagrees with itself");
+    if (!matches(topic, topic)) fail("the grammar disagrees with itself");
   }
-  if (plain_filter(topic) && !covers(topic, topic)) std::abort();
+  if (plain_filter(topic) && !covers(topic, topic)) fail("the grammar disagrees with itself");
 
   if (const auto shared = parse_shared(topic)) {
-    if (!is_shared(topic) || shared->group.empty()) std::abort();
-    if (shared->group.find_first_of("/+#") != std::string::npos) std::abort();
-    if (!valid_topic_filter(shared->filter)) std::abort();
-    if ("$share/" + shared->group + "/" + shared->filter != topic) std::abort();
+    if (!is_shared(topic) || shared->group.empty()) fail("the grammar disagrees with itself");
+    if (shared->group.find_first_of("/+#") != std::string::npos) fail("the grammar disagrees with itself");
+    if (!valid_topic_filter(shared->filter)) fail("the grammar disagrees with itself");
+    if ("$share/" + shared->group + "/" + shared->filter != topic) fail("the grammar disagrees with itself");
   }
 }
 
-}  // namespace
-
-extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-  const std::string_view input(reinterpret_cast<const char*>(data), size);
+void check(std::span<const uint8_t> data) {
+  const std::string_view input(reinterpret_cast<const char*>(data.data()), data.size());
   std::vector<std::string_view> topics;
   size_t start = 0;
   while (topics.size() < 3) {
@@ -64,18 +65,21 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     start = end + 1;
   }
   for (const auto topic : topics) {
-    if (!valid_utf8(topic)) return 0;
+    if (!valid_utf8(topic)) return;
   }
   for (const auto topic : topics) check_one(topic);
-  if (topics.size() < 2) return 0;
+  if (topics.size() < 2) return;
 
   const auto granted = topics[0];
   const auto requested = topics[1];
   if (plain_filter(granted) && valid_topic_name(requested) && !is_shared(requested)) {
-    if (covers(granted, requested) != matches(granted, requested)) std::abort();
+    if (covers(granted, requested) != matches(granted, requested)) fail("the grammar disagrees with itself");
   }
   if (topics.size() == 3 && plain_filter(granted) && plain_filter(requested) && valid_topic_name(topics[2])) {
-    if (covers(granted, requested) && matches(requested, topics[2]) && !matches(granted, topics[2])) std::abort();
+    if (covers(granted, requested) && matches(requested, topics[2]) && !matches(granted, topics[2])) fail("the grammar disagrees with itself");
   }
-  return 0;
 }
+
+const dannan::fuzz::Registration registration("topic", check, [] { return lir::fuzz::seeds("topic"); });
+
+}  // namespace

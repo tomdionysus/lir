@@ -107,8 +107,9 @@ In short (the maintainer, 2026-11-19 and 20):
    each connect (a Lugh access token); reconnection with Dannan's backoff;
    every callback posted to the caller's executor. Ships as
    `liblir-client0.1`; tell Louhi the names and the commit.
-4. Run the libFuzzer targets through `dannan::fuzz::smoke` in `lir_tests`
-   (from Dannan 0.10.0's notes).
+4. Done on `feature/fuzz-smoke` (2026-11-22): the three targets register
+   with `dannan::testing`, `lir_tests` smokes each on every gate
+   (`FuzzSmoke`), and the libFuzzer binaries share one driver.
 5. **Release `0.2.0`** when step 2 is done, by the release procedure
    below.
 6. Step 4 of the design as Dagda ships each noun: client-id leases (D5),

@@ -5,10 +5,12 @@
 # Licensed under the GNU GPLv3 - see <https://www.gnu.org/licenses/gpl-3.0.html>
 #
 
-# One libFuzzer target per parser of untrusted bytes, <format>_fuzz.cpp, as
-# Lugh has them; seeds in corpus/<format>/. Built only with LIR_BUILD_FUZZING
-# and a clang that ships libFuzzer; the top level instruments lir::mqtt to
-# match. tools/ci.sh fuzz runs them.
+# One fuzz target per parser of untrusted bytes, <format>_fuzz.cpp,
+# registered with Dannan's harness (dannan::testing); seeds in
+# corpus/<format>/. lir_tests smokes every target on each gate; here, with
+# LIR_BUILD_FUZZING and a clang that ships libFuzzer, each is also a libFuzzer
+# binary through driver.cpp. The top level instruments lir::mqtt to match.
+# tools/ci.sh fuzz runs them.
 include(CheckCXXSourceCompiles)
 # Compiled and linked: a plain flag check links a main() of its own, which
 # libFuzzer's main collides with.
@@ -26,8 +28,9 @@ if(NOT LIR_HAS_LIBFUZZER)
 endif()
 
 foreach(format packet properties topic)
-  add_executable(lir_fuzz_${format} ${format}_fuzz.cpp)
-  target_link_libraries(lir_fuzz_${format} PRIVATE lir::mqtt lir_warnings)
+  add_executable(lir_fuzz_${format} ${format}_fuzz.cpp driver.cpp)
+  target_link_libraries(lir_fuzz_${format} PRIVATE lir::mqtt dannan::testing lir_warnings)
+  target_compile_definitions(lir_fuzz_${format} PRIVATE LIR_FUZZ_CORPUS="${CMAKE_CURRENT_SOURCE_DIR}/corpus")
   target_compile_options(lir_fuzz_${format} PRIVATE -fsanitize=fuzzer)
   target_link_options(lir_fuzz_${format} PRIVATE -fsanitize=fuzzer)
 endforeach()

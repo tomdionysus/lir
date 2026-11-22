@@ -10,31 +10,37 @@
 // MalformedPacket. What reads must write at the same place, to the size
 // properties_size gives, and read back the same.
 
-#include <cstddef>
-#include <cstdint>
-#include <cstdlib>
 #include <span>
+#include <stdexcept>
 
+#include "dannan/fuzz/fuzz.h"
+#include "lir/fuzz/seeds.h"
 #include "lir/mqtt/properties.h"
 
-extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-  using namespace lir::mqtt;
-  if (size == 0) return 0;
-  const auto place = static_cast<PropertyPlace>(data[0] % (static_cast<uint8_t>(PropertyPlace::auth) + 1));
-  const std::span<const uint8_t> block(data + 1, size - 1);
+namespace {
+
+using namespace lir::mqtt;
+
+void check(std::span<const uint8_t> input) {
+  if (input.empty()) return;
+  const auto place = static_cast<PropertyPlace>(input[0] % (static_cast<uint8_t>(PropertyPlace::auth) + 1));
+  const auto block = input.subspan(1);
 
   Properties properties;
   try {
     dannan::net::Reader reader(block);
     properties = read_properties(reader, place);
   } catch (const MalformedPacket&) {
-    return 0;
+    return;
   }
   dannan::net::Writer writer;
   write_properties(writer, properties, place);
   const Bytes written = writer.take();
-  if (written.size() != properties_size(properties)) std::abort();
+  if (written.size() != properties_size(properties)) throw std::logic_error("properties: written size is not properties_size");
   dannan::net::Reader again(written);
-  if (!(read_properties(again, place) == properties) || again.remaining() != 0) std::abort();
-  return 0;
+  if (!(read_properties(again, place) == properties) || again.remaining() != 0) throw std::logic_error("properties: what was written reads back otherwise");
 }
+
+const dannan::fuzz::Registration registration("properties", check, [] { return lir::fuzz::seeds("properties"); });
+
+}  // namespace

@@ -6,14 +6,20 @@
 #
 
 add_executable(lir_tests
+  fuzz_smoke_test.cpp
   interop_mosquitto_test.cpp
   mqtt_packet_test.cpp
   mqtt_properties_test.cpp
   mqtt_topic_test.cpp
   mqtt_wire_test.cpp
   version_test.cpp
+  # The fuzz targets, smoked by fuzz_smoke_test.cpp.
+  ../fuzz/packet_fuzz.cpp
+  ../fuzz/properties_fuzz.cpp
+  ../fuzz/topic_fuzz.cpp
 )
-target_link_libraries(lir_tests PRIVATE lir GTest::gtest_main lir_warnings)
+target_link_libraries(lir_tests PRIVATE lir dannan::testing GTest::gtest_main lir_warnings)
+target_compile_definitions(lir_tests PRIVATE LIR_FUZZ_CORPUS="${PROJECT_SOURCE_DIR}/lir/fuzz/corpus")
 # Dannan's fixtures (temp_dir.h) write only inside Lir's build tree.
 target_compile_definitions(lir_tests PRIVATE DANNAN_TEST_TEMP_ROOT="${PROJECT_BINARY_DIR}/test-tmp")
 
