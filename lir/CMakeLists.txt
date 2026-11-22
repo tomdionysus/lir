@@ -30,12 +30,30 @@ target_link_libraries(lir_mqtt
 )
 set_target_properties(lir_mqtt PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR} EXPORT_NAME mqtt)
 
+# The client library of the contract (docs/contract.md, section 1), built
+# with or without the broker: what Louhi, Lugh and Mimir link.
+add_library(lir_client SHARED
+  client/client.cpp
+)
+add_library(lir::client ALIAS lir_client)
+target_include_directories(lir_client
+  PUBLIC
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
+target_link_libraries(lir_client
+  PUBLIC lir_mqtt dannan::dannan
+  PRIVATE $<BUILD_INTERFACE:lir_warnings>
+)
+set_target_properties(lir_client PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR} EXPORT_NAME client)
+
 # Installed only against an installed Dannan: a project that fetches Lir
 # brings its own Dannan target, which no export of Lir's can name.
 if(LIR_SYSTEM_DANNAN)
   include(CMakePackageConfigHelpers)
-  install(TARGETS lir_mqtt EXPORT lirTargets LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
+  install(TARGETS lir_mqtt lir_client EXPORT lirTargets LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
   install(DIRECTORY mqtt/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/lir/mqtt FILES_MATCHING PATTERN "*.h")
+  install(FILES client/client.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/lir/client)
   install(EXPORT lirTargets NAMESPACE lir:: DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/lir)
   configure_package_config_file(${PROJECT_SOURCE_DIR}/cmake/lirConfig.cmake.in ${PROJECT_BINARY_DIR}/lirConfig.cmake
     INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/lir)

@@ -14,6 +14,7 @@ export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 include /usr/share/dpkg/architecture.mk
 
 MQTT := $(shell sed -n 's/^Package: \(liblir-mqtt[0-9].*\)/\1/p' debian/control)
+CLIENT := $(shell sed -n 's/^Package: \(liblir-client[0-9].*\)/\1/p' debian/control)
 
 ifneq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
 TESTS = OFF
@@ -46,6 +47,8 @@ override_dh_makeshlibs:
 # destination. The glob is quoted for dh_install to expand under debian/tmp.
 override_dh_install:
 	dh_install -p$(MQTT) 'usr/lib/$(DEB_HOST_MULTIARCH)/liblir_mqtt.so.*'
+	dh_install -p$(CLIENT) 'usr/lib/$(DEB_HOST_MULTIARCH)/liblir_client.so.*'
 	dh_install -pliblir-dev usr/include/lir
 	dh_install -pliblir-dev usr/lib/$(DEB_HOST_MULTIARCH)/liblir_mqtt.so
+	dh_install -pliblir-dev usr/lib/$(DEB_HOST_MULTIARCH)/liblir_client.so
 	dh_install -pliblir-dev usr/lib/$(DEB_HOST_MULTIARCH)/cmake/lir

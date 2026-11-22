@@ -2040,6 +2040,25 @@ All 15 CI jobs are green at `879feef` (run 44692880068), among them
   2's merge. The transport waits on Dannan 0.11.0 (0.10.2 is the latest
   tag).
 
+## 2026-11-22: lir::client
+
+- **`lir::client`** (feature/client, squashed onto develop): written new to
+  `docs/contract-v1/lir/client/client.h`, kept byte for byte, with the
+  contract's `endpoints.h` restored. Built on Dannan's `StreamConnector`,
+  `ClientTrust` and `Certificates`, `RetryPolicy::unbounded` (jitter, half
+  to all, on top), and the roster's `lir` and `lir.endpoints` adverts.
+  Timers wait on the injected time source. It honours the CONNACK's
+  Maximum QoS, Retain Available, Maximum Packet Size and Receive Maximum.
+- **Tests:** 35, against a broker each test scripts on Dannan's listener on
+  the loopback, TLS included (a certificate made by openssl). Release 150
+  of 150; ASan and TSan 150 of 150 with Dannan instrumented; coverage
+  99.5% of lines (client.cpp: a closing brace and the packet-id wrap left);
+  the client-only build and the package consumer build clean; five debs,
+  `liblir-client0.1` new, lintian clean (installed on node-d for it).
+- **Louhi** (through the coordinating session): it keeps its pin until D5
+  and D6, since its retained statuses and retained QoS 1 will need them.
+  Owed to it: this commit, and word when retain and wills are accepted.
+
 ## Archived from ACTIVE.md, 2026-11-22
 
 What `ACTIVE.md` carried before this date's rationalisation and no longer

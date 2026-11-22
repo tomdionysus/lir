@@ -7,7 +7,8 @@
 
 @PACKAGE_INIT@
 
-# lir::mqtt, the stack's MQTT codec (docs/contract.md, section 2). Dannan
+# lir::mqtt, the stack's MQTT codec, and lir::client, its client library
+# (docs/contract.md, sections 1 and 2). Dannan
 # by minor, at least the patch Lir was built against.
 include(CMakeFindDependencyMacro)
 find_dependency(dannan @LIR_DANNAN_TAG@ CONFIG)

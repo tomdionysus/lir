@@ -107,6 +107,16 @@ In short (the maintainer, 2026-11-19 and 20):
    each connect (a Lugh access token); reconnection with Dannan's backoff;
    every callback posted to the caller's executor. Ships as
    `liblir-client0.1`; tell Louhi the names and the commit.
+   - Done (2026-11-22): `lir::client` on develop, to the contract header
+     byte for byte, packaged as `liblir-client0.1`. Its tests run against a
+     scripted broker on Dannan's listener; an end-to-end test against
+     `Link` waits for step 2's transport.
+   - Louhi (2026-11-22, through the coordinating session): it keeps its pin
+     at `e40dd2e`, events off by default, until D5 and D6 ship. Its retained
+     statuses and its retained QoS 1 will need them; it builds no QoS 0
+     interim. Owed to Louhi, directly: (1) the `lir::client` develop commit
+     when it lands; (2) word when the broker accepts retained messages and
+     wills.
 4. Done on `feature/fuzz-smoke` (2026-11-22): the three targets register
    with `dannan::testing`, `lir_tests` smokes each on every gate
    (`FuzzSmoke`), and the libFuzzer binaries share one driver.

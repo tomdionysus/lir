@@ -33,19 +33,38 @@ Description: MQTT codec and topic grammar of the Lir message broker
  and shared subscriptions. Patch releases of one minor keep its ABI, so
  the package is named for major.minor.
 
+Package: liblir-client0.1
+Architecture: any
+Multi-Arch: same
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+Description: MQTT client library of the Lir message broker
+ Lir is a clustered publish/subscribe bus that presents itself to clients
+ as one MQTT broker, a hosted system on Dannan, the network layer.
+ .
+ This package holds lir::client, the small MQTT client the stack's
+ projects publish and subscribe with: MQTT 5.0 or 3.1.1 over TCP or TLS,
+ a password asked at every connect, QoS 0 and 1, a will, wildcard
+ subscriptions kept across reconnects, and Lir's nodes found in Dannan's
+ roster. Patch releases of one minor keep its ABI, so the package is named
+ for major.minor.
+
 Package: liblir-dev
 Architecture: any
 Multi-Arch: same
 Section: libdevel
 Depends:
  liblir-mqtt0.1 (= ${binary:Version}),
+ liblir-client0.1 (= ${binary:Version}),
+ libboost-dev (>= 1.83),
  libdannan-dev (>= 0.10.2),
  libdannan-dev (<< 0.11~),
  ${misc:Depends},
-Description: MQTT codec and topic grammar of the Lir message broker (development files)
+Description: MQTT codec and client of the Lir message broker (development files)
  Lir is a clustered publish/subscribe bus that presents itself to clients
  as one MQTT broker, a hosted system on Dannan, the network layer.
  .
  This package holds the headers and the CMake package configuration:
- find_package(lir <version> CONFIG), then link lir::mqtt, which brings
- Dannan.
+ find_package(lir <version> CONFIG), then link lir::mqtt or lir::client,
+ which bring Dannan.
