@@ -96,8 +96,8 @@ In short (the maintainer, 2026-11-19 and 20):
      view every node renders for its own subscribers from Dannan's roster,
      adverts and telemetry, or an event published by the one node that saw
      it; no node publishes for the others. Its payloads are JSON, which is
-     Dannan 0.11.0's (item 24): code waits on that tag and the maintainer's
-     word on the design.
+     Dannan's (item 24): code waits on that tag. The design is approved
+     (Decisions).
 2. **Step 2, the transport** on Dannan 0.11.0's stream carrier
    (`listen/memory.h`'s `memory_pair`, `StreamListener::inject`,
    `test/fixtures/sim/streams.h`): `lir-node` serving MQTT on the
@@ -183,7 +183,10 @@ In short (the maintainer, 2026-11-19 and 20):
 ## What waits, and on whom
 
 - **Dannan 0.11.0:** the stream carrier, which step 2's transport is built
-  and tested on.
+  and tested on (feature/stream-carrier, first in line; no date).
+- **Dannan 0.12.0:** JSON (item 24, Boost.JSON), for every system topic's
+  payload. Dannan (2026-11-22): no 0.10 patch can carry it (it adds API);
+  moving JSON into 0.11.0 is the maintainer's call.
 - **Dagda 0.4.0** (on Dannan 0.10.0): D6, the register map, for retained
   messages; read its notes when it lands. Then D5 (leases), D1 and D2
   (replicated spaces, a caught-up signal per space), D9 (the log).
@@ -196,9 +199,11 @@ In short (the maintainer, 2026-11-19 and 20):
   Lugh 0.4.0 (2026-11-22): lugh-node's flags renamed to the stack's config
   names (`--server-address`, `--server-port`, `--oauth-issuer`,
   `--oauth-mtls-port`), and Lugh pins `lir::mqtt` at `0.1.0`; nothing of
-  Lir's used the old names. `lugh_client`'s Outcome, Fault and Completion
-  are next to become Dannan's `contract/completion.h`: read that change when
-  the plugin is written.
+  Lir's used the old names. In Lugh 0.5.0 `lugh_client`'s Fault, Outcome
+  and Completion become aliases of Dannan's `contract/completion.h`, with
+  two new Fault kinds a caller sees, `unavailable` and `timed_out` (where it
+  said `failed`), and `lugh::undecided(fault)` covering the three: the
+  plugin is written against that.
 - **OASIS:** an approved MQTT-SN 2.0 Committee Specification.
 - **The maintainer:** publishing the 0.1.0 packages from
   `../tomcully-apt/incoming/lir/0.1.0/`; his word for the next merge to
@@ -211,6 +216,12 @@ is on v4 and v5.
 ## Decisions
 
 Not reopened without asking the maintainer.
+
+- (2026-11-22, the maintainer) The system topics as designed in
+  `2026-11-22-system-topics.md`: views each node renders for its own
+  subscribers from Dannan's roster, adverts and telemetry, each payload
+  saying which node rendered it; connection events published by the node
+  that saw them. No node publishes for the others.
 
 - (2026-11-20, the maintainer) Lir is rewritten from scratch. Its contract with other
   systems is stored and kept (`docs/contract.md`); nothing else of the old
