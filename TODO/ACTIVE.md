@@ -96,7 +96,7 @@ In short (the maintainer, 2026-11-19 and 20):
      view every node renders for its own subscribers from Dannan's roster,
      adverts and telemetry, or an event published by the one node that saw
      it; no node publishes for the others. Its payloads are JSON, which is
-     Dannan's (item 24): code waits on that tag. The design is approved
+     Dannan 0.11.0's (item 24): code waits on that tag. The design is approved
      (Decisions).
 2. **Step 2, the transport** on Dannan 0.11.0's stream carrier
    (`listen/memory.h`'s `memory_pair`, `StreamListener::inject`,
@@ -184,9 +184,9 @@ In short (the maintainer, 2026-11-19 and 20):
 
 - **Dannan 0.11.0:** the stream carrier, which step 2's transport is built
   and tested on (feature/stream-carrier, first in line; no date).
-- **Dannan 0.12.0:** JSON (item 24, Boost.JSON), for every system topic's
-  payload. Dannan (2026-11-22): no 0.10 patch can carry it (it adds API);
-  moving JSON into 0.11.0 is the maintainer's call.
+- **Dannan 0.11.0, also:** JSON (item 24's Boost.JSON half), for every
+  system topic's payload: moved forward from 0.12.0 by the maintainer
+  (2026-11-22, Decisions), HTTP left in 0.12.0; Dannan told.
 - **Dagda 0.4.0** (on Dannan 0.10.0): D6, the register map, for retained
   messages; read its notes when it lands. Then D5 (leases), D1 and D2
   (replicated spaces, a caught-up signal per space), D9 (the log).
@@ -217,6 +217,8 @@ is on v4 and v5.
 
 Not reopened without asking the maintainer.
 
+- (2026-11-22, the maintainer) Dannan's JSON moves into 0.11.0, HTTP
+  stays in 0.12.0, so step 2 finishes on one Dannan tag.
 - (2026-11-22, the maintainer) The system topics as designed in
   `2026-11-22-system-topics.md`: views each node renders for its own
   subscribers from Dannan's roster, adverts and telemetry, each payload
