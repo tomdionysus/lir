@@ -1967,7 +1967,7 @@ All 15 CI jobs are green at `879feef` (run 44692880068), among them
   the development setup: no host names (node-a to node-d), no real
   addresses (RFC 5737 192.0.2.x), no user paths, "the maintainer" for his
   name outside copyright, no session or hardware names.
-  `deploy/pi-cluster/` became `deploy/test-cluster/`, with
+  The deploy folder became `deploy/test-cluster/`, with
   `LIR_DEPLOY_DIR` and `LIR_DEPLOY_USER`. develop and
   feature/dannan-0.5 were force-pushed; the two Dependabot branches were
   deleted. The pre-scrub bundle, the commit map and the rules are in the
