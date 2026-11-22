@@ -186,6 +186,12 @@ In short (the maintainer, 2026-11-19 and 20):
   (L2).
 - **Lugh:** a release with `lugh_client`'s scope parsing, for the optional
   Lugh plugin.
+  Lugh 0.4.0 (2026-11-22): lugh-node's flags renamed to the stack's config
+  names (`--server-address`, `--server-port`, `--oauth-issuer`,
+  `--oauth-mtls-port`), and Lugh pins `lir::mqtt` at `0.1.0`; nothing of
+  Lir's used the old names. `lugh_client`'s Outcome, Fault and Completion
+  are next to become Dannan's `contract/completion.h`: read that change when
+  the plugin is written.
 - **OASIS:** an approved MQTT-SN 2.0 Committee Specification.
 - **The maintainer:** publishing the 0.1.0 packages from
   `../tomcully-apt/incoming/lir/0.1.0/`; his word for the next merge to
