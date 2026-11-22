@@ -91,6 +91,13 @@ In short (the maintainer, 2026-11-19 and 20):
      Dagda D5); No Local, which needs the publishing connection's origin
      on the channel; a 3.x retained publish, which 3.x cannot refuse.
      Settle each through the coordinating session before coding it.
+   - The system topics: designed in
+     [`2026-11-22-system-topics.md`](2026-11-22-system-topics.md), each a
+     view every node renders for its own subscribers from Dannan's roster,
+     adverts and telemetry, or an event published by the one node that saw
+     it; no node publishes for the others. Its payloads are JSON, which is
+     Dannan 0.11.0's (item 24): code waits on that tag and the maintainer's
+     word on the design.
 2. **Step 2, the transport** on Dannan 0.11.0's stream carrier
    (`listen/memory.h`'s `memory_pair`, `StreamListener::inject`,
    `test/fixtures/sim/streams.h`): `lir-node` serving MQTT on the
