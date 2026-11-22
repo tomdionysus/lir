@@ -229,6 +229,22 @@ is on v4 and v5.
 
 Not reopened without asking the maintainer.
 
+- (2026-11-22, the maintainer) Anonymous clients, when a node allows them,
+  are held to three lists of MQTT topic filters in its configuration
+  (publish, retain, subscribe), checked by `lir::mqtt`, not Lugh's scope
+  strings: Lir parses no scope grammar and allows them with or without the
+  Lugh plugin.
+- (2026-11-22, the maintainer) `$lir/clients/connected` and
+  `/disconnected` carry the client id, the MQTT version, the transport and,
+  on disconnect, the reason, with "from"; never the client's address.
+- (2026-11-22, the maintainer) The Lugh plugin: a user name sent with a
+  token must be its subject (else 0x86); a DPoP-bound token is refused; a
+  certificate-bound one serves only the connection that presented that
+  certificate.
+- (2026-11-22, the maintainer) A node's Dannan settings are Dannan's shared
+  reader (`dannan/config/node_settings.h`, 0.11.0), all under `cluster.*`
+  (`--cluster-listen-port`, `LIR_CLUSTER_LISTEN_PORT`); Lir's own keys are
+  `mqtt.*` and the like, which never collide.
 - (2026-11-22, the maintainer) Dannan's JSON moves into 0.11.0, HTTP
   stays in 0.12.0, so step 2 finishes on one Dannan tag.
 - (2026-11-22, the maintainer) The system topics as designed in
