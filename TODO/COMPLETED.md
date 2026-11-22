@@ -2009,6 +2009,37 @@ All 15 CI jobs are green at `879feef` (run 44692880068), among them
 - **Config naming** (the maintainer, 2026-11-20): the node follows
   Dannan's `docs/config.md`.
 
+## 2026-11-22: Link, Dannan 0.10.2, the fuzz smoke
+
+- **Branches:** every branch merged into develop deleted, local and
+  remote (44 local, `origin/feature/dannan-0.5`); `feature/rewrite` and
+  `feature/packaging`, squash-landed as `d36356d` and `f560b35`, deleted
+  on the maintainer's word. Left: `main`, `develop`, `feature/step2`.
+- **Step 2 on Dannan 0.10.1** (feature/step2, rebased on develop): the
+  Delivery and contract commits built for the first time on 0.10.1:
+  release 121 of 121 on node-d.
+- **`lir::broker::Link`** (feature/step2): one client's protocol on
+  Delivery, the authenticator and the node's time: CONNECT with enhanced
+  authentication and re-authentication, the CONNACK limits, SUBSCRIBE
+  answered once the cluster holds each filter, UNSUBSCRIBE, PUBLISH at
+  QoS 0, PINGREQ, keep-alive, grant expiry, DISCONNECT. Its tests were
+  written with the code, not seen failing first. First gate 173 of 173.
+- **The maintainer's rulings** (ACTIVE.md, Decisions): every will refused
+  until Dagda's leases; a 3.x retained PUBLISH closes; No Local honoured
+  by carrying the publisher's client id ahead of the PUBLISH on the
+  channel. Five tests of a published will went with the first ruling and
+  two were added: release 170 of 170 on node-d, 50 of them `Link`.
+- **Dannan 0.10.2** (`92ff63a`, develop): read against its changelog;
+  nothing of Lir's affected. Release 113 of 113.
+- **The fuzz smoke** (`0de12b3`, develop): the three targets register with
+  `dannan::testing` and `lir_tests` smokes them on every gate. Release 115
+  of 115; the clang libFuzzer build clean; each target 30 s on node-d,
+  about 1.2 million runs, no finding.
+- **Owed:** `feature/step2` rebased onto `0de12b3` and not built since; its
+  next gate covers it. Coverage, ASan, TSan and the fuzz run before step
+  2's merge. The transport waits on Dannan 0.11.0 (0.10.2 is the latest
+  tag).
+
 ## Archived from ACTIVE.md, 2026-11-22
 
 What `ACTIVE.md` carried before this date's rationalisation and no longer
