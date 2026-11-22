@@ -5,7 +5,7 @@ Maintainer: tomdionysus <tomdionysus@users.noreply.github.com>
 Build-Depends:
  debhelper-compat (= 13),
  cmake,
- libdannan-dev (>= 0.10.1),
+ libdannan-dev (>= 0.10.2),
  libdannan-dev (<< 0.11~),
  libboost-dev (>= 1.83),
  libssl-dev,
@@ -39,7 +39,7 @@ Multi-Arch: same
 Section: libdevel
 Depends:
  liblir-mqtt0.1 (= ${binary:Version}),
- libdannan-dev (>= 0.10.1),
+ libdannan-dev (>= 0.10.2),
  libdannan-dev (<< 0.11~),
  ${misc:Depends},
 Description: MQTT codec and topic grammar of the Lir message broker (development files)
