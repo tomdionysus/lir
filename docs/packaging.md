@@ -2,20 +2,22 @@
 
 Lir is packaged for Debian trixie, on x86-64 and arm64, to the stack's
 convention: Dannan's and Dagda's `debian/`, the coordinating session's
-record of 2026-11-20. While the rewrite has only its codec, the packages are:
+record of 2026-11-20. While the rewrite has its libraries and no broker,
+the packages are:
 
-- `liblir-mqtt<major.minor>` (now `liblir-mqtt0.1`): `lir::mqtt`, the shared
+- `liblir-mqtt<major.minor>` (now `liblir-mqtt0.2`): `lir::mqtt`, the shared
   library every MQTT speaker in the stack links (`docs/contract.md`,
-  section 2). Its SONAME is major.minor, `liblir_mqtt.so.0.1`; a patch
+  section 2). Its SONAME is major.minor, `liblir_mqtt.so.0.2`; a patch
   release keeps the ABI, and a minor release is a new SONAME and a new
   package, installable beside the old.
-- `liblir-dev`: the headers, the `liblir_mqtt.so` link and the CMake package
-  configuration. It depends on exactly its own release's library and on
+- `liblir-client<major.minor>` (now `liblir-client0.2`): `lir::client`, the
+  stack's MQTT client, versioned the same way.
+- `liblir-dev`: the headers, the `.so` links and the CMake package
+  configuration. It depends on exactly its own release's libraries and on
   `libdannan-dev` of the minor Lir builds on.
 - Debug symbols for each, as `-dbgsym` packages.
 
-`lir::client` joins as `liblir-client<major.minor>` when the rewrite brings
-it back, and the broker as `lir` (its node, `/etc/lir/config.yaml`, the
+The broker joins as `lir` (its node, `/etc/lir/config.yaml`, the
 systemd unit, the `lir` system user and the dashboard) when it serves
 clients.
 
@@ -29,12 +31,12 @@ a project fetching Lir with its own Dannan never meets.
 A consumer's packaging:
 
 ```
-Build-Depends: liblir-dev (>= 0.1.0), liblir-dev (<< 0.2~)
-Depends: ${shlibs:Depends}          # gives liblir-mqtt0.1 (>= 0.1.0)
+Build-Depends: liblir-dev (>= 0.2.0), liblir-dev (<< 0.3~)
+Depends: ${shlibs:Depends}          # gives liblir-mqtt0.2 (>= 0.2.0)
 ```
 
-and in CMake `find_package(lir 0.1.0 CONFIG REQUIRED)`, then link
-`lir::mqtt`, which brings Dannan.
+and in CMake `find_package(lir 0.2.0 CONFIG REQUIRED)`, then link
+`lir::mqtt` or `lir::client`, which bring Dannan.
 
 ## Building
 
@@ -63,11 +65,11 @@ consumer in `test/package` from the prefix alone.
 
 ## Versions
 
-As Dannan's: the version comes from `git describe`. The tag `0.1.0` gives
-`0.1.0`; a build three commits later gives `0.1.0+git3.gabc1234`, which
-sorts after `0.1.0` and before `0.1.1`. Release tags sit on `main`, so a
+As Dannan's: the version comes from `git describe`. The tag `0.2.0` gives
+`0.2.0`; a build three commits later gives `0.2.0+git3.gabc1234`, which
+sorts after `0.2.0` and before `0.2.1`. Release tags sit on `main`, so a
 build on `develop`, where none is reachable, gives the tree's version and
-the commit, `0.1.0+git.gabc1234`. Uncommitted changes add `.dirty`. A
+the commit, `0.2.0+git.gabc1234`. Uncommitted changes add `.dirty`. A
 build of a tag must match `project(lir VERSION ...)` in `CMakeLists.txt`,
 and the library's package named in `debian/control` must be `liblir-mqtt`
 and its major.minor, or the script refuses it. Only builds of a tag are

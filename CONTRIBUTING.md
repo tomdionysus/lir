@@ -49,8 +49,8 @@ which discipline it follows.
   `main`.
 - The tag, the CMake `project(... VERSION ...)` and `--version` are the same
   number.
-- `0.1.0` is the codec alone. The broker that serves clients across nodes
-  is the next minor, `0.2.0`. The release procedure is in
+- `0.1.0` is the codec alone; `0.2.0` adds `lir::client`. The broker that
+  serves clients across nodes is the next minor, `0.3.0`. The release procedure is in
   `TODO/ACTIVE.md`, "How work is done"; packaging is `docs/packaging.md`.
 
 ## Commits

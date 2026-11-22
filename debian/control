@@ -17,7 +17,7 @@ Vcs-Git: https://github.com/tomdionysus/lir.git
 Vcs-Browser: https://github.com/tomdionysus/lir
 Rules-Requires-Root: no
 
-Package: liblir-mqtt0.1
+Package: liblir-mqtt0.2
 Architecture: any
 Multi-Arch: same
 Depends:
@@ -33,7 +33,7 @@ Description: MQTT codec and topic grammar of the Lir message broker
  and shared subscriptions. Patch releases of one minor keep its ABI, so
  the package is named for major.minor.
 
-Package: liblir-client0.1
+Package: liblir-client0.2
 Architecture: any
 Multi-Arch: same
 Depends:
@@ -55,8 +55,8 @@ Architecture: any
 Multi-Arch: same
 Section: libdevel
 Depends:
- liblir-mqtt0.1 (= ${binary:Version}),
- liblir-client0.1 (= ${binary:Version}),
+ liblir-mqtt0.2 (= ${binary:Version}),
+ liblir-client0.2 (= ${binary:Version}),
  libboost-dev (>= 1.83),
  libdannan-dev (>= 0.10.2),
  libdannan-dev (<< 0.11~),
