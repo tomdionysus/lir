@@ -202,8 +202,12 @@ In short (the maintainer, 2026-11-19 and 20):
   `DatagramListener` (the MQTT-SN DTLS gateway), the atomic commit across
   names (guarded publish), the per-peer answer bound for the SUBACK hold
   (L2).
-- **Lugh:** a release with `lugh_client`'s scope parsing, for the optional
-  Lugh plugin.
+- **Lugh:** Lugh 0.5.0 is tagged (2026-11-22), with the plugin's
+  vocabulary below and `lugh::client_topics` (`may_publish`,
+  `may_subscribe` on `lir::mqtt`) for its Grant. Asked of Lugh before the
+  plugin's CMake: whether its build takes an existing `lir::mqtt` target
+  rather than fetching its own, so one process never carries two codecs.
+  Lugh still pins `lir::mqtt` 0.1.0; told of 0.2.0.
   Lugh 0.4.0 (2026-11-22): lugh-node's flags renamed to the stack's config
   names (`--server-address`, `--server-port`, `--oauth-issuer`,
   `--oauth-mtls-port`), and Lugh pins `lir::mqtt` at `0.1.0`; nothing of
