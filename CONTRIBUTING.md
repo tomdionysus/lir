@@ -11,12 +11,12 @@ Dannan the network layer (`../dannan`), Dagda the store (`../dagda`) and
 Lugh the directory (`../lugh`). `../dagda/TODO/2026-11-03-stack.md` says
 what each owns. Hosted systems use Dannan as their network layer and Dagda
 for what they persist, and no code is duplicated between the projects (the maintainer,
-2026-11-03). Lir links Dannan, and Dagda from step 5; only the optional Lugh
-plugin (`-DLIR_BUILD_LUGH=ON`) links Lugh's client library, and Lir builds
-without it (the maintainer, 2026-11-14). Lir is an MQTT broker, clustered and
-distributed on Dannan, written new from the design, "Lir: Distributed Event
-System on Dannan" (`TODO/2026-11-03-lir-plan.md`, with
-`TODO/2026-11-04-lir-sections.md`).
+2026-11-03). Lir links Dannan now and Dagda as its nouns ship; an optional
+Lugh plugin will link Lugh's client library, and Lir builds without it (the
+maintainer, 2026-11-14). Lir is an MQTT broker, clustered and distributed
+on Dannan, rewritten from scratch on 2026-11-20 from the design in
+`TODO/2026-11-20-rewrite-design.md` (the maintainer's original:
+`TODO/2026-11-03-lir-plan.md`, with `TODO/2026-11-04-lir-sections.md`).
 
 `../dannan/CONTRIBUTING.md` is the reference text for the conventions the
 projects share. This file follows it in everything but the project's name,
@@ -49,8 +49,9 @@ which discipline it follows.
   `main`.
 - The tag, the CMake `project(... VERSION ...)` and `--version` are the same
   number.
-- No release is cut yet. The first, `0.1.0`, follows step 5 (persistence on
-  Dagda).
+- `0.1.0` is the codec alone. The broker that serves clients across nodes
+  is the next minor, `0.2.0`. The release procedure is in
+  `TODO/ACTIVE.md`, "How work is done"; packaging is `docs/packaging.md`.
 
 ## Commits
 
@@ -71,24 +72,22 @@ cmake --build build -j8
 Dannan is fetched into the build tree at the tag pinned in `CMakeLists.txt`
 (`LIR_DANNAN_TAG`), from the checkout at `../dannan` or from the repository
 `-DLIR_DANNAN_REPOSITORY` names, a path or a URL. Building Lir never touches
-`../dannan`. `-DLIR_BUILD_LUGH=ON` fetches Lugh's `lugh_client` the same way,
-at a pinned commit. `-DLIR_BUILD_SERVER=OFF` builds only the codec
-(`lir::mqtt`) and the client (`lir::client`), as a project that fetches Lir
-builds them.
+`../dannan`. `-DLIR_BUILD_SERVER=OFF` builds only the codec (`lir::mqtt`),
+as a project that fetches Lir builds it.
 
 Run the test binary rather than `ctest`. `tools/ci.sh <step>` is one CI step
 on Debian 13, as the nodes have it: `check` (the header block and the
-format), `release`, `clang`, `asan`, `tsan`, `coverage`, `client` (the codec
-and the client alone) and `lugh` (the plugin on). Hosted CI
+format), `release`, `client` (the codec alone), `clang`, `asan`, `tsan`
+(both with Dannan instrumented through `DANNAN_SANITIZE`), `coverage`,
+`fuzz`, `tidy`, `package` (install and link a consumer) and `deb`. Hosted CI
 (`.github/workflows/ci.yml`) runs each on a push to `main` or `develop` and on
 a pull request, never for a change to markdown alone, with release and ASan
 on x86-64 and on arm64, and a build and test on macOS; a newer push cancels
 the run it supersedes. A feature branch is gated on the build nodes. CodeQL
-analyses each push to `main` and once a week. The `lugh` job needs the repository secret
-`LUGH_READ_TOKEN`.
+analyses each push to `main` and once a week.
 
 The project's own sessions build and test on the shared build servers
-only, never on the laptop (the maintainer, 2026-11-14): claim cores on the board
+only, never on the workstation (the maintainer, 2026-11-14): claim cores on the board
 (`deploy/test-cluster/README.md`), run `tools/ci.sh <step>` with `LIR_CI_JOBS`
 no more than the cores claimed, under `nice 19`, and release the claim when
 the job ends. Sanitizers run at the release gate, or to hunt a bug that
@@ -107,11 +106,11 @@ test is never deleted.
 
 ## Dependencies
 
-Dannan, Dagda (from step 5), Boost (Asio, and Beast and JSON, which are part
-of it) and OpenSSL 3, plus GoogleTest for the test build. yaml-cpp comes with
-Dannan, whose settings reader `lir-node` uses. The optional Lugh plugin adds
-Lugh's `lugh_client`. The process tests use `mosquitto_pub` and
-`mosquitto_sub` when they are installed. Prefer writing something by hand
+Dannan, Dagda (as its nouns ship), Boost (Asio, and Beast and JSON, which
+are part of it) and OpenSSL 3, plus GoogleTest for the test build. yaml-cpp
+comes with Dannan, whose settings reader `lir-node` will use. The optional
+Lugh plugin will add Lugh's `lugh_client`. The tests require `mosquitto_pub`
+and `mosquitto_sub`, a real MQTT client. Prefer writing something by hand
 over adding a library, and say so if a dependency really is the right call.
 
 ## Layout
@@ -121,8 +120,9 @@ gives it, with `<p>` = `lir`: the library target `lir` in `lir/`, public
 headers in `lir/include/lir/`, subsystems in `lir/<subsystem>/`,
 interfaces in `lir/contract/`, tests in `lir/test/` (one binary
 `lir_tests`, fixtures in `lir/test/fixtures/`), fuzz targets in `lir/fuzz/`,
-tools in `tools/`. No presets. Lir adds `lir/client/` (the client library,
-its own target), `deploy/test-cluster/` (the standing cluster's unit, config
+tools in `tools/`. No presets. Lir adds `lir_mqtt` (the codec, its own
+target, in `lir/mqtt/`), will add `lir/client/` (the client library, its
+own target), and has `deploy/test-cluster/` (the standing cluster's unit, config
 and install script), and has no `test/compose/`.
 
 ## Shared code
@@ -131,7 +131,7 @@ What more than one project needs lives once, in the lowest project that
 needs it, and the others link it. Lir links Dannan's crypto primitives,
 durable files, byte codec, thread-safety contract, time sources, logging (a
 logger from `Context::logger`), settings reader, listeners and connectors,
-Status surface and test fixtures, and from step 5 Dagda's logs, spaces,
+Status surface and test fixtures, and, as they ship, Dagda's logs, spaces,
 objects, claims and leases. It writes none of its own. When Lir finds itself
 writing something another project has, or needs, it asks that project's
 session instead.

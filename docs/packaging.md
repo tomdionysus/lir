@@ -52,8 +52,12 @@ the real MQTT clients' among them; `DEB_BUILD_OPTIONS=nocheck` skips them.
 
 `tools/ci.sh deb` does all of it in a clean trixie (GitHub's container, or
 `docker run debian:trixie` on a build node): Dannan's packages from its pinned tag
-by Dannan's own `tools/build-deb.sh`, installed, then Lir's, then lintian.
-CI runs it on x86-64 and arm64 and fails on any lintian error or warning.
+by Dannan's own `tools/ci.sh install-debs`, then Lir's, then lintian.
+CI runs it on x86-64 and arm64, fails on any lintian error or warning, and
+keeps the packages as the run's artifacts. A release's packages are built
+by running the workflow on its tag (`gh workflow run CI --ref develop -f
+ref=<tag>`) and go to the tomcully.com apt repository, which the maintainer
+publishes.
 `tools/ci.sh package` installs both into a prefix instead and builds the
 consumer in `test/package` from the prefix alone.
 

@@ -1959,3 +1959,82 @@ check with warnings as errors. CI runs it on every push.
 
 All 15 CI jobs are green at `879feef` (run 44692880068), among them
 `tidy`, `fuzz`, `package`, and `deb` on both architectures.
+
+## 2026-11-20 to 22: release 0.1.0, the history scrubbed, Dannan 0.10.1, step 2 begun
+
+- **The history scrubbed** (the maintainer, 2026-11-20). Every tracked file
+  and commit message was rewritten with git filter-repo so that none names
+  the development setup: no host names (node-a to node-d), no real
+  addresses (RFC 5737 192.0.2.x), no user paths, "the maintainer" for his
+  name outside copyright, no session or hardware names.
+  `deploy/pi-cluster/` became `deploy/test-cluster/`, with
+  `LIR_DEPLOY_DIR` and `LIR_DEPLOY_USER`. develop and
+  feature/dannan-0.5 were force-pushed; the two Dependabot branches were
+  deleted. The pre-scrub bundle, the commit map and the rules are in the
+  maintainer's backup archive outside the repository. Commit hashes cited
+  in these docs were remapped (`e558b97`). A later check for a scrubbed
+  literal split across a line break found none.
+- **Release 0.1.0** (`9074dcb`, annotated tag object `d21297b`, on main),
+  the codec alone; the README says the broker is not yet functional.
+  Gate on the tag: check, release, clang, ASan and UBSan, TSan, coverage,
+  fuzz, tidy, package, deb (lintian clean); the sanitizer builds shown by
+  nm to instrument Dannan. CODE_OF_CONDUCT.md (Contributor Covenant 2.1)
+  added and linked. GitHub description and topics set. The packages,
+  built by hosted CI for amd64 and arm64 from the tag (run 44770925157,
+  which `workflow_dispatch` with a tag input now allows), are staged in
+  `../tomcully-apt/incoming/lir/0.1.0/` for the maintainer to publish.
+  The README's install section now points at the apt repository
+  (develop; main keeps the release's text until the next merge).
+- **Dannan 0.10.0, then 0.10.1** (`885a266`, `4e3e270`), each read against
+  its changelog first. Lir's own UTF-8 decoder became
+  `dannan::encoding::valid_utf8`; the asan and tsan steps build Dannan
+  through `DANNAN_SANITIZE` and check libdannan's runtime symbols (35
+  `__asan_`, 36 `__tsan_`); the deb step uses Dannan's `install-debs`,
+  passing its job count; debian/control bounds libdannan-dev to
+  `>= 0.10.1, << 0.11~`. Gate on node-b each time: check, release 113 of
+  113, ASan, TSan, deb lintian clean.
+- **CI quieter** (`bf75a3a`): push on develop and main and pull requests
+  only, no markdown-only runs, superseded runs cancelled, CodeQL on main
+  and weekly.
+- **Step 2, Delivery** (feature/step2, local, `63adf83` rebased on
+  develop): `lir::broker::Delivery` on Dannan's notify channel, written
+  test first. Gate on node-b on Dannan 0.9.2: release 121 of 121, the 7
+  Delivery tests among them. Not yet rerun on 0.10.1. Then `93b9a9a`, the
+  connection core's start (unbuilt): the contract's `Connection` and
+  `Authenticator` restored under `lir/contract/`, the cluster fixture
+  shared.
+- **Owed:** Louhi's requirements for the new `lir::client` recorded
+  (`eba9b3e`). Python audited for the coordinating session (three
+  dev-only scripts, no build or runtime use; none rewritten).
+- **Config naming** (the maintainer, 2026-11-20): the node follows
+  Dannan's `docs/config.md`.
+
+## Archived from ACTIVE.md, 2026-11-22
+
+What `ACTIVE.md` carried before this date's rationalisation and no longer
+needs:
+- "Do this, in this order", steps 1 to 6 (2026-11-19 and 20), all done:
+  the contracts read, the conformance gate written (5.0: 252 statements;
+  3.1.1: 139), each cross-node need mapped to its noun, a second reader
+  (`2026-11-20-second-reader.md`), the findings taken to the maintainer,
+  who ruled the rewrite from scratch; then the rewrite on
+  `feature/rewrite`, squashed to develop.
+- The converged placement plan (2026-11-20), kept by the coordinating
+  session: Dannan's next minor exports the simulation harness as
+  `dannan::testing` and bounds the per-peer answer that settles the SUBACK
+  hold (L2); Dagda's D6 first, then D5, with `HlcClock::admit` for the
+  retained stamp; Lugh's scope parsing in `lugh_client`. The maintainer's
+  answers: HTTP and JSON move into Dannan on Boost.JSON; the register map
+  orders by (hlc stamp, node id); Dannan's DNS responder gives plain
+  clients an address that survives a node; retirement stays an operator
+  command. Dagda's D6 review: retained needs no index of Lir's; D6 opens
+  capable("lir") once D1 exists; a QoS 1 or 2 retained PUBACK waits on
+  D2's replicated commit.
+- Dannan 0.9.3 (the clock ceiling) was overtaken by 0.10.0.
+- Dagda's slices 1 to 4 and the step 5 design
+  (`2026-11-13-step5-design.md`), built on the interim's shape, are
+  superseded by the rewrite's design.
+- The watch on two Dannan defects believed fixed in 0.9.x (the ledger's
+  TSan report, the join gap in `SlowGossipClusterTest`): neither was seen
+  again; the code that showed them is gone with the rewrite.
+- The HLC question for retained ordering: answered (L1).
