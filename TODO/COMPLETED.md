@@ -22,6 +22,27 @@ How to read it:
   N1 to N6, G1 to G9, and its review R1 to R11) and the first
   `2026-11-19-guarded-publish-design.md` (at `003906a`).
 
+## 2026-11-22, evening: release 0.2.0, the client
+
+- **Release 0.2.0** (`9085820`, annotated tag `0.2.0`, on main by fast
+  forward), on the maintainer's word: `lir::mqtt` and `lir::client` on
+  Dannan 0.10.2, the broker not yet functional. The release commit bumps
+  `project()` to 0.2.0, renames the packages `liblir-mqtt0.2` and
+  `liblir-client0.2`, and brings the README (a `lir::client` section, the
+  packages, `libdannan0.10`), CHANGELOG, CONTRIBUTING (the broker is now
+  `0.3.0`) and `docs/packaging.md` up to date.
+- Gate: hosted CI on the commit, all 15 jobs green (run 45054550066),
+  deb on x86-64 and arm64 with lintian among them; develop's gate on the
+  client before it (150 of 150, ASan, TSan, coverage 99.5%) stands, as
+  nothing but versions and docs changed. The packages, built from the tag
+  (run 45055166324), are staged in `../tomcully-apt/incoming/lir/0.2.0/`
+  for the maintainer to publish.
+- `feature/step2`, rebased on the release: 207 of 207 on node-d (release,
+  -j1). It waits on Dannan 0.11.0 for the transport and the system topics.
+
+**Handoff.** Nothing is buildable until Dannan 0.11.0 (the stream carrier
+and JSON) or Dagda 0.4.0 (D6). Next release: `0.3.0`, the broker.
+
 ## 2026-11-03, night: the project starts
 
 - `git init`; basemind set up (`basemind.toml`, rules in the gitignored

@@ -40,11 +40,15 @@ In short (the maintainer, 2026-11-19 and 20):
   gate generated from test names, the Debian packages, on Dannan `0.10.1`.
   Gate on node-b: release 113 of 113, ASan and TSan with Dannan
   instrumented, deb lintian clean. CI green on develop and main.
-- `main` and tag `0.1.0` (`9074dcb`): the codec alone; the README says the
-  broker is not yet functional. Its packages are staged in
-  `../tomcully-apt/incoming/lir/0.1.0/`; publishing them is the
-  maintainer's. The next release is `0.2.0` (Dannan's ABI moved to
-  `libdannan0.10`), cut when step 2 is done.
+- `main` and tag `0.2.0` (`9085820`, the maintainer's word of
+  2026-11-22): `lir::mqtt` and `lir::client` on Dannan 0.10.2, packaged as
+  `liblir-mqtt0.2` and `liblir-client0.2`; the README says the broker is
+  not yet functional. Hosted CI green on the commit, all 15 jobs. Its
+  packages are staged in `../tomcully-apt/incoming/lir/0.2.0/`, as
+  `0.1.0`'s are; publishing them is the maintainer's. The next release,
+  `0.3.0`, is the broker, cut when step 2 is done.
+- `feature/step2` rebased on the release: 207 of 207 on node-d
+  (release, -j1).
 - `feature/step2` (local, not pushed), two commits on develop:
   - `63adf83`, `lir::broker::Delivery` on Dannan's notify channel, 7
     tests; passed on node-b on Dannan 0.9.2 (121 of 121), not yet run on
@@ -127,8 +131,8 @@ In short (the maintainer, 2026-11-19 and 20):
 4. Done on `feature/fuzz-smoke` (2026-11-22): the three targets register
    with `dannan::testing`, `lir_tests` smokes each on every gate
    (`FuzzSmoke`), and the libFuzzer binaries share one driver.
-5. **Release `0.2.0`** when step 2 is done, by the release procedure
-   below.
+5. **Release `0.3.0`**, the broker, when step 2 is done, by the release
+   procedure below. (`0.2.0`, the client, was released 2026-11-22.)
 6. Step 4 of the design as Dagda ships each noun: client-id leases (D5),
    sessions (D1, D2), the log for QoS 1 and 2 (D9), retained (D6, in
    Dagda 0.4.0), wills and timed ends. Each lifts its stated limit.
@@ -209,8 +213,8 @@ In short (the maintainer, 2026-11-19 and 20):
   said `failed`), and `lugh::undecided(fault)` covering the three: the
   plugin is written against that.
 - **OASIS:** an approved MQTT-SN 2.0 Committee Specification.
-- **The maintainer:** publishing the 0.1.0 packages from
-  `../tomcully-apt/incoming/lir/0.1.0/`; his word for the next merge to
+- **The maintainer:** publishing the 0.1.0 and 0.2.0 packages from
+  `../tomcully-apt/incoming/lir/`; his word for the next merge to
   `main`.
 
 Not taken: Dependabot's moves of `actions/checkout` and
