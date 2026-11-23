@@ -20,6 +20,7 @@ add_executable(lir_tests
   mqtt_properties_test.cpp
   mqtt_topic_test.cpp
   mqtt_wire_test.cpp
+  scenario_liveness_test.cpp
   system_views_test.cpp
   version_test.cpp
   # The fuzz targets, smoked by fuzz_smoke_test.cpp.
