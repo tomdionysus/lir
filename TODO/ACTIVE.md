@@ -146,9 +146,9 @@ In short (the maintainer, 2026-11-19 and 20):
 - **Dagda, D6 on its develop (`00e0a9f`, contract 3), 0.5.0 with D5:**
   Lir's design for retained messages is
   [`2026-11-23-retained.md`](2026-11-23-retained.md), with Dagda's answers.
-  Code waits for a Dagda fixture on Dannan's simulated cluster (Dagda asks
-  Dannan whether a SimNodes node supplies a whole Context; with 0.5.0 if
-  so), since every Lir test runs there.
+  Code waits for Dagda's fixture on Dannan's simulated cluster, coming
+  with 0.5.0 (Decisions: functional, not exactly replayable, for now).
+  lir-node's Dagda settings: storage.data path, limit, reserve_free.
 - **Dagda, D6 public (history):** Dagda 0.4.0 (2026-11-23, on Dannan 0.11.1) has the
   register map in its tree (`dagda/heads/register_map.h`), but stamping
   with a Lamport stand-in "until Dannan's HlcClock::admit is released; no
@@ -179,6 +179,12 @@ is on v4 and v5.
 
 Not reopened without asking the maintainer.
 
+- (2026-11-23, the maintainer) Lir's Dagda-backed tests run on Dagda's
+  fixture on Dannan's simulated cluster as it comes with Dagda 0.5.0:
+  functionally right under faults, splits and skew, not bit-for-bit
+  replayable (Dagda's own threads and fsyncs). They wait on conditions,
+  never on step counts or sleeps; a flaky run is a finding. Exact replay
+  when Dagda moves its threads and disk onto the simulation's schedule.
 - (2026-11-23, the maintainer) The broker is released as 0.3.0 once it
   accepts retained messages and wills (Dagda D6 and D5), not before: what
   Louhi and AthenaSIP need of it.
