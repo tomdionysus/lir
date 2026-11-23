@@ -64,13 +64,12 @@ In short (the maintainer, 2026-11-19 and 20):
   (`deploy/test-cluster/README.md`).
 
 **Next, in this order.**
-1. **Release `0.3.0`**, the broker, on the maintainer's word, by the
-   release procedure below: the version to 0.3.0, the README's status and
-   the CHANGELOG, then hosted CI, the tag, `main`, and the packages
-   (`liblir-mqtt0.3`, `liblir-client0.3`, `liblir-dev`, `lir`) staged.
-2. Step 4 of the design as Dagda ships each noun: client-id leases (D5),
+1. Step 4 of the design as Dagda ships each noun: client-id leases (D5),
    sessions (D1, D2), the log for QoS 1 and 2 (D9), retained (D6, in
    Dagda 0.4.0), wills and timed ends. Each lifts its stated limit.
+   - Release `0.3.0`, the broker, once it accepts retained messages (D6)
+     and wills (D5) (the maintainer, 2026-11-23), by the release procedure
+     below.
    - Owed to Louhi, directly: word when the broker accepts retained
      messages and wills.
    - AthenaSIP's liveness scenario
@@ -80,7 +79,7 @@ In short (the maintainer, 2026-11-19 and 20):
      retained (D6), wills on the client-id lease with its epoch (D5), and
      for the heal the order stamp for retained values (L1, the
      maintainer's). Owed to AthenaSIP: word as each step lifts.
-3. The status and admin dashboard, on `@lugh/admin-ui` (Lugh 0.6.0), with
+2. The status and admin dashboard, on `@lugh/admin-ui` (Lugh 0.6.0), with
    Lir's own payload viewer; then the later pieces (shared subscriptions on
    Dannan's placement, Server Reference, MQTT-SN, the rules engine,
    history).
@@ -143,9 +142,8 @@ In short (the maintainer, 2026-11-19 and 20):
   names (guarded publish), the per-peer answer bound for the SUBACK hold
   (L2).
 - **OASIS:** an approved MQTT-SN 2.0 Committee Specification.
-- **The maintainer:** his word for release 0.3.0 (the broker) and its
-  merge to `main`; publishing the 0.1.0 and 0.2.0 packages from
-  `../tomcully-apt/incoming/lir/`.
+- **The maintainer:** publishing the 0.1.0 and 0.2.0 packages from
+  `../tomcully-apt/incoming/lir/`. Release 0.3.0 waits on Dagda (Decisions).
 
 Not taken: Dependabot's moves of `actions/checkout` and
 `codecov/codecov-action` to v7. Dannan, the reference for the stack's CI,
@@ -155,6 +153,12 @@ is on v4 and v5.
 
 Not reopened without asking the maintainer.
 
+- (2026-11-23, the maintainer) The broker is released as 0.3.0 once it
+  accepts retained messages and wills (Dagda D6 and D5), not before: what
+  Louhi and AthenaSIP need of it.
+- (2026-11-23, the maintainer) QoS 0 travels on Dannan's ordered delivery
+  (0.11.1), so every topic is ordered (MQTT-4.6.0-6); a late message is
+  dropped, as QoS 0 allows.
 - (2026-11-22, the maintainer) Anonymous clients, when a node allows them,
   are held to three lists of MQTT topic filters in its configuration
   (publish, retain, subscribe), checked by `lir::mqtt`, not Lugh's scope
