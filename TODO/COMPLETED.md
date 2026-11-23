@@ -22,6 +22,107 @@ How to read it:
   N1 to N6, G1 to G9, and its review R1 to R11) and the first
   `2026-11-19-guarded-publish-design.md` (at `003906a`).
 
+## 2026-11-22 to 23: step 2, the broker
+
+Squash-merged onto develop. How it went, in the order it was built:
+
+- On `feature/step2`, rebased on develop 2026-11-22,
+  three commits: `lir::broker::Delivery` on Dannan's notify channel; the
+  contract's `Connection` and `Authenticator` restored with the shared
+  cluster fixture; and `lir::broker::Link`, one client's protocol
+  (`lir/broker/link.h`): CONNECT with enhanced authentication and
+  re-authentication, the CONNACK limits, SUBSCRIBE held on Delivery,
+  No Local, UNSUBSCRIBE, PUBLISH at QoS 0, PINGREQ, keep-alive and grant
+  expiry on Dannan's time, DISCONNECT; every will refused. Gate on node-d,
+  on release 0.2.0 (Dannan 0.10.2, the client included): release 207 of
+  207, 50 of them `Link`. The Link count fell from 52 on the maintainer's
+  will ruling (five tests of a published will went with it).
+  - The Link tests were written with the code, not seen failing first.
+  - Then, on Dannan's develop (`9512a9b`, the stream carrier; the pin goes
+    back to `0.11.0` when it is tagged, before any merge):
+    `lir::edge::Edge`, each stream Dannan's listener accepts served as one
+    Link; `lir::edge::Server`, Lir on one Dannan node (Delivery, the edge,
+    the TCP and TLS listeners, the `lir` and `lir.endpoints` adverts,
+    withdrawn first at stop); `lir::auth::Anonymous`, anonymous clients
+    refused by default or held to configured publish, retain and subscribe
+    filters (the design's section 1, as filters rather than Lugh's scope
+    strings, so Lir parses no scope grammar). Gate on node-d: 224 of 224
+    (Edge 6, EdgeServer 3, AuthAnonymous 8).
+  - The optional Lugh plugin, `lir::auth::Lugh` (`-DLIR_LUGH=ON`, Lugh
+    0.5.0 fetched without its node or tests, so it takes Lir's `lir::mqtt`
+    and Dannan): a token as the CONNECT password or the `lugh` method's
+    data, re-authentication with a fresh one, its `lir:` scopes the grant
+    (`lugh::client_topics`), its exp the grant's end; a user name must be
+    the subject; a certificate-bound token only for its holder, a DPoP-bound
+    one refused; no credential is anonymous. Gate on node-d with it on: 232
+    of 232 (AuthLugh 8). Before Lir moves to Dannan 0.11.0, Lugh needs a
+    release on it without its own Boost.JSON (`client/boost_json.cpp`),
+    since 0.11.0 compiles Boost.JSON once in libdannan; Lugh told.
+  - A client's publish to `$lir/` or `$dannan/` reaches no one, whatever
+    its grant (`lir/system/topics.h`). Real clients across the cluster:
+    `mosquitto_sub` on one node and `mosquitto_pub` on another, over TCP to
+    the ports their roster adverts name, MQTT 5 and 3.1.1, the simulated
+    world held to real time. Gate on node-d: 234 of 234 with the plugin on.
+  - The system topics (`lir::system::Views`, on Dannan's JSON at develop
+    `e1c69e0`): `$lir/nodes/<id>` from each node's `lir.figures` advert
+    (a node's own from its server directly: Dannan's advert watch tells
+    peers only), `$lir/cluster` summed alike on every node,
+    `$dannan/nodes/<id>` and `$dannan/roster/*` from the roster watch; each
+    rendered by the subscriber's own node and saying so, sent at SUBSCRIBE
+    with RETAIN 1 as Retain Handling says, then on change. Connection
+    events published on the channel by the node that saw them, without the
+    client's address. Gate on node-d: 241 of 241 (SystemViews 7).
+  - Topic aliases from a 5.0 client: Topic Alias Maximum 64 in CONNACK
+    (`mqtt.topic_alias_maximum`, 0 for none), each alias this connection's
+    only, 0 or one past the maximum 0x94, one never set 0x82; nothing
+    crosses the cluster as an alias, and Lir sends none. MQTT over
+    WebSocket (section 6) on Beast over Dannan's streams, `ws` and `wss`
+    listeners beside `tcp` and `tls`, in `lir.endpoints`: binary messages
+    only, packets split or joined across them, "mqtt" (or "mqttv3.1")
+    selected, a handshake offering neither refused. Gate on node-d: 251 of
+    251 (EdgeWebSocket 6).
+  - Per-topic order for QoS 0 (MQTT-4.6.0-6), on Dannan 0.11.1 (the
+    maintainer's ruling of 2026-11-23): Lir's channel is
+    `Delivery::ordered` (at most once, in order per origin, a late message
+    dropped, no replay), the cluster fixture's links in order as one
+    session's are; a test where links overtake shows a strictly increasing
+    subsequence. Every Lir node needs Dannan 0.11.1: a 0.11.0 node refuses
+    an ordered publish.
+  - On Dannan 0.11.0 (read against its changelog; TSan runs pass its
+    suppressions): `lir-node` (`tools/lir_node.cpp`, settings in
+    `lir/edge/settings.h`): Dannan's shared node settings under
+    `cluster.*`, Lir's `mqtt.*` (address, port, advertise, packet size,
+    topic aliases, tls, ws, wss), `anonymous.*`, `lugh.*` with the plugin,
+    `log.*`; refuses a start with no state or no way to prove itself.
+    Smoked on node-d as a real process: anonymous mosquitto clients
+    publish and subscribe, a credential with no plugin is refused 0x86,
+    SIGINT stops it cleanly. Twenty named conformance tests and the MQTT
+    3.1 identifier rule added; the gate counts 127 of 5.0's 252 proven, 1
+    waiting. Gate on node-d: 271 of 271, 1 disabled (waiting on 0.11.1).
+  - The `lir` package: `lir-node`, `lir.service` installed disabled
+    (hardened, no capabilities), the `lir` user by sysusers,
+    `/etc/lir/config.yaml` as a conffile (`config/config.yaml`),
+    `secrets.yaml` made by postinst, `lir-node(1)`; the broker library
+    static, as nothing else links it. `deb` on node-a in a clean trixie:
+    seven packages, the suite inside the build, lintian clean.
+  - The Lugh plugin pins Lugh 0.6.0 (on Dannan 0.11.0, Boost.JSON carried
+    once in libdannan; read against its changelog: nothing in the plugin
+    switches on a Fault, and its token and scope types are unchanged).
+
+- Two findings on the way, each sent to its project: Dannan's notify
+  channel promises no order, so QoS 0 broke MQTT-4.6.0-6 across nodes
+  (Dannan 0.11.1 added the ordered delivery, the maintainer's ruling);
+  and Dannan's ChildProcess read nothing with under a millisecond left
+  (fixed in 0.11.0). In Lir's own test fixtures: a client left on a
+  stalled link leaked under ASan (it now closes its end as it goes).
+- Gate on the merge (node-a): release 273 of 273; ASan and UBSan, TSan
+  273 of 273 each; coverage 98.0% of lines, 97.3% of functions, 281 of
+  281; fuzz, tidy, clang clean; the Lugh plugin 289 of 289; `deb` lintian
+  clean with the `lir` package. Conformance: 128 of 252 (5.0).
+
+**Handoff.** Release 0.3.0 waits for the maintainer's word. Then step 4 as
+Dagda's nouns ship.
+
 ## 2026-11-22, evening: release 0.2.0, the client
 
 - **Release 0.2.0** (`9085820`, annotated tag `0.2.0`, on main by fast

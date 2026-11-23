@@ -45,7 +45,7 @@ tomcully.com apt repository:
 - `liblir-client0.2`: the shared library `lir::client`;
 - `liblir-dev`: their headers and CMake package.
 
-They depend on Dannan's packages of the matching minor (`libdannan0.10`,
+They depend on Dannan's packages of the matching minor (`libdannan0.11`,
 `libdannan-dev`), from the same repository, which apt installs with them:
 
 ```sh

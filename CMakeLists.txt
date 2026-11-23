@@ -28,6 +28,9 @@ option(LIR_BUILD_FUZZING "Build the libFuzzer targets (lir/fuzz/), with clang" O
 # On: Dannan is the installed package (find_package), never a copy, and Lir's
 # install rules are defined, as the Debian build has it (docs/packaging.md).
 option(LIR_SYSTEM_DANNAN "Build against the installed Dannan and define the install rules" OFF)
+# On: the optional Lugh plugin (lir/auth/lugh.h), on Lugh's lugh_client;
+# Lir builds and serves without it (the maintainer, 2026-11-14).
+option(LIR_LUGH "Build the Lugh plugin and its tests" OFF)
 
 find_package(Boost 1.83 CONFIG REQUIRED COMPONENTS headers)
 find_package(OpenSSL 3 REQUIRED COMPONENTS Crypto SSL)
@@ -47,7 +50,11 @@ endif()
 set(LIR_DANNAN_REPOSITORY "${CMAKE_CURRENT_SOURCE_DIR}/../dannan" CACHE STRING "Dannan's repository, a path or a URL")
 # Not a cache variable: a moved pin must take effect in a build tree that
 # already exists.
-set(LIR_DANNAN_TAG "0.10.2")
+set(LIR_DANNAN_TAG "0.11.1")
+# Lugh, for the plugin, at its tag, as Dannan is. Fetched with neither its
+# node nor its tests, so it takes Lir's own lir::mqtt and dannan::dannan.
+set(LIR_LUGH_REPOSITORY "${CMAKE_CURRENT_SOURCE_DIR}/../lugh" CACHE STRING "Lugh's repository, a path or a URL")
+set(LIR_LUGH_TAG "0.6.0")
 include(FetchContent)
 include(GNUInstallDirs)
 # A project that fetches Lir has its own Dannan already: one Dannan a process.
@@ -59,6 +66,12 @@ elseif(NOT TARGET dannan::dannan)
   FetchContent_Declare(dannan GIT_REPOSITORY "${LIR_DANNAN_REPOSITORY}" GIT_TAG "${LIR_DANNAN_TAG}")
   set(DANNAN_BUILD_TESTING OFF CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(dannan)
+endif()
+
+# Every TSan run passes the stack's one list of suppressions, which Dannan
+# names whether found installed or fetched; tools/ci.sh reads its path here.
+if(DEFINED DANNAN_TSAN_SUPPRESSIONS)
+  file(WRITE "${PROJECT_BINARY_DIR}/tsan-suppressions.path" "${DANNAN_TSAN_SUPPRESSIONS}")
 endif()
 
 # Only Lir's own code is instrumented for libFuzzer's coverage, so the fuzzer

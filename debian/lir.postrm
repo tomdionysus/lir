@@ -1,0 +1,22 @@
+#!/bin/sh
+#
+# Lir - The Message Broker
+#
+# Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+# Licensed under the GNU GPLv3 - see <https://www.gnu.org/licenses/gpl-3.0.html>
+#
+# lir postrm: remove keeps the configuration; purge deletes it, as Debian
+# expects of a purge. The node's identity in /var/lib/lir is kept even by a
+# purge: a node purged by mistake comes back as itself.
+
+set -e
+
+case "$1" in
+    purge)
+        rm -rf /etc/lir
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

@@ -1,0 +1,2 @@
+# The service's own user: no login, no home.
+u lir - "Lir" /nonexistent /usr/sbin/nologin

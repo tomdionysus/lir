@@ -105,7 +105,8 @@ case "$step" in
     configure tsan -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLIR_WARNINGS_AS_ERRORS=OFF -DDANNAN_SANITIZE=thread -DCMAKE_CXX_FLAGS="$flags" \
       -DCMAKE_EXE_LINKER_FLAGS="$flags" -DCMAKE_SHARED_LINKER_FLAGS="$flags"
     instrumented tsan __tsan_
-    TSAN_OPTIONS="halt_on_error=1 second_deadlock_stack=1" "$out/tsan/lir_tests"
+    suppressions=$(cat "$out/tsan/tsan-suppressions.path")
+    TSAN_OPTIONS="halt_on_error=1 second_deadlock_stack=1 suppressions=$suppressions" "$out/tsan/lir_tests"
     ;;
   coverage)
     configure coverage -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS=--coverage -DCMAKE_EXE_LINKER_FLAGS=--coverage -DCMAKE_SHARED_LINKER_FLAGS=--coverage

@@ -34,108 +34,49 @@ In short (the maintainer, 2026-11-19 and 20):
 
 ## Resume here
 
-**State (2026-11-22).**
-- `develop` (pushed): the rewrite's `lir::mqtt` (every packet of 5.0,
-  3.1.1 and 3.1, properties, topics), its fuzz targets, the conformance
-  gate generated from test names, the Debian packages, on Dannan `0.10.1`.
-  Gate on node-b: release 113 of 113, ASan and TSan with Dannan
-  instrumented, deb lintian clean. CI green on develop and main.
-- `main` and tag `0.2.0` (`9085820`, the maintainer's word of
-  2026-11-22): `lir::mqtt` and `lir::client` on Dannan 0.10.2, packaged as
-  `liblir-mqtt0.2` and `liblir-client0.2`; the README says the broker is
-  not yet functional. Hosted CI green on the commit, all 15 jobs. Its
-  packages are staged in `../tomcully-apt/incoming/lir/0.2.0/`, as
-  `0.1.0`'s are; publishing them is the maintainer's. The next release,
-  `0.3.0`, is the broker, cut when step 2 is done.
-- `feature/step2` rebased on the release: 207 of 207 on node-d
-  (release, -j1).
-- `feature/step2` (local, not pushed), two commits on develop:
-  - `63adf83`, `lir::broker::Delivery` on Dannan's notify channel, 7
-    tests; passed on node-b on Dannan 0.9.2 (121 of 121), not yet run on
-    0.10.1.
-  - `93b9a9a`, the connection core's start, **unbuilt**:
-    `lir/contract/connection.h` and `authenticator.h` restored unchanged
-    from `docs/contract-v1/`, and the cluster fixture shared as
-    `lir/test/fixtures/cluster.h` (the delivery test uses it). Build and
-    run it first.
+**State (2026-11-23).**
+- `develop` (pushed): step 2, the broker, squash-merged: one client's
+  protocol (`lir::broker::Link`) over Dannan's streams (`lir::edge`), on
+  every node of the cluster alike (`lir::edge::Server`), with `lir-node`
+  and its `lir` package; QoS 0 across nodes on Dannan's ordered delivery,
+  wildcards, subscription options, topic aliases, keep-alive, enhanced
+  authentication, MQTT over TCP, TLS and WebSocket, anonymous clients by
+  filter, the optional Lugh plugin, and the system topics rendered by each
+  node for its own subscribers. On Dannan `0.11.1` and Lugh `0.6.0` (the
+  plugin). The limits until Dagda's nouns ship stand, said in MQTT's own
+  terms: Maximum QoS 0, Retain Available 0, every will refused, session
+  expiry answered as 0.
+  - Gate on the merge (node-a, 2026-11-23): release 273 of 273; ASan and
+    UBSan 273 of 273, no leak; TSan 273 of 273; coverage 98.0% of lines,
+    97.3% of functions, 281 of 281 (what is unrun is defensive, and the
+    server's WebSocket closing handshake, which no test reaches); fuzz,
+    tidy and the clang build clean (281 of 281); with the Lugh plugin 289
+    of 289; `deb` in a clean trixie, seven packages, lintian clean. The
+    conformance gate: 128 of 5.0's 252 statements proven, none waiting.
+  - The tests of step 2 were written with the code, not seen failing
+    first, except where the record says so.
+- `main` and tag `0.2.0` (`9085820`): `lir::mqtt` and `lir::client`. Its
+  packages and `0.1.0`'s are staged in `../tomcully-apt/incoming/lir/`;
+  publishing them is the maintainer's.
 - The standing cluster runs the old code (`4762186`, Dannan 0.9.2) on all
   four build nodes and carries the claim board. Nothing is added to it;
   every restart needs the maintainer's approval
   (`deploy/test-cluster/README.md`).
 
 **Next, in this order.**
-1. **Step 2, the connection core** on `feature/step2`: `lir::broker::Link`,
-   one client's protocol with no I/O of its own, fed bytes and answering
-   through `contract::Connection`, tested on the cluster fixture with a
-   fake `Connection`, every test named by its statement. Scope settled for
-   the first piece:
-   - CONNECT: first packet must be CONNECT (3.1.0-1), a second is a
-     protocol error (3.1.0-2); authentication through
-     `contract::Authenticator`; CONNACK with Maximum QoS 0, Retain
-     Available 0, Shared Subscription Available 0, Subscription
-     Identifier Available 0, a requested Session Expiry answered as 0,
-     Session Present 0; an empty client id assigned (3.2.2-16); a 5.0 will
-     at QoS above 0 refused 0x9B, a retained will 0x9A (3.2.2-12, -13); a
-     refusal closes (3.2.2-8), 3.x return codes mapped from the 5.0
-     reasons.
-   - SUBSCRIBE: each filter through `Delivery`, SUBACK once every hold is
-     in (3.8.4-1 to -8), granted QoS 0; a missed hold fails that filter
-     (5.0) or closes (3.x) and unsubscribes it; an identical filter
-     replaces the old subscription (3.8.4-3); a shared filter 0x9E;
-     Subscription Identifiers 0xA1.
-   - UNSUBSCRIBE and UNSUBACK (3.10.4-1 to -6); PINGREQ (3.12.4-1);
-     DISCONNECT (3.14.4-1, -2).
-   - PUBLISH at QoS 0 through `Delivery`, retain and dup cleared on the
-     way out, properties dropped for a 3.x receiver; QoS 1 or 2 is a 5.0
-     DISCONNECT 0x9B or a 3.x close; a 5.0 retain 0x9A; a topic alias
-     0x94 (Topic Alias Maximum 0).
-   - Then keep-alive (needs a time source: Dannan's, injected) and 5.0
-     enhanced authentication (AUTH).
-   - Open, not guessed: a 3.x will Lir cannot publish (wills wait on
-     Dagda D5); No Local, which needs the publishing connection's origin
-     on the channel; a 3.x retained publish, which 3.x cannot refuse.
-     Settle each through the coordinating session before coding it.
-   - The system topics: designed in
-     [`2026-11-22-system-topics.md`](2026-11-22-system-topics.md), each a
-     view every node renders for its own subscribers from Dannan's roster,
-     adverts and telemetry, or an event published by the one node that saw
-     it; no node publishes for the others. Its payloads are JSON, which is
-     Dannan 0.11.0's (item 24): code waits on that tag. The design is approved
-     (Decisions).
-2. **Step 2, the transport** on Dannan 0.11.0's stream carrier
-   (`listen/memory.h`'s `memory_pair`, `StreamListener::inject`,
-   `test/fixtures/sim/streams.h`): `lir-node` serving MQTT on the
-   cluster, wildcards, the system topics. Its API is as agreed with Dannan;
-   0.11.0 is not tagged yet.
-3. **`lir::client`** (step 3 of the design), so Louhi, Lugh's events
-   publisher and Mimir can move off the old pin. Written new, not
-   restored. Louhi's requirements (2026-11-20): construct on an executor
-   with a config, Dannan's time source and a scoped logger; the config
-   carries the broker endpoints (from Dannan's roster), optional TLS trust
-   roots, the client id, MQTT 5 and a will; a state callback with each
-   change's reason; start, and stop with a callback once closed; publish
-   with its outcome (ok, why) to a callback; a token source called on
-   each connect (a Lugh access token); reconnection with Dannan's backoff;
-   every callback posted to the caller's executor. Ships as
-   `liblir-client0.1`; tell Louhi the names and the commit.
-   - Done (2026-11-22): `lir::client` on develop, to the contract header
-     byte for byte, packaged as `liblir-client0.1`. Its tests run against a
-     scripted broker on Dannan's listener; an end-to-end test against
-     `Link` waits for step 2's transport.
-   - Louhi (2026-11-22, through the coordinating session): it keeps its pin
-     at `e40dd2e`, events off by default, until D5 and D6 ship. Its retained
-     statuses and its retained QoS 1 will need them; it builds no QoS 0
-     interim. Owed to Louhi, directly: (1) the `lir::client` develop commit
-     when it lands; (2) word when the broker accepts retained messages and
-     wills.
-4. Done on `feature/fuzz-smoke` (2026-11-22): the three targets register
-   with `dannan::testing`, `lir_tests` smokes each on every gate
-   (`FuzzSmoke`), and the libFuzzer binaries share one driver.
-5. **Release `0.3.0`**, the broker, when step 2 is done, by the release
-   procedure below. (`0.2.0`, the client, was released 2026-11-22.)
-6. Step 4 of the design as Dagda ships each noun: client-id leases (D5),
+1. **Release `0.3.0`**, the broker, on the maintainer's word, by the
+   release procedure below: the version to 0.3.0, the README's status and
+   the CHANGELOG, then hosted CI, the tag, `main`, and the packages
+   (`liblir-mqtt0.3`, `liblir-client0.3`, `liblir-dev`, `lir`) staged.
+2. Step 4 of the design as Dagda ships each noun: client-id leases (D5),
    sessions (D1, D2), the log for QoS 1 and 2 (D9), retained (D6, in
    Dagda 0.4.0), wills and timed ends. Each lifts its stated limit.
+   - Owed to Louhi, directly: word when the broker accepts retained
+     messages and wills.
+3. The status and admin dashboard, on `@lugh/admin-ui` (Lugh 0.6.0), with
+   Lir's own payload viewer; then the later pieces (shared subscriptions on
+   Dannan's placement, Server Reference, MQTT-SN, the rules engine,
+   history).
 
 ## How work is done
 
@@ -186,40 +127,18 @@ In short (the maintainer, 2026-11-19 and 20):
 
 ## What waits, and on whom
 
-- **Dannan 0.11.0:** the stream carrier, which step 2's transport is built
-  and tested on (feature/stream-carrier, first in line; no date).
-- **Dannan 0.11.0, also:** JSON (item 24's Boost.JSON half), for every
-  system topic's payload: moved forward from 0.12.0 by the maintainer
-  (2026-11-22, Decisions), HTTP left in 0.12.0; Dannan has it in its plan
-  and will send the header when its branch opens, before its gate, for
-  Lir to check against the system topics. Dannan's order: its relay test
-  fixes, then 0.10.3 (a patch for Dagda; read its changelog when tagged),
-  then 0.11.0. No date.
-- **Dagda 0.4.0** (on Dannan 0.10.0): D6, the register map, for retained
-  messages; read its notes when it lands. Then D5 (leases), D1 and D2
-  (replicated spaces, a caught-up signal per space), D9 (the log).
-- **Dannan, later:** HTTP and JSON (the dashboard and HTTP publish), the
+- **Dagda 0.4.0:** D6, the register map, for retained messages; read its
+  notes when it lands. Then D5 (leases: the client-id lease, wills), D1
+  and D2 (replicated spaces, a caught-up signal per space: sessions), D9
+  (the log: QoS 1 and 2).
+- **Dannan, later:** HTTP (0.12.0: the dashboard and HTTP publish), the
   `DatagramListener` (the MQTT-SN DTLS gateway), the atomic commit across
   names (guarded publish), the per-peer answer bound for the SUBACK hold
   (L2).
-- **Lugh:** Lugh 0.5.0 is tagged (2026-11-22), with the plugin's
-  vocabulary below and `lugh::client_topics` (`may_publish`,
-  `may_subscribe` on `lir::mqtt`) for its Grant. Asked of Lugh before the
-  plugin's CMake: whether its build takes an existing `lir::mqtt` target
-  rather than fetching its own, so one process never carries two codecs.
-  Lugh still pins `lir::mqtt` 0.1.0; told of 0.2.0.
-  Lugh 0.4.0 (2026-11-22): lugh-node's flags renamed to the stack's config
-  names (`--server-address`, `--server-port`, `--oauth-issuer`,
-  `--oauth-mtls-port`), and Lugh pins `lir::mqtt` at `0.1.0`; nothing of
-  Lir's used the old names. In Lugh 0.5.0 `lugh_client`'s Fault, Outcome
-  and Completion become aliases of Dannan's `contract/completion.h`, with
-  two new Fault kinds a caller sees, `unavailable` and `timed_out` (where it
-  said `failed`), and `lugh::undecided(fault)` covering the three: the
-  plugin is written against that.
 - **OASIS:** an approved MQTT-SN 2.0 Committee Specification.
-- **The maintainer:** publishing the 0.1.0 and 0.2.0 packages from
-  `../tomcully-apt/incoming/lir/`; his word for the next merge to
-  `main`.
+- **The maintainer:** his word for release 0.3.0 (the broker) and its
+  merge to `main`; publishing the 0.1.0 and 0.2.0 packages from
+  `../tomcully-apt/incoming/lir/`.
 
 Not taken: Dependabot's moves of `actions/checkout` and
 `codecov/codecov-action` to v7. Dannan, the reference for the stack's CI,
@@ -252,6 +171,11 @@ Not reopened without asking the maintainer.
   subscribers from Dannan's roster, adverts and telemetry, each payload
   saying which node rendered it; connection events published by the node
   that saw them. No node publishes for the others.
+- (2026-11-22, the maintainer) Until Dagda's leases (D5), every will is
+  refused at CONNECT: 0x9B above QoS 0, 0x9A retained, otherwise 0x83; 3.x
+  return code 3. A 3.x retained PUBLISH closes the connection, as one above
+  QoS 0 does. No Local is honoured by carrying the publisher's client id
+  ahead of the 5.0 PUBLISH on Lir's channel.
 
 - (2026-11-20, the maintainer) Lir is rewritten from scratch. Its contract with other
   systems is stored and kept (`docs/contract.md`); nothing else of the old

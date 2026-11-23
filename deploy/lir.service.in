@@ -1,0 +1,70 @@
+#
+# Lir - The Message Broker
+#
+# Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+# Licensed under the GNU GPLv3 - see <https://www.gnu.org/licenses/gpl-3.0.html>
+#
+
+[Unit]
+Description=Lir, one node of the MQTT broker
+Documentation=https://github.com/tomdionysus/lir
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# Written by CMake from deploy/lir.service.in, its paths the install layout's.
+# The configuration is the operator's (/etc/lir/config.yaml, secrets.yaml
+# beside it); only the state directory is fixed here.
+ExecStart=@LIR_NODE_BINARY@ \
+    --config @LIR_CONFDIR@/config.yaml \
+    --cluster-state /var/lib/lir
+
+User=lir
+Group=lir
+
+Restart=on-failure
+RestartSec=5s
+
+# /var/lib/lir, made by systemd, 0700: the node's identity and Dannan's
+# state, the one place the service may write.
+StateDirectory=lir
+StateDirectoryMode=0700
+
+# MQTT's ports (1883, 8883) need no privilege; nothing else is granted.
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+LimitCORE=0
+TasksMax=256
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateUsers=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RemoveIPC=yes
+UMask=0077
+
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete @mount @swap @reboot @raw-io
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

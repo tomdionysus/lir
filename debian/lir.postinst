@@ -1,0 +1,48 @@
+#!/bin/sh
+#
+# Lir - The Message Broker
+#
+# Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+# Licensed under the GNU GPLv3 - see <https://www.gnu.org/licenses/gpl-3.0.html>
+#
+# lir postinst: who may read what. The configuration and secrets.yaml are
+# readable by the service and nobody else; secrets.yaml is the site's, made
+# empty here if absent and never part of the package. The cluster key and
+# any TLS pair are the operator's to put there.
+
+set -e
+
+CONFDIR=/etc/lir
+STATEDIR=/var/lib/lir
+
+#DEBHELPER#
+
+# After debhelper's snippets, where dh_installsysusers makes the lir user.
+case "$1" in
+    configure)
+        chown root:lir "$CONFDIR" "$CONFDIR/config.yaml"
+        chmod 0750 "$CONFDIR"
+        chmod 0640 "$CONFDIR/config.yaml"
+        if [ ! -e "$CONFDIR/secrets.yaml" ]; then
+            (umask 027 && : >"$CONFDIR/secrets.yaml")
+        fi
+        chown root:lir "$CONFDIR/secrets.yaml"
+        chmod 0640 "$CONFDIR/secrets.yaml"
+
+        mkdir -p "$CONFDIR/tls"
+        chown root:lir "$CONFDIR/tls"
+        chmod 0750 "$CONFDIR/tls"
+
+        # systemd's StateDirectory= keeps it once the service has run.
+        mkdir -p "$STATEDIR"
+        chown lir:lir "$STATEDIR"
+        chmod 0700 "$STATEDIR"
+        ;;
+esac
+
+if [ "$1" = "configure" ] && [ -z "${2:-}" ]; then
+    echo "lir is installed and disabled. Put the cluster's key in $CONFDIR/cluster.key (root:lir, 0640),"
+    echo "set cluster.bootstrap in $CONFDIR/config.yaml on every node but the first, then: systemctl enable --now lir"
+fi
+
+exit 0

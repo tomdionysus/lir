@@ -2,8 +2,7 @@
 
 Lir is packaged for Debian trixie, on x86-64 and arm64, to the stack's
 convention: Dannan's and Dagda's `debian/`, the coordinating session's
-record of 2026-11-20. While the rewrite has its libraries and no broker,
-the packages are:
+record of 2026-11-20. The packages are:
 
 - `liblir-mqtt<major.minor>` (now `liblir-mqtt0.2`): `lir::mqtt`, the shared
   library every MQTT speaker in the stack links (`docs/contract.md`,
@@ -15,11 +14,15 @@ the packages are:
 - `liblir-dev`: the headers, the `.so` links and the CMake package
   configuration. It depends on exactly its own release's libraries and on
   `libdannan-dev` of the minor Lir builds on.
+- `lir`: the broker's node, `lir-node`, with its service
+  (`lir.service`, installed disabled), the `lir` system user (sysusers),
+  `/etc/lir/config.yaml` as a conffile (`config/config.yaml`), and
+  `/etc/lir/secrets.yaml` made empty by postinst and never part of the
+  package. The operator puts the cluster's key in `/etc/lir/cluster.key`
+  (and any TLS pair in `/etc/lir/tls`), then enables the service. A purge
+  removes `/etc/lir` and keeps `/var/lib/lir`, the node's identity. The
+  status and admin dashboard joins it when it exists.
 - Debug symbols for each, as `-dbgsym` packages.
-
-The broker joins as `lir` (its node, `/etc/lir/config.yaml`, the
-systemd unit, the `lir` system user and the dashboard) when it serves
-clients.
 
 The packages are built with debhelper from `debian/`, driving the CMake
 build; the CMake install rules decide where every file goes, and

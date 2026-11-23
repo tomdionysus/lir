@@ -40,31 +40,39 @@ def main(out_path, tests):
     preamble = f"{HERE}/preamble.md"
     v31 = f"{HERE}/mqtt-3.1.md"
     proven = {}
+    # A disabled test names a statement whose noun has not shipped: waiting,
+    # never proven.
+    waiting = {}
     for path in tests:
         text = open(path, encoding="utf-8").read()
         short = path.split("/")[-1]
         for suite, name in TEST.findall(text):
+            into = waiting if name.startswith("DISABLED_") else proven
             for key in ids_of(name):
-                proven.setdefault(key, []).append(f"{short}:{suite}.{name}")
+                into.setdefault(key, []).append(f"{short}:{suite}.{name}")
     stmts = {}
     for version, f in (("5.0", f"{HERE}/statements-5.0.tsv"), ("3.1.1", f"{HERE}/statements-3.1.1.tsv")):
         stmts[version] = [line.rstrip("\n").split("\t") for line in open(f, encoding="utf-8")]
     known = {(v, row[0]) for v, rows in stmts.items() for row in rows}
-    stray = sorted(k for k in proven if k not in known)
+    stray = sorted(k for k in list(proven) + list(waiting) if k not in known)
     if stray:
         sys.exit(f"tests name statements that do not exist: {stray}")
 
     lines = [open(preamble, encoding="utf-8").read().rstrip("\n"), "", "## The figures", ""]
-    lines += ["| Version | Statements | Proven by a test | Not yet |", "|---|---|---|---|"]
+    lines += ["| Version | Statements | Proven by a test | Waiting on a noun | Not yet |", "|---|---|---|---|---|"]
     for version in ("5.0", "3.1.1"):
         rows = stmts[version]
         done = sum(1 for r in rows if (version, r[0]) in proven)
-        lines.append(f"| {version} | {len(rows)} | {done} | {len(rows) - done} |")
+        held = sum(1 for r in rows if (version, r[0]) not in proven and (version, r[0]) in waiting)
+        lines.append(f"| {version} | {len(rows)} | {done} | {held} | {len(rows) - done - held} |")
     lines += ["", open(v31, encoding="utf-8").read().rstrip("\n")]
     for version, title in (("5.0", "MQTT 5.0"), ("3.1.1", "MQTT 3.1.1")):
         lines += ["", f"## {title}, statement by statement", "", "| Id | Section | Statement | Test |", "|---|---|---|---|"]
         for ident, section, text in stmts[version]:
-            tests_for = "<br>".join(f"`{t}`" for t in proven.get((version, ident), [])) or "not yet"
+            tests_for = "<br>".join(f"`{t}`" for t in proven.get((version, ident), []))
+            if not tests_for and (version, ident) in waiting:
+                tests_for = "waiting: " + "<br>".join(f"`{t}`" for t in waiting[(version, ident)])
+            tests_for = tests_for or "not yet"
             cell = text.replace("|", "\\|")
             lines.append(f"| `{ident}` | {section.split(' ')[0]} | {cell} | {tests_for} |")
     with open(out_path, "w", encoding="utf-8") as f:

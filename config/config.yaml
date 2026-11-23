@@ -1,0 +1,45 @@
+# Lir: one node's settings (lir-node --help lists every one). Each key may
+# also be a flag (cluster.listen.port is --cluster-listen-port) or a variable
+# (LIR_CLUSTER_LISTEN_PORT), which win over this file; secrets.yaml beside it,
+# in the same shape, is for what should not sit here.
+#
+# Every node of a cluster runs the same: there is no node of any other kind.
+
+# The node in Dannan's cluster (Dannan's docs/config.md, "cluster.*").
+cluster:
+  # The cluster's shared key: the same file on every node. Put it here,
+  # readable by root and the lir group only.
+  key: /etc/lir/cluster.key
+  # Nodes already in the cluster to meet first, as HOST:PORT; none for the
+  # first node.
+  bootstrap: []
+  listen:
+    port: 7437
+
+# Where clients reach this node. Each transport is advertised in Dannan's
+# roster, where lir::client and every other node find it.
+mqtt:
+  address: 0.0.0.0
+  port: 1883
+  # MQTT over TLS, and over WebSocket on TLS, with the operator's pair:
+  # tls:
+  #   port: 8883
+  #   certificate: /etc/lir/tls/cert.pem
+  #   key: /etc/lir/tls/key.pem
+  # wss:
+  #   port: 8884
+  # MQTT over WebSocket, plaintext:
+  # ws:
+  #   port: 8080
+
+# Clients that sign in with nothing are refused unless allowed, and then held
+# to these topic filters.
+anonymous:
+  allow: false
+  # publish: []
+  # retain: []
+  # subscribe: []
+
+log:
+  level: info
+  format: text

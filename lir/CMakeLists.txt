@@ -66,7 +66,17 @@ if(NOT LIR_BUILD_SERVER)
   return()
 endif()
 
-add_library(lir SHARED
+# The broker, linked into lir-node and the tests; static, as no other
+# program links it (the public libraries are lir::mqtt and lir::client).
+add_library(lir STATIC
+  auth/anonymous.cpp
+  broker/delivery.cpp
+  broker/link.cpp
+  edge/edge.cpp
+  edge/server.cpp
+  edge/settings.cpp
+  edge/websocket.cpp
+  system/views.cpp
   version.cpp
 )
 target_include_directories(lir
@@ -79,4 +89,40 @@ target_link_libraries(lir
   PUBLIC lir_mqtt dannan::dannan Boost::headers OpenSSL::SSL OpenSSL::Crypto Threads::Threads
   PRIVATE lir_warnings
 )
-set_target_properties(lir PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR})
+
+# The optional Lugh plugin, after lir::mqtt exists for Lugh's topic checks to
+# take. Static, as Lugh's client libraries are.
+if(LIR_LUGH)
+  set(LUGH_BUILD_NODE OFF CACHE BOOL "" FORCE)
+  set(LUGH_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+  FetchContent_Declare(lugh GIT_REPOSITORY "${LIR_LUGH_REPOSITORY}" GIT_TAG "${LIR_LUGH_TAG}")
+  FetchContent_MakeAvailable(lugh)
+  add_library(lir_lugh STATIC
+    auth/lugh.cpp
+  )
+  target_link_libraries(lir_lugh
+    PUBLIC lir lugh::client_topics
+    PRIVATE lir_warnings
+  )
+  # The settings take lugh.* only from a build that can use them.
+  target_compile_definitions(lir PUBLIC LIR_WITH_LUGH)
+endif()
+
+# One node of Lir (tools/lir_node.cpp): a Dannan node serving MQTT.
+add_executable(lir-node ${PROJECT_SOURCE_DIR}/tools/lir_node.cpp)
+target_link_libraries(lir-node PRIVATE lir lir_warnings)
+if(LIR_LUGH)
+  target_link_libraries(lir-node PRIVATE lir_lugh)
+endif()
+
+# The node's service and its example configuration, installed with the
+# installed Dannan, as the Debian build has it (debian/rules splits them).
+if(LIR_SYSTEM_DANNAN)
+  set(LIR_NODE_BINARY "${CMAKE_INSTALL_FULL_BINDIR}/lir-node")
+  set(LIR_CONFDIR "${CMAKE_INSTALL_FULL_SYSCONFDIR}/lir")
+  configure_file(${PROJECT_SOURCE_DIR}/deploy/lir.service.in ${PROJECT_BINARY_DIR}/lir.service @ONLY)
+  install(TARGETS lir-node RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+  install(FILES ${PROJECT_BINARY_DIR}/lir.service DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/systemd/system)
+  install(FILES ${PROJECT_SOURCE_DIR}/config/config.yaml DESTINATION ${CMAKE_INSTALL_SYSCONFDIR}/lir)
+  install(FILES ${PROJECT_SOURCE_DIR}/docs/man/lir-node.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
+endif()

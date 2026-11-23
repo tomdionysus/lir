@@ -5,8 +5,8 @@
 # Copyright (C) 2026 Tom Cully <mail@tomcully.com>
 # Licensed under the GNU GPLv3 - see <https://www.gnu.org/licenses/gpl-3.0.html>
 #
-# Builds the Debian packages (liblir-mqtt<major.minor>, liblir-dev and debug
-# symbols) on Debian trixie from a git checkout, natively for the machine's
+# Builds the Debian packages (liblir-mqtt<major.minor>, liblir-client<major.minor>,
+# liblir-dev, lir and debug symbols) on Debian trixie from a git checkout, natively for the machine's
 # architecture, against the installed libdannan-dev. The packages are written
 # to build-deb/ (docs/packaging.md).
 #
@@ -70,7 +70,7 @@ END
 dpkg-buildpackage -us -uc -b "$@"
 
 mkdir -p build-deb
-for f in ../liblir*_"$version"_*.deb ../lir_"$version"_*.buildinfo ../lir_"$version"_*.changes; do
+for f in ../liblir*_"$version"_*.deb ../lir_"$version"_*.deb ../lir-dbgsym_"$version"_*.deb ../lir_"$version"_*.buildinfo ../lir_"$version"_*.changes; do
   if [ -e "$f" ]; then mv "$f" build-deb/; fi
 done
 ls -l build-deb/*"$version"*

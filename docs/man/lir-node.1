@@ -1,0 +1,102 @@
+.\" Lir - The Message Broker
+.\" Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+.\" Licensed under the GNU GPLv3 - see <https://www.gnu.org/licenses/gpl-3.0.html>
+.TH LIR-NODE 1 2026-11-23 Lir "Lir"
+.SH NAME
+lir-node \- one node of Lir, a clustered MQTT broker
+.SH SYNOPSIS
+.B lir-node
+.RB [ \-\-config
+.IR path ]
+.RI [ settings ]
+.br
+.B lir-node
+.B \-\-version
+.br
+.B lir-node
+.B \-\-help
+.SH DESCRIPTION
+.B lir-node
+runs one node of Lir: a Dannan node that serves MQTT 5.0, 3.1.1 and 3.1 over
+TCP, and over TLS and WebSocket when configured. Every node of a cluster is
+the same; a client may connect to any of them, and what it publishes reaches
+the subscribers on every node. Each node says where it serves in Dannan's
+roster, where clients and the other nodes find it.
+.PP
+It runs until SIGTERM or SIGINT, then withdraws what it advertises, closes
+its clients and leaves the cluster.
+.SH SETTINGS
+Settings come from, each overriding the one before: the defaults, the YAML
+file
+.RB ( \-\-config ,
+.BR $LIR_CONFIG ,
+else
+.I /etc/lir/config.yaml
+when it exists),
+.I secrets.yaml
+beside it, the environment
+.RB ( LIR_ *),
+then the command line. A key is a flag and a variable by one rule:
+.B cluster.listen.port
+is
+.B \-\-cluster\-listen\-port
+and
+.BR LIR_CLUSTER_LISTEN_PORT .
+.B \-\-help
+lists every setting.
+.TP
+.B cluster.*
+The node in Dannan's cluster, shared by every node binary of the stack:
+.BR cluster.key ,
+.BR cluster.bootstrap ,
+.BR cluster.state ,
+.BR cluster.listen.port
+and the rest. A node needs a state directory and the cluster's key (or a
+certificate).
+.TP
+.B mqtt.*
+Where clients reach it:
+.BR mqtt.address ,
+.BR mqtt.port ,
+.BR mqtt.advertise ,
+.BR mqtt.tls.* ,
+.BR mqtt.ws.port ,
+.BR mqtt.wss.port ,
+.BR mqtt.maximum_packet_size ,
+.BR mqtt.topic_alias_maximum .
+.TP
+.B anonymous.*
+Clients that sign in with nothing are refused unless
+.B anonymous.allow
+is set, and are then held to the topic filters in
+.BR anonymous.publish ,
+.B anonymous.retain
+and
+.BR anonymous.subscribe .
+.TP
+.B lugh.*
+With the Lugh plugin: the issuers whose access tokens sign clients in, and
+the audience a token must name.
+.TP
+.B log.level\fR, \fBlog.format
+.BR debug ,
+.BR info ,
+.B warn
+or
+.BR error ;
+.B text
+or
+.BR json .
+.SH FILES
+.TP
+.I /etc/lir/config.yaml
+The configuration.
+.TP
+.I /etc/lir/secrets.yaml
+Settings that should not sit in the configuration.
+.TP
+.I /var/lib/lir
+The node's state: its identity and Dannan's.
+.SH EXIT STATUS
+0 once stopped by a signal, 1 when the node could not run, 2 for a setting
+that cannot be used.

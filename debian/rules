@@ -52,3 +52,13 @@ override_dh_install:
 	dh_install -pliblir-dev usr/lib/$(DEB_HOST_MULTIARCH)/liblir_mqtt.so
 	dh_install -pliblir-dev usr/lib/$(DEB_HOST_MULTIARCH)/liblir_client.so
 	dh_install -pliblir-dev usr/lib/$(DEB_HOST_MULTIARCH)/cmake/lir
+	dh_install -plir usr/bin/lir-node
+	dh_install -plir usr/lib/systemd/system/lir.service
+	dh_install -plir etc/lir/config.yaml
+	dh_install -plir usr/share/man/man1/lir-node.1
+
+# The packaged configuration needs the cluster's key first, so the service
+# is installed disabled and not started. An upgrade restarts it if it is
+# enabled or running.
+override_dh_installsystemd:
+	dh_installsystemd --no-enable

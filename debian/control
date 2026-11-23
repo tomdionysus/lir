@@ -4,9 +4,10 @@ Priority: optional
 Maintainer: tomdionysus <tomdionysus@users.noreply.github.com>
 Build-Depends:
  debhelper-compat (= 13),
+ dh-sequence-installsysusers,
  cmake,
- libdannan-dev (>= 0.10.2),
- libdannan-dev (<< 0.11~),
+ libdannan-dev (>= 0.11.1),
+ libdannan-dev (<< 0.12~),
  libboost-dev (>= 1.83),
  libssl-dev,
  libgtest-dev <!nocheck>,
@@ -58,8 +59,8 @@ Depends:
  liblir-mqtt0.2 (= ${binary:Version}),
  liblir-client0.2 (= ${binary:Version}),
  libboost-dev (>= 1.83),
- libdannan-dev (>= 0.10.2),
- libdannan-dev (<< 0.11~),
+ libdannan-dev (>= 0.11.1),
+ libdannan-dev (<< 0.12~),
  ${misc:Depends},
 Description: MQTT codec and client of the Lir message broker (development files)
  Lir is a clustered publish/subscribe bus that presents itself to clients
@@ -68,3 +69,22 @@ Description: MQTT codec and client of the Lir message broker (development files)
  This package holds the headers and the CMake package configuration:
  find_package(lir <version> CONFIG), then link lir::mqtt or lir::client,
  which bring Dannan.
+
+Package: lir
+Section: net
+Architecture: any
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+Recommends:
+ systemd,
+Description: clustered MQTT broker
+ Lir is a clustered publish/subscribe bus that presents itself to clients
+ as one MQTT broker (5.0, 3.1.1 and 3.1, over TCP, TLS and WebSocket), a
+ hosted system on Dannan, the network layer. Every node is the same; a
+ client may connect to any of them, and what it publishes reaches the
+ subscribers on every node.
+ .
+ This package holds lir-node and its service, installed disabled: put the
+ cluster's key in /etc/lir/cluster.key and set /etc/lir/config.yaml, then
+ enable lir.service.
