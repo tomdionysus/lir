@@ -156,6 +156,11 @@ In short (the maintainer, 2026-11-19 and 20):
   `DatagramListener` (the MQTT-SN DTLS gateway), the atomic commit across
   names (guarded publish), the per-peer answer bound for the SUBACK hold
   (L2).
+- **Dannan 0.13.0** (about 2026-12-05, the maintainer's ruling): a DNS
+  client (asynchronous, with a deadline; A, AAAA, SRV, TXT; resolv.conf's
+  servers by default). Lir calls none itself: lir::client's `host` mode
+  dials through Dannan's connector, which moves onto it. Asked of it: the
+  lookup inside the dial's deadline, each address of several tried.
 - **OASIS:** an approved MQTT-SN 2.0 Committee Specification.
 - **The maintainer:** publishing the 0.1.0 and 0.2.0 packages from
   `../tomcully-apt/incoming/lir/`. Release 0.3.0 waits on Dagda (Decisions).
