@@ -159,8 +159,9 @@ configuration as the rest of `lir-node`.
 - L1, the order stamp for retained values: settled, (hlc stamp, node id).
 - L2, the SUBACK hold, and L7, groups past 64 adverts: with Dannan.
 - L3, the scope grammar: with Lugh.
-- L8, an address for plain clients that survives a node: Manannan's
-  cluster DNS server (2026-11-23; Dannan dropped its responder).
+- L8, an address for plain clients that survives a node: none planned
+  (2026-11-23: no cluster DNS in Dannan or Manannan); plain clients are
+  given node addresses or the operator's own DNS, lir::client the roster.
 - The offline queue's shape against D9: owed by Dagda.
 - HTTP in Dannan: with the audit.
 - The harness as an installed fixture: to ask Dannan.

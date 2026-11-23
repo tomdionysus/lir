@@ -217,9 +217,11 @@ Not reopened without asking the maintainer.
   serves clients across nodes is `0.2.0`.
 - (2026-11-20, the maintainer) Retained values order by (hlc stamp, node id) (L1);
   HTTP and JSON are Dannan's; plain clients find a live node through
-  a DNS name (L8): Dannan's responder then, Manannan's cluster DNS server
-  since Dannan dropped its own (2026-11-23); retirement is an operator
-  command.
+  a DNS name (L8): Dannan's responder then; since 2026-11-23 no cluster
+  DNS is planned (Dannan's responder dropped, and the maintainer ruled
+  that no project needs Manannan to serve DNS), so plain clients are
+  given node addresses or the operator's own DNS, and lir::client reads
+  Dannan's roster; retirement is an operator command.
 - (2026-11-19, the maintainer, on the first guarded-publish design) Lir builds no
   workaround for what Dannan or Dagda has not shipped, and does not offer
   one to the maintainer as a choice.

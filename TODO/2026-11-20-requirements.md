@@ -124,9 +124,10 @@ stand-in.
 Proved by the board's three endpoints running on it: `POST /publish`,
 `GET /retained`, and `GET /subscribe` as SSE.
 
-**DNS responder (Q3).** Now Manannan's: Dannan dropped its responder
-(stack item 25, 2026-11-23) and Manannan becomes the cluster's DNS server.
-Lir needs:
+**DNS responder (Q3).** Withdrawn (2026-11-23): Dannan dropped its
+responder (stack item 25), and the maintainer ruled that no project needs
+Manannan to serve DNS. Names are resolved with the system's resolver. What
+Lir had asked for, kept for the record:
 - A and AAAA records for a configured name, giving the active, ready nodes
   that advertise `lir.endpoints`, with a TTL of a few seconds (5 s
   proposed);
