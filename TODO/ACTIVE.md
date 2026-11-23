@@ -137,8 +137,9 @@ In short (the maintainer, 2026-11-19 and 20):
   register map in its tree (`dagda/heads/register_map.h`), but stamping
   with a Lamport stand-in "until Dannan's HlcClock::admit is released; no
   space is opened on it in a release", and its changelog says the
-  contract is unchanged. Lir builds on it once Dagda says it is public
-  (the coordinator asked; Dannan's admit is in 0.10.0). Then D5 (leases: the client-id lease, wills), D1
+  contract is unchanged. Dagda's answer (2026-11-23): D6 is not public in
+  0.4.0; it comes in Dagda 0.5.0 with D5, and Dagda will say when D6
+  reaches its develop. Then D5 (leases: the client-id lease, wills), D1
   and D2 (replicated spaces, a caught-up signal per space: sessions), D9
   (the log: QoS 1 and 2).
 - **Dannan, later:** HTTP (0.12.0: the dashboard and HTTP publish), the
