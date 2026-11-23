@@ -73,6 +73,13 @@ In short (the maintainer, 2026-11-19 and 20):
    Dagda 0.4.0), wills and timed ends. Each lifts its stated limit.
    - Owed to Louhi, directly: word when the broker accepts retained
      messages and wills.
+   - AthenaSIP's liveness scenario
+     (`../athenasip/TODO/2026-11-23-lir-liveness-scenario.md`): a retained
+     status and a will on one topic per node, a node dying, the client's
+     Lir node dying, a split and a heal. It is step 4's acceptance test:
+     retained (D6), wills on the client-id lease with its epoch (D5), and
+     for the heal the order stamp for retained values (L1, the
+     maintainer's). Owed to AthenaSIP: word as each step lifts.
 3. The status and admin dashboard, on `@lugh/admin-ui` (Lugh 0.6.0), with
    Lir's own payload viewer; then the later pieces (shared subscriptions on
    Dannan's placement, Server Reference, MQTT-SN, the rules engine,
