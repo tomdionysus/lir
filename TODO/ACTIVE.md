@@ -97,6 +97,15 @@ In short (the maintainer, 2026-11-19 and 20):
   `claim-board wait` in the background. Work other projects wait on goes
   first. A node's `/root/lir-work/dannan` is stale: set
   `LIR_DANNAN_REPOSITORY` to Dannan's GitHub URL there.
+- No node is preferred (the maintainer, 2026-11-23): a job takes whichever
+  build node has the cores free now, the tree synced there and built from
+  scratch if need be, never a queue for one node because it holds a warm
+  build tree or an earlier build. A missing tool or -dev package is
+  installed there (one core claimed, `nice -n 19 apt-get install -y`, a
+  board note naming it and the node). A wait names every node
+  (`claim-board wait --any`); a job that must run on one node (a service
+  that lives there, or TSan needing a particular clang) says so in its
+  claim.
 - Features and milestones are built on branches and land on `develop` as
   one squash commit each (the maintainer, 2026-11-20). Test once; a test is
   repeated only for a stated reason; no flaky test is tolerated.
