@@ -143,7 +143,12 @@ In short (the maintainer, 2026-11-19 and 20):
 
 ## What waits, and on whom
 
-- **Dagda, D6 public:** Dagda 0.4.0 (2026-11-23, on Dannan 0.11.1) has the
+- **Dagda, D6 on its develop (`00e0a9f`, contract 3), 0.5.0 with D5:**
+  Lir's design for retained messages is
+  [`2026-11-23-retained.md`](2026-11-23-retained.md); three questions to
+  Dagda before code (running Dagda on Dannan's simulated cluster for tests,
+  a registers-only node's options, values over 64 KiB).
+- **Dagda, D6 public (history):** Dagda 0.4.0 (2026-11-23, on Dannan 0.11.1) has the
   register map in its tree (`dagda/heads/register_map.h`), but stamping
   with a Lamport stand-in "until Dannan's HlcClock::admit is released; no
   space is opened on it in a release", and its changelog says the
