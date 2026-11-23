@@ -145,9 +145,10 @@ In short (the maintainer, 2026-11-19 and 20):
 
 - **Dagda, D6 on its develop (`00e0a9f`, contract 3), 0.5.0 with D5:**
   Lir's design for retained messages is
-  [`2026-11-23-retained.md`](2026-11-23-retained.md); three questions to
-  Dagda before code (running Dagda on Dannan's simulated cluster for tests,
-  a registers-only node's options, values over 64 KiB).
+  [`2026-11-23-retained.md`](2026-11-23-retained.md), with Dagda's answers.
+  Code waits for a Dagda fixture on Dannan's simulated cluster (Dagda asks
+  Dannan whether a SimNodes node supplies a whole Context; with 0.5.0 if
+  so), since every Lir test runs there.
 - **Dagda, D6 public (history):** Dagda 0.4.0 (2026-11-23, on Dannan 0.11.1) has the
   register map in its tree (`dagda/heads/register_map.h`), but stamping
   with a Lamport stand-in "until Dannan's HlcClock::admit is released; no
