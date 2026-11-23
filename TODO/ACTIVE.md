@@ -133,8 +133,12 @@ In short (the maintainer, 2026-11-19 and 20):
 
 ## What waits, and on whom
 
-- **Dagda 0.4.0:** D6, the register map, for retained messages; read its
-  notes when it lands. Then D5 (leases: the client-id lease, wills), D1
+- **Dagda, D6 public:** Dagda 0.4.0 (2026-11-23, on Dannan 0.11.1) has the
+  register map in its tree (`dagda/heads/register_map.h`), but stamping
+  with a Lamport stand-in "until Dannan's HlcClock::admit is released; no
+  space is opened on it in a release", and its changelog says the
+  contract is unchanged. Lir builds on it once Dagda says it is public
+  (the coordinator asked; Dannan's admit is in 0.10.0). Then D5 (leases: the client-id lease, wills), D1
   and D2 (replicated spaces, a caught-up signal per space: sessions), D9
   (the log: QoS 1 and 2).
 - **Dannan, later:** HTTP (0.12.0: the dashboard and HTTP publish), the
