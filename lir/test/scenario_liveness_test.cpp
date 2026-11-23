@@ -22,7 +22,8 @@
 // of them with retained messages sent at subscribe. Each step is written now
 // and waits, disabled, on the noun it needs: retained messages on Dagda's
 // register map (D6), wills on Dagda's leases (D5), and after a heal the
-// order stamp for retained values (L1).
+// order of retained values, (hlc stamp, node id) (L1, settled), which D6
+// carries.
 namespace lir::scenario {
 namespace {
 
@@ -136,7 +137,7 @@ TEST(ScenarioLiveness, DISABLED_AStaleWillNeverOverwritesANewerOk_WaitsOnDagdaD5
 // 6 and 7. A split keeps delivering within each side and publishes no will
 // for a client still connected; after the heal each topic's retained message
 // is the last one published or will-published, by Lir's order.
-TEST(ScenarioLiveness, DISABLED_AfterAHealEachTopicHoldsItsLastStatus_WaitsOnDagdaD6AndD5AndL1) {
+TEST(ScenarioLiveness, DISABLED_AfterAHealEachTopicHoldsItsLastStatus_WaitsOnDagdaD6AndD5) {
   test::Servers cluster(3);
   ASSERT_TRUE(cluster.joined);
   Node a(cluster, 0, "a"), b(cluster, 1, "b"), c(cluster, 2, "c");
