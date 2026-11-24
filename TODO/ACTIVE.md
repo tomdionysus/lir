@@ -169,7 +169,13 @@ In short (the maintainer, 2026-11-19 and 20):
   atomic commit across names (guarded publish), and the per-peer answer
   bound for the SUBACK hold (L2): not in 0.12.x, whose `Channels::subscribe`
   still takes one deadline (`Answer::hold` is a deferring handler's held
-  reply, not L2); 0.13.0 lists slow peers.
+  reply, not L2). L2 is 0.13.0's slow-peers item (Dannan, 2026-11-24),
+  after the register layer, the HTTP core and the DNS client:
+  `Channels::subscribe` takes a `per_peer` bound beside its deadline; a peer
+  past it is not waited for (its push still lands later), `Pushed` names
+  slow peers apart from failed; the bound is the larger of `per_peer` and a
+  multiple of that peer's latency, which Lir accepted. Dannan sends the
+  signature before coding.
 - **Dannan 0.13.0** (about 2026-12-05, the maintainer's ruling): a DNS
   client (asynchronous, with a deadline; A, AAAA, SRV, TXT; resolv.conf's
   servers by default). Lir calls none itself: lir::client's `host` mode
