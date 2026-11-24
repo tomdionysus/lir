@@ -10,18 +10,15 @@ are kept out of the repository, in the untracked `CLAUDE.local.md`.
 | node-a | 192.0.2.1 | 7537 | 1983 | 8183 |
 | node-b | 192.0.2.2 | 7537 | 1983 | 8183 |
 | node-c | 192.0.2.3 | 7537 | 1983 | 8183 |
-| node-d | 192.0.2.4 | 7537 | 1983 | 8183 |
 
 Any node serves any client; the cluster is one broker. Connect to whichever
 is up. The ports keep clear of other sessions' test nodes on Dannan's 7437.
 
-node-d (192.0.2.4, the smallest) joined as the fourth
-node at the maintainer's word (2026-11-15), reversing its earlier exclusion. Four
-nodes keep a majority (3 of 4) through any one loss; an even split, 2 and
-2, is a minority on both sides (Dannan's partition reading), so QoS 1 and 2
-degrade or are refused there until it heals. node-d stays a build machine
-too: the unit holds lir-node's memory (MemoryMin, OOMScoreAdjust) against
-a build that runs out.
+Three nodes. A fourth, node-d, served from 2026-11-15 and left the build
+cluster for good on 2026-11-24 (the maintainer's word: its machine became
+another project's node). Three nodes keep a majority (2 of 3) through any
+one loss. Each stays a build machine too: the unit holds lir-node's memory
+(MemoryMin, OOMScoreAdjust) against a build that runs out.
 
 ## Coordinating through it
 
@@ -35,7 +32,7 @@ tools rather than by hand:
 3. When no machine has the cores, wait in the queue
    (`claim-board wait <host...|--any> --cores <n|all> --job "..." --for 2h`,
    in the background; it exits once the claim is yours). The queue is run
-   by `claim-board-scheduler.service` beside `lir-node` on all four nodes,
+   by `claim-board-scheduler.service` beside `lir-node` on all three nodes,
    one acting and the others standing by; it only reads and writes the
    board. The schedulers and the plugin are the coordinating session's (`../coordination`).
 4. Release your claim the moment you finish, and keep `until` honest.
@@ -90,11 +87,11 @@ release build: `LIR_ONLY=<name>` does one node, for a rolling upgrade, and
 `node.yaml.in`) and restarts. `LIR_DEPLOY_DIR` (default `/opt/lir-cluster`)
 and `LIR_DEPLOY_USER` (default `lir`, which must exist) say where and as whom
 each node runs; the unit is made from `lir-node.service.in`. Its arguments are
-the build and the four `NAME=ADDRESS` pairs:
+the build and the three `NAME=ADDRESS` pairs:
 
 ```
 LIR_ONLY=node-b sh deploy/test-cluster/install.sh root@192.0.2.2:/root/lir-work/<build>/release \
-  node-a=192.0.2.1 node-b=192.0.2.2 node-c=192.0.2.3 node-d=192.0.2.4
+  node-a=192.0.2.1 node-b=192.0.2.2 node-c=192.0.2.3
 ```
 
 Upgrade one node at a time, with the acting scheduler's node (node-a) last.
