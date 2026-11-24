@@ -50,7 +50,7 @@ endif()
 set(LIR_DANNAN_REPOSITORY "${CMAKE_CURRENT_SOURCE_DIR}/../dannan" CACHE STRING "Dannan's repository, a path or a URL")
 # Not a cache variable: a moved pin must take effect in a build tree that
 # already exists.
-set(LIR_DANNAN_TAG "0.12.0")
+set(LIR_DANNAN_TAG "0.12.1")
 # Lugh, for the plugin, at its tag, as Dannan is. Fetched with neither its
 # node nor its tests, so it takes Lir's own lir::mqtt and dannan::dannan.
 set(LIR_LUGH_REPOSITORY "${CMAKE_CURRENT_SOURCE_DIR}/../lugh" CACHE STRING "Lugh's repository, a path or a URL")

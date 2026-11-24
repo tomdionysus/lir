@@ -42,7 +42,7 @@ In short (the maintainer, 2026-11-19 and 20):
   wildcards, subscription options, topic aliases, keep-alive, enhanced
   authentication, MQTT over TCP, TLS and WebSocket, anonymous clients by
   filter, the optional Lugh plugin, and the system topics rendered by each
-  node for its own subscribers. On Dannan `0.12.0` and Lugh `0.6.0` (the
+  node for its own subscribers. On Dannan `0.12.1` and Lugh `0.6.0` (the
   plugin). Since 2026-11-24 `lir-node`'s main is Dannan's node-program
   helper, and its listeners are named as the stack's (`mqtt`, `mqtts`, `ws`,
   `wss`, each `listen.*` and `tls.*`). The limits until Dagda's nouns ship stand, said in MQTT's own
@@ -68,7 +68,11 @@ In short (the maintainer, 2026-11-19 and 20):
 **Next, in this order.**
 1. Step 4 of the design as Dagda ships each noun: client-id leases (D5),
    sessions (D1, D2), the log for QoS 1 and 2 (D9), retained (D6, in
-   Dagda 0.4.0), wills and timed ends. Each lifts its stated limit.
+   Dagda 0.5.0, with D5 and Dagda's simulated-cluster fixture), wills and
+   timed ends. Each lifts its stated limit. Dagda 0.5.0 is the group's top
+   priority (the maintainer, 2026-11-24); after it Dagda builds caught-up
+   before the AcceptorStore, so sessions and CONNACK's Session Present come
+   sooner.
    - Release `0.3.0`, the broker, once it accepts retained messages (D6)
      and wills (D5) (the maintainer, 2026-11-23), by the release procedure
      below.
@@ -160,10 +164,12 @@ In short (the maintainer, 2026-11-19 and 20):
   reaches its develop. Then D5 (leases: the client-id lease, wills), D1
   and D2 (replicated spaces, a caught-up signal per space: sessions), D9
   (the log: QoS 1 and 2).
-- **Dannan, later:** HTTP (0.12.0: the dashboard and HTTP publish), the
-  `DatagramListener` (the MQTT-SN DTLS gateway), the atomic commit across
-  names (guarded publish), the per-peer answer bound for the SUBACK hold
-  (L2).
+- **Dannan, later:** HTTP (0.13.0, after its register layer: the dashboard
+  and HTTP publish), the `DatagramListener` (the MQTT-SN DTLS gateway), the
+  atomic commit across names (guarded publish), and the per-peer answer
+  bound for the SUBACK hold (L2): not in 0.12.x, whose `Channels::subscribe`
+  still takes one deadline (`Answer::hold` is a deferring handler's held
+  reply, not L2); 0.13.0 lists slow peers.
 - **Dannan 0.13.0** (about 2026-12-05, the maintainer's ruling): a DNS
   client (asynchronous, with a deadline; A, AAAA, SRV, TXT; resolv.conf's
   servers by default). Lir calls none itself: lir::client's `host` mode
