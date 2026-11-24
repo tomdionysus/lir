@@ -60,8 +60,9 @@ In short (the maintainer, 2026-11-19 and 20):
 - `main` and tag `0.2.0` (`9085820`): `lir::mqtt` and `lir::client`. Its
   packages and `0.1.0`'s are staged in `../tomcully-apt/incoming/lir/`;
   publishing them is the maintainer's.
-- The standing cluster runs the old code (`4762186`, Dannan 0.9.2) on all
-  four build nodes and carries the claim board. Nothing is added to it;
+- The standing cluster runs the old code (`4762186`, Dannan 0.9.2) on three
+  build nodes (node-d left it on 2026-11-24, by the maintainer's word, to
+  become a Macha node) and carries the claim board. Nothing is added to it;
   every restart needs the maintainer's approval
   (`deploy/test-cluster/README.md`).
 
