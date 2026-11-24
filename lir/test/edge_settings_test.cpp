@@ -13,11 +13,13 @@
 #include <string>
 #include <vector>
 
+#include "dannan/config/node_settings.h"
 #include "lir/edge/settings.h"
 
-// lir-node's settings (Dannan's docs/config.md): the stack's names, Dannan's
-// node settings under cluster.*, and Lir's own refusals, in the reader's
-// words.
+// lir-node's settings (Dannan's docs/config.md): its listeners named as every
+// program of the stack names its own, Lir's own keys, and Lir's refusals, in
+// the reader's words. The reader is built as Dannan's node-program helper
+// builds it: Dannan's node settings, then Lir's.
 namespace lir::edge {
 namespace {
 
@@ -32,6 +34,16 @@ class Variables final : public config::Environment {
   std::map<std::string, std::string> values;
 };
 
+config::Settings read_raw(const std::vector<std::string>& arguments, const Variables& variables = {}) {
+  config::Reader reader;
+  reader.environment = &variables;
+  config::add_node_settings(reader, settings_prefix);
+  add_settings(reader);
+  return reader.read(arguments);
+}
+
+LirSettings read(std::vector<std::string> arguments, const Variables& variables = {}) { return lir_settings(read_raw(arguments, variables)); }
+
 // A cluster key, which Dannan's settings read: any file that is not empty.
 std::string key_path() {
   const auto dir = std::filesystem::path(DANNAN_TEST_TEMP_ROOT) / "edge-settings";
@@ -41,44 +53,44 @@ std::string key_path() {
   return path.string();
 }
 
-NodeSettings read(std::vector<std::string> arguments, const Variables& variables = {}) {
-  // What a node needs from Dannan's keys to start at all.
-  const std::vector<std::string> base = {"--cluster-state", "/var/lib/lir", "--cluster-key", key_path()};
-  arguments.insert(arguments.begin(), base.begin(), base.end());
-  return node_settings(node_reader(&variables).read(arguments));
-}
-
 TEST(EdgeSettings, TheDefaultsServeMqttAndRefuseAnonymousClients) {
   const auto settings = read({});
-  EXPECT_EQ(settings.server.address, "0.0.0.0");
-  EXPECT_EQ(settings.server.port, 1883);
-  EXPECT_FALSE(settings.server.tls);
+  EXPECT_EQ(settings.server.mqtt.address, "0.0.0.0");
+  EXPECT_EQ(settings.server.mqtt.port, 1883);
+  EXPECT_FALSE(settings.server.mqtts);
+  EXPECT_FALSE(settings.server.ws);
+  EXPECT_FALSE(settings.server.wss);
   EXPECT_FALSE(settings.anonymous);
-  EXPECT_EQ(settings.node.state_path, "/var/lib/lir");
 }
 
-// The flag and the variable are made from the key; the flag wins.
-TEST(EdgeSettings, AKeyIsAFlagAndAVariable) {
+// A listener is named as every program names its own; the flag and the
+// variable are made from the key, and the flag wins.
+TEST(EdgeSettings, AListenerIsNamedAsTheStacksAre) {
   Variables variables;
-  variables.values["LIR_MQTT_PORT"] = "1884";
+  variables.values["LIR_MQTT_LISTEN_PORT"] = "1884";
   variables.values["LIR_MQTT_MAXIMUM_PACKET_SIZE"] = "4096";
-  EXPECT_EQ(read({}, variables).server.port, 1884);
+  EXPECT_EQ(read({}, variables).server.mqtt.port, 1884);
   EXPECT_EQ(read({}, variables).server.limits.maximum_packet_size, 4096u);
-  EXPECT_EQ(read({"--mqtt-port", "1885"}, variables).server.port, 1885);
+  EXPECT_EQ(read({"--mqtt-listen-port", "1885"}, variables).server.mqtt.port, 1885);
+  EXPECT_EQ(read({"--mqtt-listen-address", "127.0.0.1"}).server.mqtt.address, "127.0.0.1");
 }
 
 // Dannan's node settings are under cluster.*, with Lir's prefix.
 TEST(EdgeSettings, TheNodesDannanSettingsAreUnderCluster) {
   Variables variables;
   variables.values["LIR_CLUSTER_LISTEN_PORT"] = "7500";
-  const auto settings = read({"--cluster-name", "node-a"}, variables);
-  EXPECT_EQ(settings.node.port, 7500);
-  EXPECT_EQ(settings.node.node_name, "node-a");
+  const auto raw = read_raw({"--cluster-name", "node-a", "--cluster-state", "/var/lib/lir", "--cluster-key", key_path()}, variables);
+  const auto node = config::node_config(raw);
+  EXPECT_EQ(node.port, 7500);
+  EXPECT_EQ(node.node_name, "node-a");
+  EXPECT_NO_THROW(require_node(raw, node));
 }
 
 TEST(EdgeSettings, ANodeNeedsAStateAndAWayToProveItself) {
-  EXPECT_THROW(node_settings(node_reader().read({"--cluster-key", key_path()})), config::ConfigError);
-  EXPECT_THROW(node_settings(node_reader().read({"--cluster-state", "/s"})), config::ConfigError);
+  const auto keyed = read_raw({"--cluster-key", key_path()});
+  EXPECT_THROW(require_node(keyed, config::node_config(keyed)), config::ConfigError);
+  const auto stated = read_raw({"--cluster-state", "/s"});
+  EXPECT_THROW(require_node(stated, config::node_config(stated)), config::ConfigError);
 }
 
 TEST(EdgeSettings, AnonymousClientsAreHeldToTheirFilters) {
@@ -94,23 +106,30 @@ TEST(EdgeSettings, AnonymousFiltersWithoutAllowAreRefused) { EXPECT_THROW(read({
 
 TEST(EdgeSettings, AnInvalidAnonymousFilterStopsTheStart) { EXPECT_THROW(read({"--anonymous-allow", "--anonymous-subscribe", "a/#/b"}), config::ConfigError); }
 
-TEST(EdgeSettings, TlsNeedsACertificateAndItsKey) {
-  const auto settings = read({"--mqtt-tls-certificate", "/c.pem", "--mqtt-tls-key", "/k.pem", "--mqtt-tls-client-certificates", "optional"});
-  ASSERT_TRUE(settings.server.tls);
-  EXPECT_EQ(settings.server.tls->chain, "/c.pem");
-  EXPECT_EQ(settings.server.tls_port, 8883);
+// mqtts and wss are served when given their pair, at their default ports
+// unless told; mqtt and ws take none.
+TEST(EdgeSettings, TlsListenersAreServedWithTheirPair) {
+  const auto settings = read({"--mqtts-tls-certificate", "/c.pem", "--mqtts-tls-key", "/k.pem", "--wss-tls-certificate", "/c.pem", "--wss-tls-key", "/k.pem",
+                              "--wss-listen-port", "9443", "--mqtt-client-certificates", "optional"});
+  ASSERT_TRUE(settings.server.mqtts);
+  ASSERT_TRUE(settings.server.mqtts->tls);
+  EXPECT_EQ(settings.server.mqtts->tls->chain, "/c.pem");
+  EXPECT_EQ(settings.server.mqtts->port, 8883);
+  ASSERT_TRUE(settings.server.wss);
+  EXPECT_EQ(settings.server.wss->port, 9443);
   EXPECT_EQ(settings.server.client_certificates, dannan::listen::ClientCertificates::optional);
-  EXPECT_THROW(read({"--mqtt-tls-certificate", "/c.pem"}), config::ConfigError);
-  EXPECT_THROW(read({"--mqtt-tls-port", "8884"}), config::ConfigError);
-  EXPECT_THROW(read({"--mqtt-tls-certificate", "/c.pem", "--mqtt-tls-key", "/k.pem", "--mqtt-tls-client-certificates", "sometimes"}), config::ConfigError);
+  EXPECT_THROW(read({"--mqtts-tls-certificate", "/c.pem"}), config::ConfigError);
+  EXPECT_THROW(read({"--mqtts-listen-port", "8884"}), config::ConfigError);
+  EXPECT_THROW(read({"--mqtt-tls-certificate", "/c.pem", "--mqtt-tls-key", "/k.pem"}), config::ConfigError);
+  EXPECT_THROW(read({"--mqtt-client-certificates", "sometimes"}), config::ConfigError);
 }
 
-TEST(EdgeSettings, TheLogTakesTheStacksSharedKeys) {
-  const auto settings = read({"--log-level", "debug", "--log-format", "json"});
-  EXPECT_EQ(settings.log_level, dannan::status::LogLevel::debug);
-  EXPECT_EQ(settings.log_format, dannan::status::LogFormat::json);
-  EXPECT_THROW(read({"--log-level", "loud"}), config::ConfigError);
-  EXPECT_THROW(read({"--log-format", "xml"}), config::ConfigError);
+TEST(EdgeSettings, WebSocketIsServedWhenGivenAPort) {
+  EXPECT_FALSE(read({}).server.ws);
+  const auto settings = read({"--ws-listen-port", "8081"});
+  ASSERT_TRUE(settings.server.ws);
+  EXPECT_EQ(settings.server.ws->port, 8081);
+  EXPECT_THROW(read({"--ws-listen-port", "8081", "--ws-tls-certificate", "/c.pem", "--ws-tls-key", "/k.pem"}), config::ConfigError);
 }
 
 TEST(EdgeSettings, LughSettingsNeedThePluginAndAnAudience) {

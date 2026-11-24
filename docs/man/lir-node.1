@@ -54,15 +54,27 @@ The node in Dannan's cluster, shared by every node binary of the stack:
 and the rest. A node needs a state directory and the cluster's key (or a
 certificate).
 .TP
-.B mqtt.*
-Where clients reach it:
-.BR mqtt.address ,
-.BR mqtt.port ,
+.BR mqtt ", " mqtts ", " ws ", " wss
+Where clients reach it, each listener named as every node program of the
+stack names its own:
+.IB name .listen.address\fR,
+.IB name .listen.port\fR,
+.IB name .tls.certificate\fR,
+.IB name .tls.key
+and
+.IB name .tls.ca\fR.
+.B mqtt
+(1883) is always served;
+.B mqtts
+(8883) and
+.B wss
+(8443) when given their pair;
+.B ws
+(8080) when given a port. Also
 .BR mqtt.advertise ,
-.BR mqtt.tls.* ,
-.BR mqtt.ws.port ,
-.BR mqtt.wss.port ,
-.BR mqtt.maximum_packet_size ,
+.BR mqtt.client_certificates ,
+.B mqtt.maximum_packet_size
+and
 .BR mqtt.topic_alias_maximum .
 .TP
 .B anonymous.*
@@ -78,15 +90,11 @@ and
 With the Lugh plugin: the issuers whose access tokens sign clients in, and
 the audience a token must name.
 .TP
-.B log.level\fR, \fBlog.format
-.BR debug ,
-.BR info ,
-.B warn
-or
-.BR error ;
-.B text
-or
-.BR json .
+.BR log.* ", " node.*
+Dannan's, as every node program's: the log's level and format, the io
+threads, the drain's bound
+.RB ( node.drain_ms ),
+and the status lines.
 .SH FILES
 .TP
 .I /etc/lir/config.yaml
@@ -98,5 +106,5 @@ Settings that should not sit in the configuration.
 .I /var/lib/lir
 The node's state: its identity and Dannan's.
 .SH EXIT STATUS
-0 once stopped by a signal, 1 when the node could not run, 2 for a setting
-that cannot be used.
+0 once drained and stopped by a signal, 1 when the node could not run or a
+second signal stopped it at once, 2 for a setting that cannot be used.

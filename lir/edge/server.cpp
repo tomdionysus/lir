@@ -19,11 +19,11 @@ namespace lir::edge {
 
 namespace {
 
-dannan::listen::ListenerConfig listener_config(const ServerConfig& config, std::string name, uint16_t port) {
+dannan::listen::ListenerConfig listener_config(const ServerConfig& config, std::string name, const Endpoint& endpoint) {
   dannan::listen::ListenerConfig out;
   out.name = std::move(name);
-  out.host = config.address;
-  out.port = port;
+  out.host = endpoint.address;
+  out.port = endpoint.port;
   out.close_bound = config.close_bound;
   // A slow reader is closed past the design's 4 MiB a client.
   out.outbound_bound = 4u << 20;
@@ -32,7 +32,10 @@ dannan::listen::ListenerConfig listener_config(const ServerConfig& config, std::
 
 // Refused before anything is opened on the node.
 ServerConfig checked(ServerConfig config) {
-  if (config.wss_port && !config.tls) throw std::invalid_argument("lir::edge::Server: wss needs TLS");
+  if (config.mqtt.tls) throw std::invalid_argument("lir::edge::Server: mqtt is plaintext; TLS is mqtts");
+  if (config.ws && config.ws->tls) throw std::invalid_argument("lir::edge::Server: ws is plaintext; TLS is wss");
+  if (config.mqtts && !config.mqtts->tls) throw std::invalid_argument("lir::edge::Server: mqtts needs its TLS pair");
+  if (config.wss && !config.wss->tls) throw std::invalid_argument("lir::edge::Server: wss needs its TLS pair");
   return config;
 }
 
@@ -60,20 +63,18 @@ Server::Server(boost::asio::io_context& io, dannan::Context& context, contract::
       _edge(_delivery, authenticator, context.time(), context.logger("lir.link"), _config.limits, &_views),
       _ticker(std::make_shared<Ticker>()) {
   _ticker->server = this;
-  std::shared_ptr<dannan::listen::Certificates> certificates;
-  if (_config.tls) certificates = std::make_shared<dannan::listen::Certificates>(*_config.tls);
-  const auto add = [&](std::string transport, std::string name, uint16_t port, bool tls) {
-    auto listener = listener_config(_config, std::move(name), port);
-    if (tls) {
-      listener.certificates = certificates;
+  const auto add = [&](std::string transport, std::string name, const Endpoint& endpoint) {
+    auto listener = listener_config(_config, std::move(name), endpoint);
+    if (endpoint.tls) {
+      listener.certificates = std::make_shared<dannan::listen::Certificates>(*endpoint.tls);
       listener.tls.client_certificates = _config.client_certificates;
     }
     _listeners[std::move(transport)] = std::make_unique<dannan::listen::StreamListener>(io, std::move(listener), time);
   };
-  add("tcp", "mqtt", _config.port, false);
-  if (_config.tls) add("tls", "mqtts", _config.tls_port, true);
-  if (_config.ws_port) add("ws", "mqtt-ws", *_config.ws_port, false);
-  if (_config.wss_port) add("wss", "mqtt-wss", *_config.wss_port, true);
+  add("tcp", "mqtt", _config.mqtt);
+  if (_config.mqtts) add("tls", "mqtts", *_config.mqtts);
+  if (_config.ws) add("ws", "ws", *_config.ws);
+  if (_config.wss) add("wss", "wss", *_config.wss);
 }
 
 Server::~Server() {
@@ -167,8 +168,8 @@ dannan::listen::StreamListener* Server::listener_of(std::string_view transport) 
 
 std::string Server::advertised_host() const {
   if (!_config.advertise.empty()) return _config.advertise;
-  if (wildcard(_config.address)) return _context.nodes().self().host;
-  return _config.address;
+  if (wildcard(_config.mqtt.address)) return _context.nodes().self().host;
+  return _config.mqtt.address;
 }
 
 }  // namespace lir::edge

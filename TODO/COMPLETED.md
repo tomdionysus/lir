@@ -22,6 +22,28 @@ How to read it:
   N1 to N6, G1 to G9, and its review R1 to R11) and the first
   `2026-11-19-guarded-publish-design.md` (at `003906a`).
 
+## 2026-11-24: Dannan 0.12.0, lir-node on Dannan's node-program helper
+
+- Read against Dannan 0.12.0's changelog: Lir's node binary moves onto
+  `supervise::run_node_program` (the reader, `cluster.*`, `log.*`,
+  `node.*`, signals, the drain, `--help` and `--version` are Dannan's), and
+  its listeners onto `add_listener_settings`'s names: `mqtt` (1883, always),
+  `mqtts` (8883) and `wss` (8443) when given their pair, `ws` (8080) when
+  given a port, each `name.listen.address`, `name.listen.port` and
+  `name.tls.*`; Lir's own `mqtt.advertise`, `mqtt.client_certificates`,
+  `mqtt.maximum_packet_size`, `mqtt.topic_alias_maximum`, `anonymous.*`,
+  `lugh.*`. `ServerConfig` holds one endpoint per listener. The node pushes
+  its health (`lir.serving`, draining at the stop). Lir uses no placement,
+  rate limiter, password or process runner of its own.
+- One test went with the code it tested: the log settings' test, since
+  `log.*` and its parsing are Dannan's helper's now; the settings suite
+  gained two (the listener names, WebSocket by port).
+- Gate on node-b: release, ASan and UBSan, TSan 281 of 281 each (6
+  disabled, step 4's scenario); the Lugh plugin (Lugh 0.6.0) builds on
+  Dannan 0.12.0 and its tests pass. lir-node smoked: anonymous mosquitto
+  clients publish and subscribe, SIGTERM drains and stops it, a TLS pair on
+  the plaintext listener exits 2 naming the key.
+
 ## 2026-11-22 to 23: step 2, the broker
 
 Squash-merged onto develop. How it went, in the order it was built:

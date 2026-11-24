@@ -42,8 +42,10 @@ In short (the maintainer, 2026-11-19 and 20):
   wildcards, subscription options, topic aliases, keep-alive, enhanced
   authentication, MQTT over TCP, TLS and WebSocket, anonymous clients by
   filter, the optional Lugh plugin, and the system topics rendered by each
-  node for its own subscribers. On Dannan `0.11.1` and Lugh `0.6.0` (the
-  plugin). The limits until Dagda's nouns ship stand, said in MQTT's own
+  node for its own subscribers. On Dannan `0.12.0` and Lugh `0.6.0` (the
+  plugin). Since 2026-11-24 `lir-node`'s main is Dannan's node-program
+  helper, and its listeners are named as the stack's (`mqtt`, `mqtts`, `ws`,
+  `wss`, each `listen.*` and `tls.*`). The limits until Dagda's nouns ship stand, said in MQTT's own
   terms: Maximum QoS 0, Retain Available 0, every will refused, session
   expiry answered as 0.
   - Gate on the merge (node-a, 2026-11-23): release 273 of 273; ASan and

@@ -78,13 +78,13 @@ TEST(EdgeServer, ARestartedNodeIsFoundAgain) {
   EXPECT_TRUE(cluster.world.run_until([&] { return cluster.sees(0, ports); }, max_steps));
 }
 
-// wss is WebSocket on TLS: without TLS there is no wss to serve. A transport
-// not served has no listener and no port.
+// wss is WebSocket on TLS: without its pair there is no wss to serve. A
+// transport not served has no listener and no port.
 TEST(EdgeServer, WssWithoutTlsIsRefusedAndAnUnservedTransportHasNoListener) {
   Cluster cluster(1);
   ASSERT_TRUE(cluster.joined);
   ServerConfig wss_alone;
-  wss_alone.wss_port = 0;
+  wss_alone.wss = Endpoint{"127.0.0.1", 0, std::nullopt};
   EXPECT_THROW(Server(cluster.world.io, cluster.nodes.node(0).context(), cluster.authenticator, wss_alone, &cluster.time), std::invalid_argument);
   EXPECT_EQ(cluster.servers[0]->listener_of("ws"), nullptr);
   EXPECT_EQ(cluster.servers[0]->port_of("wss"), 0);

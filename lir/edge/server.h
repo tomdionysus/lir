@@ -35,20 +35,29 @@
 // every other node find it. Every node runs the same; none is special.
 namespace lir::edge {
 
-struct ServerConfig {
-  // Where MQTT is served. Port zero: any; port() says which.
+// One listener: where it is served, and its TLS pair when it speaks TLS.
+// Port zero: any; Server::port_of says which.
+struct Endpoint {
   std::string address = "0.0.0.0";
-  uint16_t port = 1883;
-  // The host clients are told to dial; empty: `address`, or the node's own
-  // advertised host when `address` is a wildcard.
-  std::string advertise;
-  // MQTT over TLS on a second listener, when set.
+  uint16_t port = 0;
   std::optional<dannan::listen::CertificatePaths> tls;
-  uint16_t tls_port = 8883;
-  // MQTT over WebSocket (ws), and over WebSocket on TLS (wss, with `tls`),
-  // each on a listener of its own when its port is set.
-  std::optional<uint16_t> ws_port;
-  std::optional<uint16_t> wss_port;
+};
+
+// The listeners are named as every node program of the stack names its own
+// (Dannan's add_listener_settings): mqtt, mqtts, ws and wss, each advertised
+// in "lir.endpoints" under its transport (tcp, tls, ws, wss).
+struct ServerConfig {
+  // MQTT over TCP, always served.
+  Endpoint mqtt{"0.0.0.0", 1883, std::nullopt};
+  // MQTT over TLS; it must carry its pair.
+  std::optional<Endpoint> mqtts;
+  // MQTT over WebSocket, plaintext.
+  std::optional<Endpoint> ws;
+  // MQTT over WebSocket on TLS; it must carry its pair.
+  std::optional<Endpoint> wss;
+  // The host clients are told to dial; empty: mqtt's address, or the node's
+  // own advertised host when that is a wildcard.
+  std::string advertise;
   // Asked of a TLS client under `optional`; a chain that does not verify
   // reaches the authenticator as no certificate.
   dannan::listen::ClientCertificates client_certificates = dannan::listen::ClientCertificates::never;
@@ -64,8 +73,9 @@ class Server {
  public:
   // `io`, `context` and `authenticator` outlive the server; so does `time`,
   // the listeners' clock (the world's in a simulation). Opens Lir's channel
-  // on the node: throws std::invalid_argument if it is already open, or for
-  // wss without TLS, and std::runtime_error for TLS material it cannot load.
+  // on the node: throws std::invalid_argument if it is already open, for an
+  // mqtts or wss endpoint without its pair or a plaintext one with one, and
+  // std::runtime_error for TLS material it cannot load.
   Server(boost::asio::io_context& io, dannan::Context& context, contract::Authenticator& authenticator, ServerConfig config,
          const dannan::contract::TimeSource* time = &dannan::contract::steady_time_source());
   // Stops the listeners. Every client's link refers to the server's

@@ -6,8 +6,8 @@ Build-Depends:
  debhelper-compat (= 13),
  dh-sequence-installsysusers,
  cmake,
- libdannan-dev (>= 0.11.1),
- libdannan-dev (<< 0.12~),
+ libdannan-dev (>= 0.12.0),
+ libdannan-dev (<< 0.13~),
  libboost-dev (>= 1.83),
  libssl-dev,
  libgtest-dev <!nocheck>,
@@ -59,8 +59,8 @@ Depends:
  liblir-mqtt0.2 (= ${binary:Version}),
  liblir-client0.2 (= ${binary:Version}),
  libboost-dev (>= 1.83),
- libdannan-dev (>= 0.11.1),
- libdannan-dev (<< 0.12~),
+ libdannan-dev (>= 0.12.0),
+ libdannan-dev (<< 0.13~),
  ${misc:Depends},
 Description: MQTT codec and client of the Lir message broker (development files)
  Lir is a clustered publish/subscribe bus that presents itself to clients

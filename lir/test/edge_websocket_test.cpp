@@ -39,7 +39,7 @@ namespace listen = dannan::listen;
 using test::max_steps;
 
 struct Cluster : test::Servers {
-  explicit Cluster(size_t size) : Servers(size, 1, [](ServerConfig& config) { config.ws_port = 0; }) {}
+  explicit Cluster(size_t size) : Servers(size, 1, [](ServerConfig& config) { config.ws = Endpoint{"127.0.0.1", 0, std::nullopt}; }) {}
 };
 
 // One WebSocket client: the handshake offering `subprotocols`, then MQTT

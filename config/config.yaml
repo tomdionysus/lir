@@ -16,21 +16,23 @@ cluster:
   listen:
     port: 7437
 
-# Where clients reach this node. Each transport is advertised in Dannan's
+# Where clients reach this node, each listener named as every node program
+# of the stack names its own. Each transport served is advertised in Dannan's
 # roster, where lir::client and every other node find it.
 mqtt:
-  address: 0.0.0.0
-  port: 1883
-  # MQTT over TLS, and over WebSocket on TLS, with the operator's pair:
-  # tls:
-  #   port: 8883
-  #   certificate: /etc/lir/tls/cert.pem
-  #   key: /etc/lir/tls/key.pem
-  # wss:
-  #   port: 8884
-  # MQTT over WebSocket, plaintext:
-  # ws:
-  #   port: 8080
+  listen:
+    address: 0.0.0.0
+    port: 1883
+# MQTT over TLS, and over WebSocket on TLS, each served when given its pair:
+# mqtts:
+#   listen: {port: 8883}
+#   tls: {certificate: /etc/lir/tls/cert.pem, key: /etc/lir/tls/key.pem}
+# wss:
+#   listen: {port: 8443}
+#   tls: {certificate: /etc/lir/tls/cert.pem, key: /etc/lir/tls/key.pem}
+# MQTT over WebSocket, plaintext, served when given a port:
+# ws:
+#   listen: {port: 8080}
 
 # Clients that sign in with nothing are refused unless allowed, and then held
 # to these topic filters.

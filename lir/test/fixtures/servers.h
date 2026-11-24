@@ -27,8 +27,7 @@ struct Servers {
     servers.resize(size);
     nodes.host = [this, configure](size_t i, dannan::Node& node, bool) {
       edge::ServerConfig config;
-      config.address = "127.0.0.1";
-      config.port = 0;
+      config.mqtt = edge::Endpoint{"127.0.0.1", 0, std::nullopt};
       if (configure) configure(config);
       servers[i] = std::make_unique<edge::Server>(world.io, node.context(), authenticator, config, &time);
       servers[i]->start();
