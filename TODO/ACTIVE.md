@@ -99,8 +99,7 @@ In short (the maintainer, 2026-11-19 and 20):
   project. Never offer the maintainer an option that is Lir's own
   mechanism. Say "I don't know" when that is the answer.
 - No builds or test runs on the workstation: the build nodes only, in
-  `/root/lir-work`, at `-j2` and `nice 19` (node-d has 4 GB: no ASan or
-  TSan there). Claim cores on the board only for a job ready to start,
+  `/root/lir-work`, at `-j2` and `nice 19`. Claim cores on the board only for a job ready to start,
   release them the moment it ends, and when none are free run
   `claim-board wait` in the background. Work other projects wait on goes
   first. A node's `/root/lir-work/dannan` is stale: set
