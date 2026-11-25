@@ -62,7 +62,15 @@ In short (the maintainer, 2026-11-19 and 20):
   publishing them is the maintainer's.
 - The standing cluster runs the old code (`4762186`, Dannan 0.9.2) on three
   build nodes (node-d left it on 2026-11-24, by the maintainer's word, to
-  become a Macha node) and carries the claim board. Nothing is added to it;
+  become a Macha node) and carries the claim board. node-d is still in its
+  agreed roster (only `Nodes::retire()`, an operator's word, takes a node
+  out, never absence), so a majority needs 3 of 4: one more node down puts
+  the board in a minority. The maintainer (2026-11-25): leave it as it is;
+  build and test lir-node's retire command now; redeploy the board's cluster
+  on current code once retained messages work (Dagda 0.5.0), since the
+  board keeps its claims as retained messages, retiring node-d then, with a
+  plan for moving the claims across brought to the coordinator before any
+  restart. Nothing is added to it;
   every restart needs the maintainer's approval
   (`deploy/test-cluster/README.md`).
 
